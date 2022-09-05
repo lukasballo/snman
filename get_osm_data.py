@@ -8,6 +8,13 @@ import config
 import re
 import pandas as pd
 
+# Steps in this file:
+# - Acquisition
+# - Simplification
+# - Reconstruct the lane composition
+# - Merge parallel links (pending)
+# - Export to SHP for manual corrections
+
 print('Starting...')
 
 # --------------------------------------------------------
@@ -38,7 +45,7 @@ custom_filter = [
 # --------------------------------------------------------
 # Get data from OSM server
 street_graph = ox.graph_from_place(
-    'Seebach, Kreis 11, Zurich, Switzerland',
+    'Seebach, Zurich, Switzerland',
     custom_filter=custom_filter,
     simplify=True,
     simplify_strict=False,

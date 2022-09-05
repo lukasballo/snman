@@ -1,0 +1,1 @@
+- comparing the performance of our suimplified networks with the real matsim network? (see jafari's measures)

@@ -556,7 +556,7 @@ def _osm_network_download(polygon, network_type, custom_filter):
             statements_string = statements_string + statement_string + ';>;'
 
         query_str = f"{overpass_settings};({statements_string});out;"
-        print(query_str)
+        #print(query_str)
         response_json = overpass_request(data={"data": query_str})
         response_jsons.append(response_json)
     utils.log(
