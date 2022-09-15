@@ -509,7 +509,6 @@ def _create_overpass_query(polygon_coord_str, tags):
 
 
 def _osm_network_download(polygon, network_type, custom_filter):
-    print('osm_network_download')
     """
     Retrieve networked ways and nodes within boundary from the Overpass API.
 

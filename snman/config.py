@@ -1,4 +1,4 @@
-import osmnx_ebc as ox
+from snman import osmnx as ox
 
 data_path = 'C:/DATA/CLOUD STORAGE/polybox/Data/ebc/'
 ox.config(log_console=False, use_cache=True)

@@ -13,7 +13,10 @@ Reconstruct the lane composition
 - use tags in osm to generate a string containing the information about individual lanes
 - calculate overall stats: number of lanes, total width, oneway y/n
 
-Merge parallel links (pending)
+Merge consecutive links
+- remove unnecessary nodes
+
+Merge parallel links
 - merge links with same u-v combination
 
 Export to SHP for manual corrections

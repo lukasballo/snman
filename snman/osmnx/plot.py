@@ -446,7 +446,7 @@ def plot_figure_ground(
     if street_widths is None:
         street_widths = {
             "footway": 1.5,
-            "steps": 1.5,
+            "snman": 1.5,
             "pedestrian": 1.5,
             "service": 1.5,
             "path": 1.5,

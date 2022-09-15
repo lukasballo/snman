@@ -114,7 +114,7 @@ def save_graph_xml(
 
     Example
     -------
-    >>> import osmnx_ebc as ox
+    >>> from snman import osmnx as ox
     >>> utn = ox.settings.useful_tags_node
     >>> oxna = ox.settings.osm_xml_node_attrs
     >>> oxnt = ox.settings.osm_xml_node_tags
@@ -201,7 +201,7 @@ def save_graph_xml(
     # add default values for required attributes
     for table in (gdf_nodes, gdf_edges):
         table["uid"] = "1"
-        table["user"] = "osmnx_ebc"
+        table["user"] = "osmnx"
         table["version"] = "1"
         table["changeset"] = "1"
         table["timestamp"] = "2017-01-01T00:00:00Z"

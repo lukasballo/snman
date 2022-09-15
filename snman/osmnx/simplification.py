@@ -1,6 +1,7 @@
 """Simplify, correct, and consolidate network topology."""
 
 import logging as lg
+import warnings
 
 import geopandas as gpd
 import networkx as nx
@@ -421,7 +422,14 @@ def _merge_nodes_geometric(G, tolerance):
         the merged overlapping polygons of the buffered nodes
     """
     # buffer nodes GeoSeries then get unary union to merge overlaps
-    merged = utils_graph.graph_to_gdfs(G, edges=False)["geometry"].buffer(tolerance).unary_union
+    # TODO: Switch to a projected CRS for buffer operations
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        gdfs = utils_graph.graph_to_gdfs(G, edges=False)
+        # original_crs = gdfs.crs
+        # gdfs = gdfs.to_crs(2056)
+        merged = gdfs["geometry"].buffer(tolerance).unary_union
+
 
     # if only a single node results, make it iterable to convert to GeoSeries
     merged = MultiPolygon([merged]) if isinstance(merged, Polygon) else merged
@@ -468,10 +476,13 @@ def _consolidate_intersections_rebuild_graph(G, tolerance=10, reconnect_edges=Tr
     # STEP 1
     # buffer nodes to passed-in distance and merge overlaps. turn merged nodes
     # into gdf and get centroids of each cluster as x, y
-    node_clusters = gpd.GeoDataFrame(geometry=_merge_nodes_geometric(G, tolerance))
-    centroids = node_clusters.centroid
-    node_clusters["x"] = centroids.x
-    node_clusters["y"] = centroids.y
+    # TODO: Switch to a projected CRS for buffer operations
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        node_clusters = gpd.GeoDataFrame(geometry=_merge_nodes_geometric(G, tolerance))
+        centroids = node_clusters.centroid
+        node_clusters["x"] = centroids.x
+        node_clusters["y"] = centroids.y
 
     # STEP 2
     # attach each node to its cluster of merged nodes. first get the original
@@ -494,7 +505,9 @@ def _consolidate_intersections_rebuild_graph(G, tolerance=10, reconnect_edges=Tr
             if len(wccs) > 1:
                 # if there are multiple components in this cluster
                 suffix = 0
+                #print(wccs)
                 for wcc in wccs:
+                    wcc = list(wcc)
                     # set subcluster xy to the centroid of just these nodes
                     subcluster_centroid = node_points.loc[wcc].unary_union.centroid
                     gdf.loc[wcc, "x"] = subcluster_centroid.x

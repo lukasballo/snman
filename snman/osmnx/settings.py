@@ -21,7 +21,7 @@ log_file = False
 log_console = False
 log_level = lg.INFO
 log_name = "OSMnx"
-log_filename = "osmnx_ebc"
+log_filename = "osmnx"
 
 # OSM node/way tags to add as graph node/edge attributes when these tags are
 # present in the data retrieved from OSM
