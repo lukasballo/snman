@@ -1,5 +1,7 @@
 from . import lanes
 from shapely.ops import substring
+import networkx as nx
+
 
 def _edge_hash(edge):
     return '-'.join(map(str, edge[0:3]))
@@ -9,19 +11,15 @@ def _remove_edge_from_list(edges, edge_to_remove, dead_ends=True):
     edges_cleaned = []
     for idx, candidate in enumerate(edges):
         if (_edge_hash(candidate) != _edge_hash(edge_to_remove)
-                and not (dead_ends == False and candidate[3]['dead_end'] == True)):
+                and not (not dead_ends and candidate[3].get('dead_end'))):
             edges_cleaned.append(candidate)
     return edges_cleaned
 
 
 def _get_neighbors(graph, edge, dead_ends=True):
     adjacent_nodes = edge[0:2]
-    u_neighbors =\
-        list(graph.in_edges(nbunch=adjacent_nodes[0], data=True, keys=True))\
-        + list(graph.out_edges(nbunch=adjacent_nodes[0], data=True, keys=True))
-    v_neighbors =\
-        list(graph.in_edges(nbunch=adjacent_nodes[1], data=True, keys=True))\
-        + list(graph.out_edges(nbunch=adjacent_nodes[1], data=True, keys=True))
+    u_neighbors = list(graph.edges(nbunch=adjacent_nodes[0], data=True, keys=True))
+    v_neighbors = list(graph.edges(nbunch=adjacent_nodes[1], data=True, keys=True))
     # Remove this edge from the neighbors
     u_neighbors = _remove_edge_from_list(u_neighbors, edge, dead_ends=dead_ends)
     v_neighbors = _remove_edge_from_list(v_neighbors, edge, dead_ends=dead_ends)
@@ -42,15 +40,37 @@ def _unique_edges(edges):
     return unique_edges
 
 
-def _reverse_edge(street_graph, edge):
+def normalize_edge_directions(street_graph):
+    edges = list(street_graph.edges(data=True, keys=True))
+    for edge in edges:
+        if edge[0] > edge[1]:
+            _reverse_edge(street_graph, edge)
 
+
+def _reverse_edge(street_graph, edge, reverse_topology=True):
+    """
+    Flip the edge direction
+
+    Parameters
+    ----------
+    street_graph : nx.MultiDiGraph
+
+    edge : Tuple
+
+    reverse_topology : Boolean
+        Also flip the start and end node. Automatically false if the street_graph is undirected
+
+    """
     u = edge[0]
     v = edge[1]
     key = edge[2]
     data = edge[3]
 
+    reverse_topology = reverse_topology and nx.is_directed(street_graph)
+
     # Remove the old edge
-    street_graph.remove_edge(u, v, key)
+    if reverse_topology:
+        street_graph.remove_edge(u, v, key)
 
     # Reverse the lanes
     data['ln_desc'] = lanes._reverse_lanes(data['ln_desc'])
@@ -59,7 +79,11 @@ def _reverse_edge(street_graph, edge):
     data['geometry'] = substring(data['geometry'], 1, 0, normalized=True)
 
     # Add the new edge
-    key = street_graph.add_edge(v, u, **data)
+    if reverse_topology:
+        key = street_graph.add_edge(v, u, **data)
 
-    # Return a tuple with a proper edge format
-    return v, u, key, data
+    # Return the resulting edge
+    if reverse_topology:
+        return v, u, key, data
+    else:
+        return edge

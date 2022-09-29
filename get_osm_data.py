@@ -16,7 +16,7 @@ import snman
 print('Starting...')
 
 # Variables
-osm_tags = ['bridge', 'tunnel', 'oneway', 'ref', 'name',
+osm_tags = ['bridge', 'tunnel', 'layer', 'oneway', 'ref', 'name',
                     'highway', 'maxspeed', 'service', 'access', 'area',
                     'landuse', 'width', 'est_width', 'junction', 'surface',
                     'lanes', 'lanes:forward', 'lanes:backward',
@@ -24,6 +24,7 @@ osm_tags = ['bridge', 'tunnel', 'oneway', 'ref', 'name',
                     'sidewalk', 'sidewalk:left', 'sidewalk:right']
 ox.utils.config(useful_tags_way=osm_tags)
 
+# TODO: Include highway=living_street and service roads
 custom_filter = [
     (
         f'["highway"]["area"!~"yes"]["access"!~"private"]'
@@ -38,9 +39,10 @@ custom_filter = [
     )
 ]
 
-# Get data from OSM server
+print('Get data from OSM server')
 street_graph = ox.graph_from_place(
-    'Oerlikon, Zurich, Switzerland',
+    'Zurich, Zurich, Switzerland',
+    #'Seebach, Zurich, Switzerland',
     custom_filter=custom_filter,
     simplify=True,
     simplify_strict=False,
@@ -48,31 +50,43 @@ street_graph = ox.graph_from_place(
     one_edge_per_direction=False,
 )
 
-# Consolidate intersections
+print('Consolidate intersections')
 street_graph = ox.simplification.consolidate_intersections(
     # TODO: Work with a projected CRS in consolidating intersections
     # TODO: Fix problems with "edge u-v is not in the graph"
     street_graph, tolerance=0.00020, rebuild_graph=True, dead_ends=True, reconnect_edges=True
 )
 
-#street_graph = ox.utils_graph.get_undirected(street_graph)
+print('Convert CRS of street graph to 2056')
+snman.convert_crs_of_street_graph(street_graph, str(config.crs))
 
-# Generate lanes
+print('Generate lanes')
 snman.generate_lanes(street_graph)
 
-# Merge parallel edges
-snman.merge_parallel_edges(street_graph)
+print('Normalize edge directions, enforce direction from lower to higher node id')
+snman.normalize_edge_directions(street_graph)
 
-# Merge consecutive edges
-snman.merge_consecutive_edges(street_graph)
+print('Convert into an undirected graph')
+street_graph = ox.utils_graph.get_undirected(street_graph)
 
-# Merge parallel edges again
-snman.merge_parallel_edges(street_graph)
+print('Merge parallel and consecutive edges, repeat a few times')
+# TODO: Merge parallel lanes even if there is a one-sided intersection (Example: Bottom station of Seilbahn Rigiblick)
+for i in range(5):
+    snman.merge_parallel_edges(street_graph)
+    snman.merge_consecutive_edges(street_graph)
+    pass
 
-# Add lane stats
+print('Add public transport')
+pt_network = snman.import_shp_to_gdf("C:/DATA/CLOUD STORAGE/polybox/Data/stadt_zuerich_open_data/Linien_des_offentlichen_Verkehrs_-OGD/ZVV_LINIEN_GEN_L.shp")
+snman.match_pt(street_graph, pt_network)
+
+print('Add lane stats')
 snman.generate_lane_stats(street_graph)
 
-# Export SHP to make manual corrections on the network in QGIS
-snman.export_to_shp(street_graph)
+print('Identify hierarchy')
+snman.add_hierarchy(street_graph)
+
+print('Export SHP to make manual corrections on the network in QGIS')
+snman.export_streetgraph_to_shp(street_graph)
 
 print('Done!')
