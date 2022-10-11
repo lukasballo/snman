@@ -6,13 +6,6 @@ from snman import osmnx as ox, config
 
 import snman
 
-# Steps in this file:
-# - Acquisition
-# - Simplification
-# - Reconstruct the lane composition
-# - Merge parallel links (pending)
-# - Export to SHP for manual corrections
-
 print('Starting...')
 
 # Variables
