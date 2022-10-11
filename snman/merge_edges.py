@@ -202,3 +202,12 @@ def _label_edges(graph, edges):
             next_edges += result
 
     return next_edges
+
+
+def resolve_one_sided_intersections(graph):
+    """
+    Connect one-sided intersections on roads with multiple separate edges to all edges
+    """
+
+    for node in graph.nodes(data=True, keys=True):
+        pass

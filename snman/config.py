@@ -6,4 +6,4 @@ ox.config(log_console=False, use_cache=True)
 lane_width_cycling_m = 1.3
 lane_width_motorized_m = 3
 
-crs = 2056
+crs = 2056      # CH1905+ projected CRS

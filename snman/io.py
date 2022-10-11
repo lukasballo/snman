@@ -47,4 +47,5 @@ def convert_crs_of_street_graph(street_graph, to_crs):
 
     # Transform the geometry of all edges
     for edge in street_graph.edges(data=True, keys=True):
-        edge[3]["geometry"] = shapely.ops.transform(project, edge[3]["geometry"])
+        if "geometry" in edge[3]:
+            edge[3]["geometry"] = shapely.ops.transform(project, edge[3]["geometry"])

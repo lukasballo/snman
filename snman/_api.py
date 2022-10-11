@@ -4,6 +4,7 @@ from .lanes import generate_lanes
 from .lanes import generate_lane_stats
 from .merge_edges import merge_parallel_edges
 from .merge_edges import merge_consecutive_edges
+from .merge_edges import resolve_one_sided_intersections
 from .io import export_streetgraph_to_shp
 from .io import export_gdf_to_shp
 from .io import import_shp_to_gdf
