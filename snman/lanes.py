@@ -47,10 +47,10 @@ def _generate_lanes_for_edge(edge):
     n_motorized_lanes_forward = int(edge.get('lanes:forward', -1))
     n_motorized_lanes_backward = int(edge.get('lanes:backward', -1))
 
-    if edge['highway'] == 'footway' or edge['highway'] == 'path':
+    if edge.get('highway') == 'footway' or edge.get('highway') == 'path':
         lanes_list.append('c-')
     else:
-        if edge['oneway'] == 1:
+        if edge.get('oneway') == 1:
             if edge.get('cycleway:left') == 'lane' or edge.get('cycleway:both') == 'lane':
                 lanes_list.append('c>')
             if n_motorized_lanes >= 1:
@@ -60,7 +60,7 @@ def _generate_lanes_for_edge(edge):
             if edge.get('cycleway:right') == 'lane' or edge.get('cycleway:both') == 'lane' or edge.get('cycleway') == 'lane':
                 lanes_list.append('c>')
         else:
-            if edge.get('cycleway:left') == 'lane' or edge.get('cycleway:both') or edge.get('cycleway') == 'lane':
+            if edge.get('cycleway:left') == 'lane' or edge.get('cycleway:both') == 'lane' or edge.get('cycleway') == 'lane':
                 lanes_list.append('c<')
             if n_motorized_lanes >= 2:
                 if n_motorized_lanes_backward >= 0 and n_motorized_lanes_forward >= 0:
@@ -71,7 +71,7 @@ def _generate_lanes_for_edge(edge):
                     lanes_list.extend(['m>'] * math.ceil(n_motorized_lanes / 2))
             else:
                 lanes_list.append('m-')
-            if edge.get('cycleway:right') == 'lane' or edge.get('cycleway:both') or edge.get('cycleway') == 'lane':
+            if edge.get('cycleway:right') == 'lane' or edge.get('cycleway:both') == 'lane' or edge.get('cycleway') == 'lane':
                 lanes_list.append('c>')
 
     #return ' | '.join(lanes_list)
@@ -119,21 +119,35 @@ def generate_lane_stats(street_graph):
 
 
 def _generate_lane_stats_for_edge(edge):
-    lanes_list = edge.get('ln_desc', '')
-    n_lanes_cycling = lanes_list.count('c>') + lanes_list.count('c<') + lanes_list.count('c-') * 2
-    n_lanes_motorized = lanes_list.count('m>') + lanes_list.count('m<') + lanes_list.count('m-') * 1.5
-    width_cycling_m = n_lanes_cycling * config.lane_width_cycling_m
-    width_motorized_m = n_lanes_motorized * config.lane_width_motorized_m
-    width_total_m = width_cycling_m + width_motorized_m
+    lanes = edge.get('ln_desc', [])
+
+    width_cycling = 0
+    width_motorized = 0
+    width_total = 0
+
+    for lane in lanes:
+        lane_properties = _get_lane_properties(lane)
+        if lane_properties['type'] == 'm':
+            width_motorized += lane_properties['width']
+        if lane_properties['type'] == 'c':
+            width_cycling += lane_properties['width']
+        width_total += lane_properties['width']
+
     try:
-        proportion_cycling = width_cycling_m / width_total_m
+        proportion_cycling = width_cycling / width_total
     except ZeroDivisionError:
         proportion_cycling = None
 
-    edge['n_ln_cyc'] = n_lanes_cycling
-    edge['n_ln_mot'] = n_lanes_motorized
-    edge['w_cyc_m'] = width_cycling_m
-    edge['w_mot_m'] = width_motorized_m
-    edge['w_tot_m'] = width_total_m
+    edge['w_cyc_m'] = width_cycling
+    edge['w_mot_m'] = width_motorized
+    edge['w_tot_m'] = width_total
     edge['prop_cyc'] = proportion_cycling
+
+def _get_lane_properties(lane_description):
+    return {
+        'width': config.default_lane_widths_m.get(lane_description, 0),
+        'type': lane_description[0:-1],
+        'direction': lane_description[-1]
+    }
+
 

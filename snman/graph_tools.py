@@ -76,7 +76,8 @@ def _reverse_edge(street_graph, edge, reverse_topology=True):
     data['ln_desc'] = lanes._reverse_lanes(data['ln_desc'])
 
     # Reverse the geometry
-    data['geometry'] = substring(data['geometry'], 1, 0, normalized=True)
+    if 'geometry' in data:
+        data['geometry'] = substring(data['geometry'], 1, 0, normalized=True)
 
     # Add the new edge
     if reverse_topology:

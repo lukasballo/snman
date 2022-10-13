@@ -14,7 +14,7 @@ Merge consecutive links
 Merge parallel links
 - merge links with same u-v combination
 
-Match with elevation model (pending)
+Match with elevation model (pending, low prio)
 
 Detect dead ends
 
@@ -52,5 +52,9 @@ Generate new lane composition (pending)
 
 Generate directed links with capacity for each mode + environmental factors for cycling (pending)
 
-Export (pending)
-- MATSim XML
+SHP Export
+
+SHP Lane Visualization Export (pending)
+- a separate polyline for each lane so that we can visualize them easily in QGIS
+
+MATSim XML Export (pending)

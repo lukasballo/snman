@@ -1,9 +1,22 @@
 from snman import osmnx as ox
 
-data_path = 'C:/DATA/CLOUD STORAGE/polybox/Data/ebc/'
 ox.config(log_console=False, use_cache=True)
 
-lane_width_cycling_m = 1.3
-lane_width_motorized_m = 3
+# > = unidirectional lane with defined direction
+# ? = unidirectional lane with direction yet to be defined
+# - = bidirectional lane (e.g. local streets with light traffic or cycling paths without lanes)
+default_lane_widths_m = {
+    'm>': 3,
+    'm<': 3,
+    'm?': 3,
+    'm-': 4.5,
+    'c>': 1.3,
+    'c<': 1.3,
+    'c?': 1.3,
+    'c-': 2.6
+}
 
-crs = 2056      # CH1905+ projected CRS
+lane_descriptions = {
+    'm' : 'motorized traffic',
+    'c' : 'cycling'
+}

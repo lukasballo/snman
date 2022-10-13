@@ -1,12 +1,13 @@
 import networkx as nx
 from . import osmnx as ox
-from . import config, graph_tools
+from . import config, graph_tools, lanes
 import geopandas as gpd
 import pyproj
 import shapely.ops
+import shapely
 import momepy
 
-def export_streetgraph_to_shp(street_graph):
+def export_streetgraph(street_graph, file_name):
     """
     Exports street graph as a shape file
 
@@ -15,20 +16,63 @@ def export_streetgraph_to_shp(street_graph):
     street_graph : nx.MultiGraph
     """
     nodes, edges = ox.graph_to_gdfs(street_graph)
-    edges.columns = [column[0:10] for column in edges.columns]
-    #edges['ln_desc'] = edges['ln_desc'].apply(lambda ln_desc: print(type(ln_desc)))
+
+    # Limit every attribute to 10 characters to match the SHP format restrictions
+    if file_name.split()[-1] == 'shp':
+        edges.columns = [column[0:10] for column in edges.columns]
+
+    # Convert lanes into a single string
     edges['ln_desc'] = edges['ln_desc'].apply(lambda ln_desc: ' | '.join(ln_desc))
+    edges['given_lanes'] = edges['given_lanes'].apply(lambda ln_desc: ' | '.join(ln_desc))
+
+    export_gdf(edges, file_name)
+
+def export_streetgraph_with_lanes(street_graph, lanes_attribute, file_name):
     """
-    for ln_desc in edges['ln_desc']:
-        print(ln_desc)
-        ' | '.join(ln_desc)
+    Exports street graph as a shape file with a polyline for each lane
+
+    Params
+    ------
+    street_graph : nx.MultiGraph
     """
-    #edges['ln_desc'] = edges['ln_desc'].apply(lambda ln_desc: '*')
-    export_gdf_to_shp(edges, config.data_path + 'edges.shp')
+
+    # Create empty list for the lanes
+    lanes_list = []
+
+    for id, data in street_graph.edges.items():
+        offset = -data.get('w_tot_m')/2
+
+        for lane in data.get(lanes_attribute, []):
+
+            lane_properties = lanes._get_lane_properties(lane)
+
+            centerline_offset = offset + lane_properties['width']/2
+            offset += lane_properties['width']
+            geom = data.get('geometry')
+            if geom and centerline_offset != 0:
+                geom = geom.parallel_offset(centerline_offset, 'right')
+                # the above function reverses direction when the offset is positive, this steps reverses it back
+                if centerline_offset > 0:
+                    geom.coords = list(geom.coords)[::-1]
+            lanes_list.append({
+                'type': lane_properties['type'],
+                'direction': lane_properties['direction'],
+                'descr': lane,
+                'width_m': lane_properties['width'],
+                'geometry': geom
+            })
+
+    lanes_gdf = gpd.GeoDataFrame(
+        lanes_list,
+        columns=['type', 'direction', 'descr', 'width_m', 'geometry'],
+        geometry='geometry'
+    )
+
+    export_gdf(lanes_gdf, file_name)
 
 
-def export_gdf_to_shp(gdf, file_path):
-    gdf.to_file(file_path, schema=None)
+def export_gdf(gdf, file_path):
+    gdf.to_file(file_path)
 
 
 def import_shp_to_gdf(file_path):
@@ -38,14 +82,23 @@ def import_shp_to_gdf(file_path):
 
 
 def convert_crs_of_street_graph(street_graph, to_crs):
+
+    # Initialize the CRS transformer
     from_crs = pyproj.CRS(street_graph.graph['crs'])
-    to_crs = pyproj.CRS('EPSG:' + to_crs)
+    to_crs = pyproj.CRS(to_crs)
     project = pyproj.Transformer.from_crs(from_crs, to_crs, always_xy=True).transform
 
     # Update the street_graph's metadata
-    street_graph.graph["crs"] = 'EPSG:' + str(config.crs)
+    street_graph.graph["crs"] = to_crs
 
     # Transform the geometry of all edges
     for edge in street_graph.edges(data=True, keys=True):
         if "geometry" in edge[3]:
             edge[3]["geometry"] = shapely.ops.transform(project, edge[3]["geometry"])
+
+    # Transform the geometry of all nodes
+    for id, data in street_graph.nodes.items():
+        geom = shapely.geometry.Point(data.get('x'), data.get('y'))
+        geom = shapely.ops.transform(project, geom)
+        data['x'] = geom.x
+        data['y'] = geom.y

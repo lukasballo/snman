@@ -150,11 +150,16 @@ def _merge_given_consecutive_edges(street_graph, edges):
     merged_data = parent_edge[3].copy()
 
     # Merge geometries
-    multi_line = geometry.MultiLineString([edge[3]['geometry'] for edge in edge_chain])
+    geometries = [edge[3]['geometry'] for edge in edge_chain]
+    geometries = [
+        (lambda geom: (ops.linemerge(geom) if geom.geom_type=='MultiLineString' else geom))(geom)
+        for geom in geometries
+    ]
+    multi_line = geometry.MultiLineString(geometries)
     merged_line = ops.linemerge(multi_line)
     merged_data['geometry'] = merged_line
 
-    # Detele the old edges
+    # Delete the old edges
     for edge in edge_chain:
         street_graph.remove_edge(edge[0], edge[1], edge[2])
         pass

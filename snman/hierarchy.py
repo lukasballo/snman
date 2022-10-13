@@ -15,12 +15,6 @@ def _add_edge_hierarchy(street_graph, edge):
 
     edge_data['hierarchy'] = 'other'
 
-    if edge_data.get('dead_end'):
-        edge_data['hierarchy'] = 'dead_end'
-
-    if edge_data.get('highway') in {'motorway', 'motorway_link', 'trunk', 'trunk_link'}:
-        edge_data['hierarchy'] = 'highway'
-
     if edge_data.get('highway') in {'primary', 'primary_link', 'secondary', 'secondary_link', 'tertiary', 'tertiary_link'}:
         edge_data['hierarchy'] = 'main'
 
@@ -32,6 +26,12 @@ def _add_edge_hierarchy(street_graph, edge):
 
     if edge_data.get('highway') in {'construction', 'track'}:
         edge_data['hierarchy'] = 'other'
+
+    if edge_data.get('dead_end'):
+        edge_data['hierarchy'] = 'dead_end'
+
+    if edge_data.get('highway') in {'motorway', 'motorway_link', 'trunk', 'trunk_link'}:
+        edge_data['hierarchy'] = 'highway'
 
 
 def _identify_dead_ends(street_graph):

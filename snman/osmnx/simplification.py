@@ -1,7 +1,6 @@
 """Simplify, correct, and consolidate network topology."""
 
 import logging as lg
-import warnings
 
 import geopandas as gpd
 import networkx as nx
@@ -18,7 +17,6 @@ from . import utils_graph
 def _is_endpoint(G, node, strict=True):
     """
     Is node a true endpoint of an edge.
-
     Return True if the node is a "real" endpoint of an edge in the network,
     otherwise False. OSM data includes lots of nodes that exist only as points
     to help streets bend around curves. An end point is a node that either:
@@ -27,7 +25,6 @@ def _is_endpoint(G, node, strict=True):
     edges point inward or all its incident edges point outward.
     3) or, it does not have exactly two neighbors and degree of 2 or 4.
     4) or, if strict mode is false, if its edges have different OSM IDs.
-
     Parameters
     ----------
     G : networkx.MultiDiGraph
@@ -37,7 +34,6 @@ def _is_endpoint(G, node, strict=True):
     strict : bool
         if False, allow nodes to be end points even if they fail all other rules
         but have edges with different OSM IDs
-
     Returns
     -------
     bool
@@ -94,7 +90,6 @@ def _is_endpoint(G, node, strict=True):
 def _build_path(G, endpoint, endpoint_successor, endpoints):
     """
     Build a path of nodes from one endpoint node to next endpoint node.
-
     Parameters
     ----------
     G : networkx.MultiDiGraph
@@ -106,7 +101,6 @@ def _build_path(G, endpoint, endpoint_successor, endpoints):
         will be built
     endpoints : set
         the set of all nodes in the graph that are endpoints
-
     Returns
     -------
     path : list
@@ -163,10 +157,8 @@ def _build_path(G, endpoint, endpoint_successor, endpoints):
 def _get_paths_to_simplify(G, strict=True):
     """
     Generate all the paths to be simplified between endpoint nodes.
-
     The path is ordered from the first endpoint, through the interstitial nodes,
     to the second endpoint.
-
     Parameters
     ----------
     G : networkx.MultiDiGraph
@@ -174,7 +166,6 @@ def _get_paths_to_simplify(G, strict=True):
     strict : bool
         if False, allow nodes to be end points even if they fail all other rules
         but have edges with different OSM IDs
-
     Yields
     ------
     path_to_simplify : list
@@ -196,7 +187,6 @@ def _get_paths_to_simplify(G, strict=True):
 def simplify_graph(G, strict=False, remove_rings=True):
     """
     Simplify a graph's topology by removing interstitial nodes.
-
     Simplifies graph topology by removing all nodes that are not intersections
     or dead-ends. Create an edge directly between the end points that
     encapsulate them, but retain the geometry of the original edges, saved as
@@ -204,7 +194,6 @@ def simplify_graph(G, strict=False, remove_rings=True):
     edges receive a `geometry` attribute. Some of the resulting consolidated
     edges may comprise multiple OSM ways, and if so, their multiple attribute
     values are stored as a list.
-
     Parameters
     ----------
     G : networkx.MultiDiGraph
@@ -216,7 +205,6 @@ def simplify_graph(G, strict=False, remove_rings=True):
         have multiple OSM IDs within them too.
     remove_rings : bool
         if True, remove isolated self-contained rings that have no endpoints
-
     Returns
     -------
     G : networkx.MultiDiGraph
@@ -324,13 +312,13 @@ def consolidate_intersections(
 ):
     """
     Consolidate intersections comprising clusters of nearby nodes.
-
     Merges nearby nodes and returns either their centroids or a rebuilt graph
     with consolidated intersections and reconnected edge geometries. The
     tolerance argument should be adjusted to approximately match street design
     standards in the specific street network, and you should always use a
     projected graph to work in meaningful and consistent units like meters.
-
+    Note the tolerance represents a per-node buffering radius: for example, to
+    consolidate nodes within 10 meters of each other, use tolerance=5.
     When rebuild_graph=False, it uses a purely geometrical (and relatively
     fast) algorithm to identify "geometrically close" nodes, merge them, and
     return just the merged intersections' centroids. When rebuild_graph=True,
@@ -340,7 +328,6 @@ def consolidate_intersections(
     nodes' osmid_original attributes for original osmids. If multiple nodes
     were merged together, the osmid_original attribute is a list of merged
     nodes' osmids.
-
     Divided roads are often represented by separate centerline edges. The
     intersection of two divided roads thus creates 4 nodes, representing where
     each edge intersects a perpendicular edge. These 4 nodes represent a
@@ -348,7 +335,6 @@ def consolidate_intersections(
     roundabouts and traffic circles. This function consolidates nearby nodes
     by buffering them to an arbitrary distance, merging overlapping buffers,
     and taking their centroid.
-
     Parameters
     ----------
     G : networkx.MultiDiGraph
@@ -370,7 +356,6 @@ def consolidate_intersections(
         edge length attributes; if False, returned graph has no edges (which
         is faster if you just need topologically consolidated intersection
         counts).
-
     Returns
     -------
     networkx.MultiDiGraph or geopandas.GeoSeries
@@ -407,7 +392,6 @@ def consolidate_intersections(
 def _merge_nodes_geometric(G, tolerance):
     """
     Geometrically merge nodes within some distance of each other.
-
     Parameters
     ----------
     G : networkx.MultiDiGraph
@@ -415,21 +399,13 @@ def _merge_nodes_geometric(G, tolerance):
     tolerance : float
         buffer nodes to this distance (in graph's geometry's units) then merge
         overlapping polygons into a single polygon via a unary union operation
-
     Returns
     -------
     merged : GeoSeries
         the merged overlapping polygons of the buffered nodes
     """
     # buffer nodes GeoSeries then get unary union to merge overlaps
-    # TODO: Switch to a projected CRS for buffer operations
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        gdfs = utils_graph.graph_to_gdfs(G, edges=False)
-        # original_crs = gdfs.crs
-        # gdfs = gdfs.to_crs(2056)
-        merged = gdfs["geometry"].buffer(tolerance).unary_union
-
+    merged = utils_graph.graph_to_gdfs(G, edges=False)["geometry"].buffer(tolerance).unary_union
 
     # if only a single node results, make it iterable to convert to GeoSeries
     merged = MultiPolygon([merged]) if isinstance(merged, Polygon) else merged
@@ -440,19 +416,15 @@ def _merge_nodes_geometric(G, tolerance):
 def _consolidate_intersections_rebuild_graph(G, tolerance=10, reconnect_edges=True):
     """
     Consolidate intersections comprising clusters of nearby nodes.
-
     Merge nodes and return a rebuilt graph with consolidated intersections and
     reconnected edge geometries.
-
     The tolerance argument should be adjusted to approximately match street
     design standards in the specific street network, and you should always use
     a projected graph to work in meaningful and consistent units like meters.
-
     Returned graph's node IDs represent clusters rather than osmids. Refer to
     nodes' osmid_original attributes for original osmids. If multiple nodes
     were merged together, the osmid_original attribute is a list of merged
     nodes' osmids.
-
     Parameters
     ----------
     G : networkx.MultiDiGraph
@@ -466,7 +438,6 @@ def _consolidate_intersections_rebuild_graph(G, tolerance=10, reconnect_edges=Tr
         edge length attributes; if False, returned graph has no edges (which
         is faster if you just need topologically consolidated intersection
         counts).
-
     Returns
     -------
     H : networkx.MultiDiGraph
@@ -476,13 +447,10 @@ def _consolidate_intersections_rebuild_graph(G, tolerance=10, reconnect_edges=Tr
     # STEP 1
     # buffer nodes to passed-in distance and merge overlaps. turn merged nodes
     # into gdf and get centroids of each cluster as x, y
-    # TODO: Switch to a projected CRS for buffer operations
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        node_clusters = gpd.GeoDataFrame(geometry=_merge_nodes_geometric(G, tolerance))
-        centroids = node_clusters.centroid
-        node_clusters["x"] = centroids.x
-        node_clusters["y"] = centroids.y
+    node_clusters = gpd.GeoDataFrame(geometry=_merge_nodes_geometric(G, tolerance))
+    centroids = node_clusters.centroid
+    node_clusters["x"] = centroids.x
+    node_clusters["y"] = centroids.y
 
     # STEP 2
     # attach each node to its cluster of merged nodes. first get the original
@@ -505,15 +473,14 @@ def _consolidate_intersections_rebuild_graph(G, tolerance=10, reconnect_edges=Tr
             if len(wccs) > 1:
                 # if there are multiple components in this cluster
                 suffix = 0
-                #print(wccs)
                 for wcc in wccs:
-                    wcc = list(wcc)
                     # set subcluster xy to the centroid of just these nodes
-                    subcluster_centroid = node_points.loc[wcc].unary_union.centroid
-                    gdf.loc[wcc, "x"] = subcluster_centroid.x
-                    gdf.loc[wcc, "y"] = subcluster_centroid.y
+                    idx = list(wcc)
+                    subcluster_centroid = node_points.loc[idx].unary_union.centroid
+                    gdf.loc[idx, "x"] = subcluster_centroid.x
+                    gdf.loc[idx, "y"] = subcluster_centroid.y
                     # move to subcluster by appending suffix to cluster label
-                    gdf.loc[wcc, "cluster"] = f"{cluster_label}-{suffix}"
+                    gdf.loc[idx, "cluster"] = f"{cluster_label}-{suffix}"
                     suffix += 1
 
     # give nodes unique integer IDs (subclusters with suffixes are strings)
@@ -535,6 +502,7 @@ def _consolidate_intersections_rebuild_graph(G, tolerance=10, reconnect_edges=Tr
             # if cluster is a single node, add that node to new graph
             osmid = osmids[0]
             H.add_node(cluster_label, osmid_original=osmid, **G.nodes[osmid])
+
         else:
             # if cluster is multiple merged nodes, create one new node to
             # represent them
