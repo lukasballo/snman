@@ -27,6 +27,8 @@ def match_pt(street_graph, pt_network):
     pt_network_buffers = pt_network.copy()
     pt_network_buffers.geometry = pt_network_buffers.geometry.buffer(15, resolution=16)
 
+
+
     for edge in street_graph.edges(data=True, keys=True):
 
         edge_geometry = edge[3]['geometry']

@@ -45,17 +45,18 @@ def _identify_dead_ends(graph):
 
         for node in graph.nodes():
 
-            # Get a list of all adjacent edges that are not dead ends
-            adjacent_non_dead_end_edges = [
-                edge for edge in list(graph.edges(nbunch=node, data=True, keys=True))
-                if not edge[3].get('dead_end')
-            ]
+            # Get a list of all adjacent edges that are:
+            # - not yet labeled as dead ends
+            # - accessible for cars
+            adjacent_non_dead_end_edges = []
+            for edge in list(graph.edges(nbunch=node, data=True, keys=True)):
+                if (not edge[3].get('dead_end')) and edge[3].get('highway') not in ['path', 'footway']:
+                    adjacent_non_dead_end_edges.append(edge)
 
             # Only 1 adjacent edge -> mark this edge as dead end
             if len(adjacent_non_dead_end_edges) == 1:
                 edge = adjacent_non_dead_end_edges[0]
                 edge[3]['dead_end'] = True
-
 
 """
 def _dead_ends_process_edge(graph, edge):

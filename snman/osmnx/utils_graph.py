@@ -64,7 +64,13 @@ def graph_to_gdfs(G, nodes=True, edges=True, node_geometry=True, fill_edge_geome
         if not G.edges:  # pragma: no cover
             raise ValueError("graph contains no edges")
 
-        u, v, k, data = zip(*G.edges(keys=True, data=True))
+        # Request key only if it's a Multi-enabled graph
+        graph_info = nx.info(G)
+        if 'Multi' in graph_info:
+            u, v, k, data = zip(*G.edges(keys=True, data=True))
+        else:
+            u, v, data = zip(*G.edges(data=True))
+            k = np.zeros(len(u))
 
         if fill_edge_geometry:
 

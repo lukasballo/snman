@@ -17,7 +17,7 @@ osm_tags = ['bridge', 'tunnel', 'layer', 'oneway', 'ref', 'name',
                     'lanes', 'lanes:forward', 'lanes:backward',
                     'cycleway', 'cycleway:both', 'cycleway:left', 'cycleway:right',
                     'sidewalk', 'sidewalk:left', 'sidewalk:right']
-shp_export_path = 'C:/DATA/CLOUD STORAGE/polybox/Research/SNMan/SNMan Shared/qgis_previews/'
+export_path = 'C:/DATA/CLOUD STORAGE/polybox/Research/SNMan/SNMan Shared/qgis_previews/'
 crs = 'epsg:2056'      # CH1905+ projected CRS
 
 ox.utils.config(useful_tags_way=osm_tags)
@@ -48,8 +48,8 @@ custom_filter = [
 
 print('Get data from OSM server')
 street_graph = ox.graph_from_place(
-    #'Zurich, Zurich, Switzerland',
-    'Seebach, Zurich, Switzerland',
+    'Zurich, Zurich, Switzerland',
+    #'Seebach, Zurich, Switzerland',
     #'Altstetten, Zurich, Switzerland',
     custom_filter=custom_filter,
     simplify=True,
@@ -61,6 +61,8 @@ street_graph = ox.graph_from_place(
 print('Convert CRS of street graph to 2056')
 snman.convert_crs_of_street_graph(street_graph, crs)
 nodes = copy.copy(street_graph.nodes)
+
+#TODO: Import a pre-processed (and manually enriched) network
 
 print('Consolidate intersections')
 street_graph = ox.simplification.consolidate_intersections(
@@ -99,12 +101,20 @@ snman.generate_lane_stats(street_graph)
 print('Set given lanes')
 snman.set_given_lanes(street_graph)
 
-print('Export SHP without lanes')
-snman.export_streetgraph(street_graph, shp_export_path + 'edges.gpkg')
+print('Create directed graph of given lanes')
+given_lanes_graph = snman.create_given_lanes_graph(street_graph)
 
-print('Export SHP with lanes')
+print('Export network without lanes')
+snman.export_streetgraph(street_graph, export_path + 'edges.gpkg')
+
+print('Export network with lanes')
 #TODO: Fix problems with saving lanes as a GeoPackage
-snman.export_streetgraph_with_lanes(street_graph, 'ln_desc', shp_export_path + 'edges_lanes.shp')
-snman.export_streetgraph_with_lanes(street_graph, 'given_lanes', shp_export_path + 'edges_given_lanes.shp')
+snman.export_streetgraph_with_lanes(street_graph, 'ln_desc', export_path + 'edges_lanes.shp')
+
+print('Export network with given lanes')
+snman.export_streetgraph_with_lanes(street_graph, 'given_lanes', export_path + 'edges_given_lanes.shp')
+
+print('Export given lanes')
+snman.export_streetgraph(given_lanes_graph, export_path + 'given_lanes.gpkg')
 
 print('Done!')

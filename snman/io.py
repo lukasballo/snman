@@ -21,9 +21,11 @@ def export_streetgraph(street_graph, file_name):
     if file_name.split()[-1] == 'shp':
         edges.columns = [column[0:10] for column in edges.columns]
 
-    # Convert lanes into a single string
-    edges['ln_desc'] = edges['ln_desc'].apply(lambda ln_desc: ' | '.join(ln_desc))
-    edges['given_lanes'] = edges['given_lanes'].apply(lambda ln_desc: ' | '.join(ln_desc))
+    # Convert list attributes to strings
+    if 'ln_desc' in edges:
+        edges['ln_desc'] = edges['ln_desc'].apply(lambda ln_desc: ' | '.join(ln_desc))
+    if 'given_lanes' in edges:
+        edges['given_lanes'] = edges['given_lanes'].apply(lambda ln_desc: ' | '.join(ln_desc))
 
     export_gdf(edges, file_name)
 
@@ -40,20 +42,29 @@ def export_streetgraph_with_lanes(street_graph, lanes_attribute, file_name):
     lanes_list = []
 
     for id, data in street_graph.edges.items():
-        offset = -data.get('w_tot_m')/2
+        given_total_width = 0
 
+        # Reconstruct total width of given lanes
         for lane in data.get(lanes_attribute, []):
+            lane_properties = lanes._get_lane_properties(lane)
+            given_total_width += lane_properties['width']
 
+        offset = -given_total_width / 2
+        for lane in data.get(lanes_attribute, []):
             lane_properties = lanes._get_lane_properties(lane)
 
             centerline_offset = offset + lane_properties['width']/2
             offset += lane_properties['width']
             geom = data.get('geometry')
-            if geom and centerline_offset != 0:
+
+            if geom and round(centerline_offset,1) != 0:
                 geom = geom.parallel_offset(centerline_offset, 'right')
                 # the above function reverses direction when the offset is positive, this steps reverses it back
                 if centerline_offset > 0:
-                    geom.coords = list(geom.coords)[::-1]
+                    #geom.coords = list(geom.coords)[::-1]
+                    shapely.ops.substring(geom, 1, 0, normalized=True)
+                    pass
+
             lanes_list.append({
                 'type': lane_properties['type'],
                 'direction': lane_properties['direction'],
