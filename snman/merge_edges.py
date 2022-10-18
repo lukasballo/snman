@@ -34,9 +34,13 @@ def merge_parallel_edges(street_graph):
 
 
 def _merge_given_parallel_edges(street_graph, edges):
-    parent_edge = edges[0]
+
+    # Take the edge with the highest hierarchy
+    sorted_edges = sorted(edges, key=lambda x: x[3].get('hierarchy'))
+    parent_edge = sorted_edges[0]
     u = parent_edge[0]
     v = parent_edge[1]
+
     for index, edge in enumerate(edges):
         edge_data = edge[3]
         # skip the parent edge
@@ -51,8 +55,10 @@ def _merge_given_parallel_edges(street_graph, edges):
 
         # merge lane descriptions
         parent_edge[3]['ln_desc'] = lane_description + parent_edge[3]['ln_desc']
-        edge[3]['ln_desc'] = ['delete']
         street_graph.remove_edges_from([edge])
+
+    # Take the highest hierarchy level from all source edges
+    parent_edge[3]['hierarchy'] = min([edge[3].get('hierarchy') for edge in edges])
 
 
 def merge_consecutive_edges(street_graph):
@@ -143,29 +149,52 @@ def _merge_given_consecutive_edges(street_graph, edges):
                 edge_chain.append(reversed_edge)
                 node = reversed_edge[0]
 
-
-    # Initialize the merged edge
-    parent_edge = edge_chain[0]
-    # TODO: Take the lane configuration from the longest section
-    merged_data = parent_edge[3].copy()
-
-    # Merge geometries
-    geometries = [edge[3]['geometry'] for edge in edge_chain]
-    geometries = [
-        (lambda geom: (ops.linemerge(geom) if geom.geom_type=='MultiLineString' else geom))(geom)
-        for geom in geometries
-    ]
-    multi_line = geometry.MultiLineString(geometries)
-    merged_line = ops.linemerge(multi_line)
-    merged_data['geometry'] = merged_line
-
-    # Delete the old edges
+    # Split the edge chain into subchains based on permitted modes
+    edge_subchains = []
+    motorized_access = None
     for edge in edge_chain:
-        street_graph.remove_edge(edge[0], edge[1], edge[2])
-        pass
+        motorized_access_here = 'm>' in edge[3].get('ln_desc') or 'm<' in edge[3].get('ln_desc')\
+                           or 'm-' in edge[3].get('ln_desc')
+        if motorized_access != motorized_access_here:
+            edge_subchains.append([])
+        edge_subchains[-1].append(edge)
+        motorized_access = motorized_access_here
 
-    # Create a new merged edge
-    street_graph.add_edge(outer_nodes[0], outer_nodes[1], **merged_data)
+    # Merge all edges within each subchain
+    for edge_subchain in edge_subchains:
+
+        # Find subchain outer nodes
+        subchain_nodes = []
+        for edge in edge_subchain:
+            subchain_nodes += edge[0:2]
+        subchain_outer_nodes = [node for node in subchain_nodes if subchain_nodes.count(node) == 1]
+
+        # Find the longest edge
+        sorted_edges = sorted(edge_subchain, key=lambda x: x[3].get('length'))
+        longest_edge = sorted_edges[-1]
+
+        # Initialize the merged edge based on the longest edge
+        merged_data = longest_edge[3].copy()
+
+        # Merge geometries
+        geometries = [edge[3]['geometry'] for edge in edge_subchain]
+        geometries = [
+            (lambda geom: (ops.linemerge(geom) if geom.geom_type=='MultiLineString' else geom))(geom)
+            for geom in geometries
+        ]
+        multi_line = geometry.MultiLineString(geometries)
+        merged_line = ops.linemerge(multi_line)
+        merged_data['geometry'] = merged_line
+        # Update length
+        merged_data['length'] = merged_line.length
+
+        # Delete the old edges
+        for edge in edge_subchain:
+            street_graph.remove_edge(edge[0], edge[1], edge[2])
+            pass
+
+        # Create a new merged edge
+        street_graph.add_edge(subchain_outer_nodes[0], subchain_outer_nodes[1], **merged_data)
 
 
 def _label_edge(graph, edge):

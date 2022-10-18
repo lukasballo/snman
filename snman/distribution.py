@@ -20,14 +20,14 @@ def set_given_lanes(street_graph):
 
         else:
 
-            if data.get('hierarchy') in ['main', 'local']:
+            if data.get('hierarchy') in ['1_main', '2_local']:
                 data['given_lanes'] += ['m?']
 
-            elif data.get('hierarchy') in ['dead_end']:
+            elif data.get('hierarchy') in ['3_dead_end']:
                 data['given_lanes'] += ['m-']
 
         # In case of highways keep all lanes as they are
-        if data.get('hierarchy') == 'highway':
+        if data.get('hierarchy') == '0_highway':
             data['given_lanes'] = data.get('ln_desc')
 
 def create_given_lanes_graph(street_graph):

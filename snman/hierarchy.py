@@ -16,26 +16,22 @@ def _add_edge_hierarchy(street_graph, edge):
     edge_data['hierarchy'] = 'other'
 
     if edge_data.get('highway') in {'primary', 'primary_link', 'secondary', 'secondary_link', 'tertiary', 'tertiary_link'}:
-        edge_data['hierarchy'] = 'main'
+        edge_data['hierarchy'] = '1_main'
 
-    if edge_data.get('highway') in {'residential', 'living_street', 'unclassified'}:
-        edge_data['hierarchy'] = 'local'
+    if edge_data.get('highway') in {'residential', 'living_street', 'unclassified', 'service'}:
+        edge_data['hierarchy'] = '2_local'
 
     if edge_data.get('highway') in {'path', 'footway', 'cycleway'}:
-        edge_data['hierarchy'] = 'path'
+        edge_data['hierarchy'] = '4_path'
 
     if edge_data.get('highway') in {'construction', 'track'}:
-        edge_data['hierarchy'] = 'other'
+        edge_data['hierarchy'] = '9_other'
 
     if edge_data.get('dead_end'):
-        edge_data['hierarchy'] = 'dead_end'
+        edge_data['hierarchy'] = '3_dead_end'
 
     if edge_data.get('highway') in {'motorway', 'motorway_link', 'trunk', 'trunk_link'}:
-        edge_data['hierarchy'] = 'highway'
-
-
-def _identify_dead_ends(street_graph):
-    pass
+        edge_data['hierarchy'] = '0_highway'
 
 
 def _identify_dead_ends(graph):
@@ -50,7 +46,8 @@ def _identify_dead_ends(graph):
             # - accessible for cars
             adjacent_non_dead_end_edges = []
             for edge in list(graph.edges(nbunch=node, data=True, keys=True)):
-                if (not edge[3].get('dead_end')) and edge[3].get('highway') not in ['path', 'footway']:
+                if (not edge[3].get('dead_end')) and edge[3].get('highway')\
+                        not in ['path', 'footway', 'track']:
                     adjacent_non_dead_end_edges.append(edge)
 
             # Only 1 adjacent edge -> mark this edge as dead end
