@@ -49,8 +49,8 @@ custom_filter = [
 
 print('Get data from OSM server')
 street_graph = ox.graph_from_place(
-    'Zurich, Zurich, Switzerland',
-    #'Seebach, Zurich, Switzerland',
+    #'Zurich, Zurich, Switzerland',
+    'Seebach, Zurich, Switzerland',
     #'Altstetten, Zurich, Switzerland',
     #'Unterstrass, Zurich, Switzerland',
     custom_filter=custom_filter,
@@ -95,7 +95,7 @@ if 1:
         snman.merge_consecutive_edges(street_graph)
         pass
 
-if 1:
+if 0:
     print('Add public transport')
     pt_network = snman.import_shp_to_gdf("C:/DATA/CLOUD STORAGE/polybox/Research/SNMan/SNMan Shared/stadt_zuerich_open_data/Linien_des_offentlichen_Verkehrs_-OGD/ZVV_LINIEN_GEN_L.shp")
     snman.match_pt(street_graph, pt_network)
@@ -121,5 +121,8 @@ snman.export_streetgraph_with_lanes(street_graph, 'given_lanes', export_path + '
 
 print('Export given lanes')
 snman.export_streetgraph(given_lanes_graph, export_path + 'given_lanes.gpkg')
+
+print('Export MATSim XML')
+snman.export_matsim_xml(street_graph, export_path + 'matsim_network.xml')
 
 print('Done!')

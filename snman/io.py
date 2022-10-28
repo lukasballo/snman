@@ -6,6 +6,7 @@ import pyproj
 import shapely.ops
 import shapely
 import momepy
+import xml.etree.ElementTree as ET
 
 def export_streetgraph(street_graph, file_name):
     """
@@ -113,3 +114,46 @@ def convert_crs_of_street_graph(street_graph, to_crs):
         geom = shapely.ops.transform(project, geom)
         data['x'] = geom.x
         data['y'] = geom.y
+
+def export_matsim_xml(street_graph, file_name):
+
+    # Create the overall structure
+    tree = ET.ElementTree('tree')
+    network = ET.Element('network')
+    attributes = ET.SubElement(network, 'attributes')
+    ET.SubElement(attributes, 'attribute', attrib={
+        'name': 'coordinateReferenceSystem',
+        'class': 'java.lang.string'
+    }).text = 'Atlantis'
+    nodes = ET.SubElement(network, 'nodes')
+    links = ET.SubElement(network, 'links', {
+        'capperiod': '01:00:00',
+        'effectivecellsize': '7.5',
+        'effectivelanewidth': '3.75'
+    })
+
+    # Add Nodes
+    ET.SubElement(nodes, 'node', {'id': '1', 'x': '1000000', 'y': '2000000'})
+    ET.SubElement(nodes, 'node', {'id': '2', 'x': '1000500', 'y': '2000500'})
+
+    # Add Links
+    link = ET. SubElement(links, 'link', {
+        'id': '10',
+        'from': '1',
+        'to': '2',
+        'length': '123',
+        'freespeed': '6.9',
+        'capacity': '600',
+        'permlanes': '1.0',
+        'oneway': '1',
+        'modes': 'car_passenger,truck,car'
+    })
+
+    link_attr = ET.SubElement(link, 'attributes')
+    ET.SubElement(link_attr, 'attribute').text = 'unclassified'
+
+    # Save into xml file
+    tree._setroot(network)
+    ET.indent(tree)
+    tree.write(file_name, encoding='UTF-8', xml_declaration=True)
+    #TODO: Add DOCTYPE to the file: <!DOCTYPE network SYSTEM "http://www.matsim.org/files/dtd/network_v2.dtd">
