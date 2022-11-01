@@ -122,7 +122,7 @@ snman.export_streetgraph_with_lanes(street_graph, 'given_lanes', export_path + '
 print('Export given lanes')
 snman.export_streetgraph(given_lanes_graph, export_path + 'given_lanes.gpkg')
 
-print('Export MATSim XML')
-snman.export_matsim_xml(street_graph, export_path + 'matsim_network.xml')
+print('Export OSM XML')
+snman.export_osm_xml(street_graph, export_path + 'new_network.osm', osm_tags)
 
 print('Done!')

@@ -12,6 +12,7 @@ from .io import export_streetgraph_with_lanes
 from .io import export_gdf
 from .io import import_shp_to_gdf
 from .io import convert_crs_of_street_graph
+from .io import export_osm_xml
 from .io import export_matsim_xml
 
 from .hierarchy import add_hierarchy

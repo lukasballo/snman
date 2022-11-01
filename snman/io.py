@@ -7,6 +7,9 @@ import shapely.ops
 import shapely
 import momepy
 import xml.etree.ElementTree as ET
+import numpy as np
+import copy
+import math
 
 def export_streetgraph(street_graph, file_name):
     """
@@ -115,7 +118,75 @@ def convert_crs_of_street_graph(street_graph, to_crs):
         data['x'] = geom.x
         data['y'] = geom.y
 
+
+def export_osm_xml(street_graph, file_name, tags):
+
+    street_graph = copy.copy(street_graph)
+    convert_crs_of_street_graph(street_graph, 'epsg:4326')
+
+    # Create the overall structure
+    tree = ET.ElementTree('tree')
+
+    osm = ET.Element('osm', attrib={
+        'version': '0.6',
+        'generator': 'osmium/1.14.0'
+    })
+
+    lats = []
+    lons = []
+
+    for id, data in street_graph.nodes.items():
+        lats.append(data.get('y'))
+        lons.append(data.get('x'))
+
+    ET.SubElement(osm, 'bounds', attrib={
+        'minlat': str(min(lats)),
+        'minlon': str(min(lons)),
+        'maxlat': str(max(lats)),
+        'maxlon': str(max(lons))
+    })
+
+    for id, data in street_graph.nodes.items():
+        first_osmid = np.array([data.get('osmid_original', 'osm_id_undefined')]).flatten()[0]
+        ET.SubElement(osm, 'node', attrib={
+            'id': str(id),
+            'version': '1',
+            'timestamp': '2000-01-01T00:00:00Z',
+            'lat': str(data.get('y', '')),
+            'lon': str(data.get('x', ''))
+        })
+
+    for id, data in street_graph.edges.items():
+        first_osmid = np.array([data.get('osmid', 'osm_id_undefined')]).flatten()[0]
+        way = ET.SubElement(osm, 'way', attrib={
+            'id': str(first_osmid),
+            'version': '1',
+            'timestamp': '2000-01-01T00:00:00Z'
+        })
+
+        for node_id in id[0:2]:
+            ET.SubElement(way, 'nd', attrib={
+                'ref': str(node_id)
+            })
+
+        for tag in tags:
+            if data.get(tag, None) is None:
+                continue
+            ET.SubElement(way, 'tag', attrib={
+                'k': tag,
+                'v': str(data.get(tag, ''))
+            })
+
+    # Save into xml file
+    tree._setroot(osm)
+    ET.indent(tree)
+    tree.write(file_name, encoding='UTF-8', xml_declaration=True)
+
+
+
+
 def export_matsim_xml(street_graph, file_name):
+    # TODO: Currently just a preview, not functional
 
     # Create the overall structure
     tree = ET.ElementTree('tree')
