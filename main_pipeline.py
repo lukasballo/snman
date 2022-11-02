@@ -85,6 +85,7 @@ street_graph = ox.utils_graph.get_undirected(street_graph)
 print('Identify hierarchy')
 snman.add_hierarchy(street_graph)
 
+snman.export_streetgraph(street_graph, export_path + 'raw_edges.gpkg', export_path + 'raw_nodes.gpkg')
 
 if 1:
     print('Merge parallel and consecutive edges, repeat a few times')
@@ -110,7 +111,7 @@ print('Create directed graph of given lanes')
 given_lanes_graph = snman.create_given_lanes_graph(street_graph)
 
 print('Export network without lanes')
-snman.export_streetgraph(street_graph, export_path + 'edges.gpkg')
+snman.export_streetgraph(street_graph, export_path + 'edges.gpkg', export_path + 'nodes.gpkg')
 
 print('Export network with lanes')
 #TODO: Fix problems with saving lanes as a GeoPackage
@@ -120,7 +121,7 @@ print('Export network with given lanes')
 snman.export_streetgraph_with_lanes(street_graph, 'given_lanes', export_path + 'edges_given_lanes.shp')
 
 print('Export given lanes')
-snman.export_streetgraph(given_lanes_graph, export_path + 'given_lanes.gpkg')
+snman.export_streetgraph(given_lanes_graph, export_path + 'given_lanes.gpkg', export_path + 'given_lanes_nodes.gpkg')
 
 print('Export OSM XML')
 snman.export_osm_xml(street_graph, export_path + 'new_network.osm', osm_tags)

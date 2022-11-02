@@ -108,21 +108,25 @@ def merge_consecutive_edges(street_graph):
 
 
 def _merge_given_consecutive_edges(street_graph, edges):
+
     nodes = []
     for edge in edges:
         nodes += edge[0:2]
 
     # Nodes that are adjacent to one edge -> outer nodes
     outer_nodes = [node for node in nodes if nodes.count(node) == 1]
+    outer_nodes.sort()
 
     # Nodes that are adjacent to two edges -> middle nodes
     middle_nodes = [node for node in nodes if nodes.count(node) == 2]
+    middle_nodes.sort()
 
     edge_chain = []
 
     # Stop here if the edge chain is corrupted
     # TODO: Why is this happening?
     if len(outer_nodes) != 2:
+        print('edge chain corrupted')
         return
 
     # Start with the first outer node
@@ -137,17 +141,15 @@ def _merge_given_consecutive_edges(street_graph, edges):
             if edge is previous_edge:
                 continue
 
-            # Append edge without reversing
-            if edge[0] == node:
+            # Append edge in ordinary direction
+            elif edge[0] == node:
                 edge_chain.append(edge)
                 node = edge[1]
 
-            # Append edge with reversing if its direction does not fit to the edge chain
-            # But we don't reverse the topology since we are working with an undirected graph
+            # Append edge in reversed direction
             elif edge[1] == node:
-                reversed_edge = graph_tools._reverse_edge(street_graph, edge, reverse_topology=False)
-                edge_chain.append(reversed_edge)
-                node = reversed_edge[0]
+                edge_chain.append(edge)
+                node = edge[0]
 
     # Split the edge chain into subchains based on permitted modes
     edge_subchains = []
@@ -163,11 +165,28 @@ def _merge_given_consecutive_edges(street_graph, edges):
     # Merge all edges within each subchain
     for edge_subchain in edge_subchains:
 
+        if len(edge_subchain) < 2:
+            continue
+
         # Find subchain outer nodes
         subchain_nodes = []
         for edge in edge_subchain:
             subchain_nodes += edge[0:2]
-        subchain_outer_nodes = [node for node in subchain_nodes if subchain_nodes.count(node) == 1]
+        subchain_outer_nodes = list(set([node for node in subchain_nodes if subchain_nodes.count(node) == 1]))
+        subchain_outer_nodes.sort()
+        subchain_middle_nodes = list(set([node for node in subchain_nodes if subchain_nodes.count(node) > 1]))
+        subchain_middle_nodes.sort()
+
+        # Reverse edge geometries if necessary
+        node = subchain_outer_nodes[0]
+        for edge in edge_subchain:
+            edge[3]['__previous_node'] = node
+            if node == edge[0]:
+                node = edge[1]
+            elif node == edge[1]:
+                graph_tools._reverse_edge(street_graph, edge, reverse_topology=False)
+                node = edge[0]
+            edge[3]['__next_node'] = node
 
         # Find the longest edge
         sorted_edges = sorted(edge_subchain, key=lambda x: x[3].get('length'))
@@ -187,11 +206,19 @@ def _merge_given_consecutive_edges(street_graph, edges):
         merged_data['geometry'] = merged_line
         # Update length
         merged_data['length'] = merged_line.length
+        merged_data['__outer_nodes'] = str(subchain_outer_nodes)
+        merged_data['__middle_nodes'] = str(subchain_middle_nodes)
+        merged_data['__nodes'] = str(subchain_nodes)
+        merged_data['__n_edges'] = str(len(edge_subchain))
 
         # Delete the old edges
         for edge in edge_subchain:
             street_graph.remove_edge(edge[0], edge[1], edge[2])
             pass
+
+        # Delete the intermediary nodes
+        for node in subchain_middle_nodes:
+            street_graph.remove_node(node)
 
         # Create a new merged edge
         street_graph.add_edge(subchain_outer_nodes[0], subchain_outer_nodes[1], **merged_data)

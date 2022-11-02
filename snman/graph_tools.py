@@ -44,10 +44,13 @@ def normalize_edge_directions(street_graph):
     edges = list(street_graph.edges(data=True, keys=True))
     for edge in edges:
         if edge[0] > edge[1]:
+            edge[3]['_reversed'] = True
             _reverse_edge(street_graph, edge)
+            pass
 
 
 def _reverse_edge(street_graph, edge, reverse_topology=True):
+
     """
     Flip the edge direction
 

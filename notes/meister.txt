@@ -1,0 +1,24 @@
+
+
+in progress
+- beschreibung der spuren in die tags übersetzen
+- veloweg und velostreifen unterscheiden
+- fussgängernetz mit reinnehmen, prüfen bei landesmuseum
+
+
+weitere todos
+- parkplätze mit reinnehmen
+- optimierung der einbahnstrassen
+
+
+erledigt
+- speed limit mitreinnehmen
+- osm xml export
+- genaue geometrie
+- inkongruenzen geometrie/topologie bereinigen -> z.B. 12163538
+
+
+zur info
+- xml für matsim generator wurde geschrieben von matteo, ihn fragen
+- status quo netz für meister (zürich) in 4-6 wochen bereit
+- netz für die ganze schweiz erst im nächsten schritt

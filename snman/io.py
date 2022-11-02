@@ -4,14 +4,16 @@ from . import config, graph_tools, lanes
 import geopandas as gpd
 import pyproj
 import shapely.ops
+import shapely.geometry
 import shapely
 import momepy
 import xml.etree.ElementTree as ET
 import numpy as np
 import copy
 import math
+import itertools
 
-def export_streetgraph(street_graph, file_name):
+def export_streetgraph(street_graph, file_name_edges, file_name_nodes):
     """
     Exports street graph as a shape file
 
@@ -22,7 +24,7 @@ def export_streetgraph(street_graph, file_name):
     nodes, edges = ox.graph_to_gdfs(street_graph)
 
     # Limit every attribute to 10 characters to match the SHP format restrictions
-    if file_name.split()[-1] == 'shp':
+    if file_name_edges.split()[-1] == 'shp':
         edges.columns = [column[0:10] for column in edges.columns]
 
     # Convert list attributes to strings
@@ -31,7 +33,8 @@ def export_streetgraph(street_graph, file_name):
     if 'given_lanes' in edges:
         edges['given_lanes'] = edges['given_lanes'].apply(lambda ln_desc: ' | '.join(ln_desc))
 
-    export_gdf(edges, file_name)
+    export_gdf(edges, file_name_edges)
+    export_gdf(nodes, file_name_nodes)
 
 def export_streetgraph_with_lanes(street_graph, lanes_attribute, file_name):
     """
@@ -121,17 +124,22 @@ def convert_crs_of_street_graph(street_graph, to_crs):
 
 def export_osm_xml(street_graph, file_name, tags):
 
+    # Initial ID value for new OSM objects
+    osm_id = itertools.count(10**12)
+
     street_graph = copy.copy(street_graph)
     convert_crs_of_street_graph(street_graph, 'epsg:4326')
 
     # Create the overall structure
     tree = ET.ElementTree('tree')
 
+    # OSM Metadata
     osm = ET.Element('osm', attrib={
         'version': '0.6',
         'generator': 'osmium/1.14.0'
     })
 
+    # Bounds
     lats = []
     lons = []
 
@@ -146,16 +154,10 @@ def export_osm_xml(street_graph, file_name, tags):
         'maxlon': str(max(lons))
     })
 
-    for id, data in street_graph.nodes.items():
-        first_osmid = np.array([data.get('osmid_original', 'osm_id_undefined')]).flatten()[0]
-        ET.SubElement(osm, 'node', attrib={
-            'id': str(id),
-            'version': '1',
-            'timestamp': '2000-01-01T00:00:00Z',
-            'lat': str(data.get('y', '')),
-            'lon': str(data.get('x', ''))
-        })
+    # Nodes dictionary
+    nodes = {}
 
+    # Ways
     for id, data in street_graph.edges.items():
         first_osmid = np.array([data.get('osmid', 'osm_id_undefined')]).flatten()[0]
         way = ET.SubElement(osm, 'way', attrib={
@@ -164,11 +166,27 @@ def export_osm_xml(street_graph, file_name, tags):
             'timestamp': '2000-01-01T00:00:00Z'
         })
 
-        for node_id in id[0:2]:
-            ET.SubElement(way, 'nd', attrib={
-                'ref': str(node_id)
-            })
+        # Way nodes
+        for i in [0, 0.5, 1]:
 
+            # First and last node
+            if i in [0,1]:
+                this_id = id[i]
+                this_graph_node = street_graph.nodes[this_id]
+                nodes[str(this_id)] = shapely.geometry.Point(this_graph_node['x'], this_graph_node['y'])
+                ET.SubElement(way, 'nd', attrib={'ref': str(this_id)})
+
+            # Intermediary nodes
+            elif i == 0.5:
+                linestring = data.get('geometry')
+                for point in linestring.coords:
+                    this_osm_id = str(next(osm_id))
+                    # Add to the list of nodes
+                    nodes[this_osm_id] = shapely.geometry.Point(point)
+                    ET.SubElement(way, 'nd', attrib={'ref': this_osm_id})
+
+
+        # Way Tags
         for tag in tags:
             if data.get(tag, None) is None:
                 continue
@@ -176,6 +194,16 @@ def export_osm_xml(street_graph, file_name, tags):
                 'k': tag,
                 'v': str(data.get(tag, ''))
             })
+
+    # Nodes
+    for id, point in nodes.items():
+        ET.SubElement(osm, 'node', attrib={
+            'id': id,
+            'version': '1',
+            'timestamp': '2000-01-01T00:00:00Z',
+            'lat': str(point.y),
+            'lon': str(point.x)
+        })
 
     # Save into xml file
     tree._setroot(osm)
