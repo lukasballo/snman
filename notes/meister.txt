@@ -1,17 +1,18 @@
 
 
 in progress
-- beschreibung der spuren in die tags übersetzen
 - veloweg und velostreifen unterscheiden
 - fussgängernetz mit reinnehmen, prüfen bei landesmuseum
 
 
 weitere todos
+- beschriebung der Busspuren/Tramspuren
 - parkplätze mit reinnehmen
 - optimierung der einbahnstrassen
 
 
 erledigt
+- beschreibung der spuren in die tags übersetzen
 - speed limit mitreinnehmen
 - osm xml export
 - genaue geometrie

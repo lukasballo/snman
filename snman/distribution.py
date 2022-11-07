@@ -1,6 +1,6 @@
 import math
 import networkx as nx
-from . import config, lanes
+from . import constants, lanes, hierarchy
 
 
 def set_given_lanes(street_graph):
@@ -9,26 +9,28 @@ def set_given_lanes(street_graph):
     e.g. dedicated lanes for public transport, bidirectional lanes for cars, etc.
     """
 
-    #TODO: Make the (currently hardcoded) policy definition user-configurable
     #TODO: Add support for dedicated transit lanes
 
     for id, data in street_graph.edges.items():
         data['given_lanes'] = []
 
         if data.get('pt_tram') or data.get('pt_bus'):
-            data['given_lanes'] += ['m<', 'm>']
+            data['given_lanes'] += [
+                lanes.LANETYPE_MOTORIZED + lanes.DIRECTION_BACKWARD,
+                lanes.LANETYPE_MOTORIZED + lanes.DIRECTION_FORWARD
+            ]
 
         else:
 
-            if data.get('hierarchy') in ['1_main', '2_local']:
-                data['given_lanes'] += ['m?']
+            if data.get('hierarchy') in [hierarchy.MAIN_ROAD, hierarchy.LOCAL_ROAD]:
+                data['given_lanes'] += [lanes.LANETYPE_MOTORIZED + lanes.DIRECTION_TBD]
 
-            elif data.get('hierarchy') in ['3_dead_end']:
-                data['given_lanes'] += ['m-']
+            elif data.get('hierarchy') == hierarchy.DEAD_END:
+                data['given_lanes'] += [lanes.LANETYPE_MOTORIZED + lanes.DIRECTION_BOTH]
 
-        # In case of highways keep all lanes as they are
-        if data.get('hierarchy') == '0_highway':
-            data['given_lanes'] = data.get('ln_desc')
+            # In case of highways keep all lanes as they are
+            if data.get('hierarchy') == hierarchy.HIGHWAY:
+                data['given_lanes'] = data.get(lanes.LANES_DESCRIPTION_KEY)
 
 def create_given_lanes_graph(street_graph):
     """
@@ -44,15 +46,15 @@ def create_given_lanes_graph(street_graph):
         given_lanes = data.get('given_lanes',[])
 
         for lane in given_lanes:
-            lane_properties = lanes._get_lane_properties(lane)
+            lane_properties = lanes._lane_properties(lane)
 
-            if lane_properties['direction'] in ['>', '-']:
+            if lane_properties.direction in [lanes.DIRECTION_FORWARD, lanes.DIRECTION_BOTH]:
                 given_lanes_graph.add_edge(u, v, fixed_direction=True)
 
-            if lane_properties['direction'] in ['<', '-']:
+            if lane_properties.direction in [lanes.DIRECTION_BACKWARD, lanes.DIRECTION_BOTH]:
                 given_lanes_graph.add_edge(v, u, fixed_direction=True)
 
-            if lane_properties['direction'] in ['?']:
+            if lane_properties.direction in [lanes.DIRECTION_BOTH]:
                 given_lanes_graph.add_edge(u, v, fixed_direction=False)
 
     return given_lanes_graph

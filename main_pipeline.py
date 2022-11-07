@@ -16,6 +16,7 @@ osm_tags = ['bridge', 'tunnel', 'layer', 'oneway', 'ref', 'name',
                     'landuse', 'width', 'est_width', 'junction', 'surface',
                     'lanes', 'lanes:forward', 'lanes:backward',
                     'cycleway', 'cycleway:both', 'cycleway:left', 'cycleway:right',
+                    'bicycle', 'bicycle:conditional',
                     'sidewalk', 'sidewalk:left', 'sidewalk:right']
 export_path = 'C:/DATA/CLOUD STORAGE/polybox/Research/SNMan/SNMan Shared/qgis_previews/'
 crs = 'epsg:2056'      # CH1905+ projected CRS
@@ -34,7 +35,10 @@ custom_filter = [
         f'["access"!~"no"]'
     ),
     (
-        f'["bicycle"="designated"]'
+        f'["bicycle"]["bicycle"!~"no"]'
+    ),
+    (
+        f'["bicycle:conditional"]'
     ),
     (
         f'["bus"="yes"]'
@@ -42,16 +46,14 @@ custom_filter = [
     (
         f'["psv"="yes"]'
     ),
-    (
-        f'["bicycle"="yes"]'
-    )
 ]
 
 print('Get data from OSM server')
 street_graph = ox.graph_from_place(
-    #'Zurich, Zurich, Switzerland',
-    'Seebach, Zurich, Switzerland',
+    'Zurich, Zurich, Switzerland',
+    #'Seebach, Zurich, Switzerland',
     #'Altstetten, Zurich, Switzerland',
+    #'Altstadt, Zurich, Switzerland',
     #'Unterstrass, Zurich, Switzerland',
     custom_filter=custom_filter,
     simplify=True,
@@ -90,7 +92,6 @@ snman.export_streetgraph(street_graph, export_path + 'raw_edges.gpkg', export_pa
 if 1:
     print('Merge parallel and consecutive edges, repeat a few times')
     # TODO: Merge parallel lanes even if there is a one-sided intersection (Example: Bottom station of Seilbahn Rigiblick)
-    # TODO: When merging consecutive edges, distinguish sections with large differences, e.g. a car road and a cycling path
     for i in range(5):
         snman.merge_parallel_edges(street_graph)
         snman.merge_consecutive_edges(street_graph)
@@ -103,6 +104,9 @@ if 0:
 
 print('Add lane stats')
 snman.generate_lane_stats(street_graph)
+
+print('Update OSM tags')
+snman.update_osm_tags(street_graph)
 
 print('Set given lanes')
 snman.set_given_lanes(street_graph)
@@ -117,13 +121,17 @@ print('Export network with lanes')
 #TODO: Fix problems with saving lanes as a GeoPackage
 snman.export_streetgraph_with_lanes(street_graph, 'ln_desc', export_path + 'edges_lanes.shp')
 
-print('Export network with given lanes')
-snman.export_streetgraph_with_lanes(street_graph, 'given_lanes', export_path + 'edges_given_lanes.shp')
+#print('Export network with given lanes')
+#snman.export_streetgraph_with_lanes(street_graph, 'given_lanes', export_path + 'edges_given_lanes.shp')
 
-print('Export given lanes')
-snman.export_streetgraph(given_lanes_graph, export_path + 'given_lanes.gpkg', export_path + 'given_lanes_nodes.gpkg')
+#print('Export given lanes')
+#snman.export_streetgraph(given_lanes_graph, export_path + 'given_lanes.gpkg', export_path + 'given_lanes_nodes.gpkg')
 
 print('Export OSM XML')
-snman.export_osm_xml(street_graph, export_path + 'new_network.osm', osm_tags)
+snman.export_osm_xml(street_graph, export_path + 'new_network.osm',{
+    'lanes', 'lanes:forward', 'lanes:backward', 'lanes:both_ways',
+    'cycleway', 'cycleway:lane', 'cycleway:left', 'cycleway:left:lane', 'cycleway:right', 'cycleway:right:lane',
+    'maxspeed'
+})
 
 print('Done!')

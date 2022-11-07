@@ -2,6 +2,7 @@
 
 from .lanes import generate_lanes
 from .lanes import generate_lane_stats
+from .lanes import update_osm_tags
 
 from .merge_edges import merge_parallel_edges
 from .merge_edges import merge_consecutive_edges

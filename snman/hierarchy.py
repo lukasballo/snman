@@ -1,4 +1,10 @@
 from . import graph_tools
+from . import lanes
+
+HIGHWAY = '0_highway'
+MAIN_ROAD = '1_main_road',
+LOCAL_ROAD = '2_local_road'
+DEAD_END = '3_ded_end'
 
 
 def add_hierarchy(street_graph):

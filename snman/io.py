@@ -1,6 +1,6 @@
 import networkx as nx
 from . import osmnx as ox
-from . import config, graph_tools, lanes
+from . import constants, graph_tools, lanes
 import geopandas as gpd
 import pyproj
 import shapely.ops
@@ -53,15 +53,15 @@ def export_streetgraph_with_lanes(street_graph, lanes_attribute, file_name):
 
         # Reconstruct total width of given lanes
         for lane in data.get(lanes_attribute, []):
-            lane_properties = lanes._get_lane_properties(lane)
-            given_total_width += lane_properties['width']
+            lane_properties = lanes._lane_properties(lane)
+            given_total_width += lane_properties.width
 
         offset = -given_total_width / 2
         for lane in data.get(lanes_attribute, []):
-            lane_properties = lanes._get_lane_properties(lane)
+            lane_properties = lanes._lane_properties(lane)
 
-            centerline_offset = offset + lane_properties['width']/2
-            offset += lane_properties['width']
+            centerline_offset = offset + lane_properties.width/2
+            offset += lane_properties.width
             geom = data.get('geometry')
 
             if geom and round(centerline_offset,1) != 0:
@@ -73,10 +73,10 @@ def export_streetgraph_with_lanes(street_graph, lanes_attribute, file_name):
                     pass
 
             lanes_list.append({
-                'type': lane_properties['type'],
-                'direction': lane_properties['direction'],
+                'type': lane_properties.lanetype,
+                'direction': lane_properties.direction,
                 'descr': lane,
-                'width_m': lane_properties['width'],
+                'width_m': lane_properties.width,
                 'geometry': geom
             })
 

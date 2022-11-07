@@ -1,4 +1,4 @@
-from snman import config, graph_tools as lib
+from snman import constants, graph_tools as lib
 import geopandas as gpd
 import momepy
 

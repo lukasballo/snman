@@ -41,7 +41,15 @@ def _merge_given_parallel_edges(street_graph, edges):
     u = parent_edge[0]
     v = parent_edge[1]
 
-    for index, edge in enumerate(edges):
+    if (u==109 and v==3920) or (u==3920 and v==109):
+        print(edges)
+
+    parent_edge[3]['_merge_parallel_src_ln_desc'] = str([edge[3].get('ln_desc') for edge in edges])
+
+    #if (u==109 and v==3920) or (u==3920 and v==109):
+    #    print(edges)
+
+    for index, edge in enumerate(sorted_edges):
         edge_data = edge[3]
         # skip the parent edge
         if index == 0:
@@ -126,7 +134,7 @@ def _merge_given_consecutive_edges(street_graph, edges):
     # Stop here if the edge chain is corrupted
     # TODO: Why is this happening?
     if len(outer_nodes) != 2:
-        print('edge chain corrupted')
+        #print('edge chain corrupted')
         return
 
     # Start with the first outer node

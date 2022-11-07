@@ -1,6 +1,6 @@
 import math
 import networkx as nx
-from . import config
+from . import constants
 import geopandas as gpd
 import numpy as np
 import networkx as nx
