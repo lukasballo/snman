@@ -41,8 +41,10 @@ def _merge_given_parallel_edges(street_graph, edges):
     u = parent_edge[0]
     v = parent_edge[1]
 
+    """
     if (u==109 and v==3920) or (u==3920 and v==109):
         print(edges)
+    """
 
     parent_edge[3]['_merge_parallel_src_ln_desc'] = str([edge[3].get('ln_desc') for edge in edges])
 

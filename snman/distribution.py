@@ -30,7 +30,7 @@ def set_given_lanes(street_graph):
 
             # In case of highways keep all lanes as they are
             if data.get('hierarchy') == hierarchy.HIGHWAY:
-                data['given_lanes'] = data.get(lanes.LANES_DESCRIPTION_KEY)
+                data['given_lanes'] = data.get(lanes.KEY_LANES_DESCRIPTION)
 
 def create_given_lanes_graph(street_graph):
     """

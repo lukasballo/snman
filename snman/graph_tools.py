@@ -1,4 +1,5 @@
 from . import lanes
+from .constants import *
 from shapely.ops import substring
 import networkx as nx
 
@@ -44,7 +45,7 @@ def normalize_edge_directions(street_graph):
     edges = list(street_graph.edges(data=True, keys=True))
     for edge in edges:
         if edge[0] > edge[1]:
-            edge[3]['_reversed'] = True
+            edge[3][KEY_REVERSED] = True
             _reverse_edge(street_graph, edge)
             pass
 

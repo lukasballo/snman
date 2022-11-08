@@ -1,17 +1,18 @@
 
 
 in progress
-- veloweg und velostreifen unterscheiden
-- fussgängernetz mit reinnehmen, prüfen bei landesmuseum
+- schneiden bei seitlichen kreuzungen
 
 
 weitere todos
-- beschriebung der Busspuren/Tramspuren
 - parkplätze mit reinnehmen
 - optimierung der einbahnstrassen
 
 
 erledigt
+- fussgängernetz mit reinnehmen, prüfen bei landesmuseum
+- veloweg und velostreifen unterscheiden
+- beschriebung der Busspuren/Tramspuren
 - beschreibung der spuren in die tags übersetzen
 - speed limit mitreinnehmen
 - osm xml export

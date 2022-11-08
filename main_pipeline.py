@@ -17,7 +17,11 @@ osm_tags = ['bridge', 'tunnel', 'layer', 'oneway', 'ref', 'name',
                     'lanes', 'lanes:forward', 'lanes:backward',
                     'cycleway', 'cycleway:both', 'cycleway:left', 'cycleway:right',
                     'bicycle', 'bicycle:conditional',
-                    'sidewalk', 'sidewalk:left', 'sidewalk:right']
+                    'sidewalk', 'sidewalk:left', 'sidewalk:right', 'foot',
+                    'psv', 'bus', 'bus:lanes:forward', 'bus:lanes:backward',
+                    'vehicle:lanes:backward', 'vehicle:lanes:forward',
+                    'footway',
+            ]
 export_path = 'C:/DATA/CLOUD STORAGE/polybox/Research/SNMan/SNMan Shared/qgis_previews/'
 crs = 'epsg:2056'      # CH1905+ projected CRS
 
@@ -46,6 +50,9 @@ custom_filter = [
     (
         f'["psv"="yes"]'
     ),
+    (
+        f'["highway"="footway"]'
+    )
 ]
 
 print('Get data from OSM server')
@@ -93,6 +100,7 @@ if 1:
     print('Merge parallel and consecutive edges, repeat a few times')
     # TODO: Merge parallel lanes even if there is a one-sided intersection (Example: Bottom station of Seilbahn Rigiblick)
     for i in range(5):
+        print('...iteration ' + str(i))
         snman.merge_parallel_edges(street_graph)
         snman.merge_consecutive_edges(street_graph)
         pass
