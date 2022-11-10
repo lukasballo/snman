@@ -11,6 +11,8 @@ LANETYPE_MOTORIZED = 'M'        # A normal lane accessible to car, public transp
 LANETYPE_DEDICATED_PT = 'T'     # Only for public transport
 LANETYPE_CYCLING_PATH = 'P'     # Only for cyclists and possibly pedestrians
 LANETYPE_CYCLING_LANE = 'L'     # Advisory cycling lane, in some cases also used by other traffic
+LANETYPE_CYCLING_PSEUDO = 'S'   # Allowing cyclists to travel despite missing separate infrastructure,
+                                # e.g. in the opposite direction of one-way streets
 LANETYPE_FOOT = 'F'             # Pedestrians only
 
 KEY_LANES_DESCRIPTION = 'ln_desc'   # under which key of each edge is the existing lane configuration
@@ -41,6 +43,11 @@ DEFAULT_LANE_WIDTHS = {
     LANETYPE_CYCLING_PATH + DIRECTION_BACKWARD: 1.8,
     LANETYPE_CYCLING_PATH + DIRECTION_TBD: 1.8,
     LANETYPE_CYCLING_PATH + DIRECTION_BOTH: 2,
+
+    LANETYPE_CYCLING_PSEUDO + DIRECTION_FORWARD: 0,
+    LANETYPE_CYCLING_PSEUDO + DIRECTION_BACKWARD: 0,
+    LANETYPE_CYCLING_PSEUDO + DIRECTION_TBD: 0,
+    LANETYPE_CYCLING_PSEUDO + DIRECTION_BOTH: 0,
 
     LANETYPE_FOOT + DIRECTION_FORWARD: 1.8,
     LANETYPE_FOOT + DIRECTION_BACKWARD: 1.8,

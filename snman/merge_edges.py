@@ -207,10 +207,11 @@ def _merge_given_consecutive_edges(street_graph, edges):
 
         # Merge geometries
         geometries = [edge[3]['geometry'] for edge in edge_subchain]
-        geometries = [
-            (lambda geom: (ops.linemerge(geom) if geom.geom_type=='MultiLineString' else geom))(geom)
-            for geom in geometries
-        ]
+        for i in range(2):
+            geometries = [
+                (lambda geom: (ops.linemerge(geom) if geom.geom_type=='MultiLineString' else geom))(geom)
+                for geom in geometries
+            ]
         multi_line = geometry.MultiLineString(geometries)
         merged_line = ops.linemerge(multi_line)
         merged_data['geometry'] = merged_line

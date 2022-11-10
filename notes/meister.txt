@@ -1,15 +1,18 @@
 
 
 in progress
-- schneiden bei seitlichen kreuzungen
 
 
 weitere todos
+- megaknoten im zentrum beheben
+- richtingsprobleme beheben, beispiel kornhausbrücke
 - parkplätze mit reinnehmen
 - optimierung der einbahnstrassen
+- richtige reihenfolge der spuren bei zusammenfügen von parallellen kanten
 
 
 erledigt
+- schneiden bei seitlichen kreuzungen
 - fussgängernetz mit reinnehmen, prüfen bei landesmuseum
 - veloweg und velostreifen unterscheiden
 - beschriebung der Busspuren/Tramspuren

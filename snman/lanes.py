@@ -79,7 +79,7 @@ def _generate_lanes_for_edge(edge):
         n_lanes_backward = int(edge.get('lanes:backward', 0))
 
     # if more than 1 lane exists but no explicit lane counts forward/backward are defined
-    if n_lanes>1 and ~n_lanes_forward and ~n_lanes_backward:
+    if n_lanes>1 and ~n_lanes_forward and ~n_lanes_backward and edge.get('oneway', False) == False:
         n_lanes_forward = math.floor(n_lanes / 2)
         n_lanes_backward = math.ceil(n_lanes / 2)
 
@@ -87,12 +87,12 @@ def _generate_lanes_for_edge(edge):
     if n_lanes == 1 and edge.get('oneway', False) == False:
         n_lanes_both = 1
 
-    # if exactly one lane exists with oneway tag
-    if n_lanes == 1 and edge.get('oneway'):
-        n_lanes_forward =1
+    # n lanes with oneway tag
+    if n_lanes>0 and edge.get('oneway'):
+        n_lanes_forward = n_lanes
 
     # If the lane is dedicated for public transport
-    if edge.get('highway') == 'service' and (edge.get('psv') == 'yes' or edge.get('bus') == 'yes'):
+    if (edge.get('highway') == 'service' or edge.get('access') == 'no') and (edge.get('psv') == 'yes' or edge.get('bus') == 'yes'):
         n_lanes_dedicated_pt = max([n_lanes,2])
         n_lanes_dedicated_pt_forward = max([n_lanes_forward,1])
         n_lanes_dedicated_pt_backward = max([n_lanes_backward,1])
@@ -104,8 +104,8 @@ def _generate_lanes_for_edge(edge):
         n_lanes_motorized_both = n_lanes_both
 
     # If the entire edge is only for cycling (+walking)
-    if edge.get('highway') == 'footway' or edge.get('highway') == 'path':
-        if edge.get('bicycle') in ['yes', 'designated']:
+    if edge.get('highway') in ['footway', 'path', 'track', 'cycleway', 'pedestrian']:
+        if edge.get('bicycle') in ['yes', 'designated'] or edge.get('highway') == 'cycleway':
             if edge.get('oneway'):
                 forward_lanes_list.extend([LANETYPE_CYCLING_PATH + _DIRECTION_FORWARD])
             else:

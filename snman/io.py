@@ -67,7 +67,7 @@ def export_streetgraph_with_lanes(street_graph, lanes_attribute, file_name):
             if geom and round(centerline_offset,1) != 0:
                 geom = geom.parallel_offset(centerline_offset, 'right')
                 # the above function reverses direction when the offset is positive, this steps reverses it back
-                if centerline_offset > 0:
+                if centerline_offset > 0 and ~geom.is_empty:
                     #geom.coords = list(geom.coords)[::-1]
                     shapely.ops.substring(geom, 1, 0, normalized=True)
                     pass
@@ -89,8 +89,12 @@ def export_streetgraph_with_lanes(street_graph, lanes_attribute, file_name):
     export_gdf(lanes_gdf, file_name)
 
 
-def export_gdf(gdf, file_path):
-    gdf.to_file(file_path)
+def export_gdf(gdf, file_path, columns=[]):
+    if columns == []:
+        gdf.to_file(file_path)
+    else:
+        gdf[columns].to_file(file_path)
+
 
 
 def import_shp_to_gdf(file_path):

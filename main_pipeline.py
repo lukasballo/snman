@@ -3,6 +3,8 @@
 # import fiona
 import geopandas as gpd
 import copy
+import shapely as shp
+import networkx as nx
 
 from snman import osmnx as ox
 
@@ -11,6 +13,8 @@ import snman
 print('Starting...')
 
 # Constants
+INTERSECTION_TOLERANCE = 10
+
 osm_tags = ['bridge', 'tunnel', 'layer', 'oneway', 'ref', 'name',
                     'highway', 'maxspeed', 'service', 'access', 'area',
                     'landuse', 'width', 'est_width', 'junction', 'surface',
@@ -31,27 +35,26 @@ ox.utils.config(useful_tags_way=osm_tags)
 custom_filter = [
     (
         f'["highway"]["area"!~"yes"]["access"!~"private"]'
-        f'["highway"!~"abandoned|bridleway|bus_guideway|construction|corridor|cycleway|elevator|'
-        f'escalator|footway|path|pedestrian|planned|platform|proposed|raceway|'
-        f'steps|track"]'
-        f'["motor_vehicle"!~"no"]["motorcar"!~"no"]'
+        f'["highway"!~"abandoned|bridleway|bus_guideway|construction|corridor|elevator|'
+        f'escalator|planned|platform|proposed|raceway|'
+        f'steps"]'
         f'["service"!~"alley|driveway|emergency_access|parking|parking_aisle|private"]'
         f'["access"!~"no"]'
     ),
     (
-        f'["bicycle"]["bicycle"!~"no"]'
+        f'["bicycle"]["bicycle"!~"no"]["area"!~"yes"]'
     ),
     (
-        f'["bicycle:conditional"]'
+        f'["bicycle:conditional"]["area"!~"yes"]'
     ),
     (
-        f'["bus"="yes"]'
+        f'["bus"="yes"]["area"!~"yes"]'
     ),
     (
-        f'["psv"="yes"]'
+        f'["psv"="yes"]["area"!~"yes"]'
     ),
     (
-        f'["highway"="footway"]'
+        f'["highway"="footway"]["area"!~"yes"]'
     )
 ]
 
@@ -61,7 +64,7 @@ street_graph = ox.graph_from_place(
     #'Seebach, Zurich, Switzerland',
     #'Altstetten, Zurich, Switzerland',
     #'Altstadt, Zurich, Switzerland',
-    #'Unterstrass, Zurich, Switzerland',
+    #'Oberstrass, Zurich, Switzerland',
     custom_filter=custom_filter,
     simplify=True,
     simplify_strict=False,
@@ -73,14 +76,69 @@ print('Convert CRS of street graph to 2056')
 snman.convert_crs_of_street_graph(street_graph, crs)
 nodes = copy.copy(street_graph.nodes)
 
-#TODO: Import a pre-processed (and manually enriched) network
+print('Normalize edge directions, enforce direction from lower to higher node id')
+snman.normalize_edge_directions(street_graph)
 
-# TODO: Polygons with local override of intersection consolidation tolerance (e.g. larger tolerance for Bucheggplatz)
-# osmnx.simplification line 408 -> replace fixed tolerance with a function
-print('Consolidate intersections')
-street_graph = ox.simplification.consolidate_intersections(
-    street_graph, tolerance=9, rebuild_graph=True, dead_ends=True, reconnect_edges=True
-)
+for i in range(3):
+    intersections_geom = snman.osmnx.simplification._merge_nodes_geometric(
+        street_graph,
+        INTERSECTION_TOLERANCE
+        )
+    edges = street_graph.edges(data=True, keys=True)
+    edges_geom = gpd.GeoSeries(
+        [edge[3].get('geometry') for edge in edges],
+        crs=crs
+        )
+
+    intersections = gpd.GeoDataFrame({'geometry': intersections_geom},geometry='geometry')
+    intersections['intersection_geometry'] = intersections_geom
+    intersections['intersection_centroid'] = intersections.centroid
+
+    edges = gpd.GeoDataFrame({'nx': edges, 'geometry': edges_geom}, geometry='geometry')
+    edges['edge_geometry'] = edges['geometry']
+    # create new column with endpoints of each edge,
+    # we will need them to detect if an edge start/ends in an intersection buffer
+    edges['edge_endpoints'] = edges.apply(
+        lambda x: shp.ops.MultiPoint([
+            x['geometry'].coords[0],
+            x['geometry'].coords[-1]
+            ])
+            if isinstance(x.get('geometry'), shp.ops.LineString) and not x.get('geometry').is_empty
+            else None,
+        axis=1
+        )
+
+    a = gpd.sjoin(intersections, edges, how="inner", predicate="intersects", lsuffix='i', rsuffix='e')
+    a['edge_endpoint_is_in_intersection'] = a.apply(
+        lambda x: x['intersection_geometry'].intersects(x['edge_endpoints']),
+        axis=1
+    )
+    a = a[a['edge_endpoint_is_in_intersection']==False]
+    a['split_point'] = a.apply(
+        lambda x: shp.ops.nearest_points(x['intersection_centroid'], x['edge_geometry'])[1],
+        axis=1
+        )
+    a.apply(
+        lambda x: snman.graph_tools._split_edge(street_graph, x['nx'], x['split_point']),
+        axis=1
+        )
+
+
+street_count = snman.osmnx.stats.count_streets_per_node(street_graph)
+nx.set_node_attributes(street_graph, street_count, name="street_count")
+
+
+# Save the intersection polygons into a file
+snman.export_gdf(intersections, export_path + 'intersections.gpkg', columns=['geometry'])
+
+
+
+
+if 1:
+    print('Consolidate intersections')
+    street_graph = ox.simplification.consolidate_intersections(
+        street_graph, tolerance=INTERSECTION_TOLERANCE, rebuild_graph=True, dead_ends=True, reconnect_edges=True
+    )
 
 print('Generate lanes')
 snman.generate_lanes(street_graph)
@@ -88,8 +146,14 @@ snman.generate_lanes(street_graph)
 print('Normalize edge directions, enforce direction from lower to higher node id')
 snman.normalize_edge_directions(street_graph)
 
+snman.export_streetgraph(street_graph, export_path + 'edges_early.gpkg', export_path + 'nodes_early.gpkg')
+
+
 print('Convert into an undirected graph')
 street_graph = ox.utils_graph.get_undirected(street_graph)
+
+
+
 
 print('Identify hierarchy')
 snman.add_hierarchy(street_graph)
@@ -98,12 +162,39 @@ snman.export_streetgraph(street_graph, export_path + 'raw_edges.gpkg', export_pa
 
 if 1:
     print('Merge parallel and consecutive edges, repeat a few times')
-    # TODO: Merge parallel lanes even if there is a one-sided intersection (Example: Bottom station of Seilbahn Rigiblick)
     for i in range(5):
-        print('...iteration ' + str(i))
         snman.merge_parallel_edges(street_graph)
         snman.merge_consecutive_edges(street_graph)
         pass
+
+
+print('Add lane stats')
+snman.generate_lane_stats(street_graph)
+
+"""
+print('Fixing one-sided intersections')
+
+for node_id in list(street_graph.nodes):
+    node = [node_id, street_graph.nodes(data=True)[node_id]]
+    #edge = [34,45,0,street_graph.get_edge_data(34,45,0)]
+    edges = street_graph.edges(data=True, keys=True)
+    for edge in copy.deepcopy(edges):
+        # Exclude all edges from/to the examined node
+        if node[0] in edge[0:1]:
+            continue
+        node_geom = shp.ops.Point(node[1].get('x'), node[1].get('y'))
+        edge_geom = edge[3].get('geometry', shp.ops.LineString())
+        distance = node_geom.distance(edge_geom)
+        if distance < 25:
+            snman.graph_tools._split_edge(street_graph, edge, node)
+
+for i in range(5):
+    snman.merge_parallel_edges(street_graph)
+    snman.merge_consecutive_edges(street_graph)
+    pass
+
+"""
+
 
 if 0:
     print('Add public transport')

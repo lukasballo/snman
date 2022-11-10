@@ -465,6 +465,7 @@ def _consolidate_intersections_rebuild_graph(G, tolerance=10, reconnect_edges=Tr
     # move each component to its own cluster (otherwise you will connect
     # nodes together that are not truly connected, e.g., nearby deadends or
     # surface streets with bridge).
+    """
     groups = gdf.groupby("cluster")
     for cluster_label, nodes_subset in groups:
         if len(nodes_subset) > 1:
@@ -485,6 +486,7 @@ def _consolidate_intersections_rebuild_graph(G, tolerance=10, reconnect_edges=Tr
 
     # give nodes unique integer IDs (subclusters with suffixes are strings)
     gdf["cluster"] = gdf["cluster"].factorize()[0]
+    """
 
     # STEP 4
     # create new empty graph and copy over misc graph data
