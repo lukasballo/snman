@@ -456,7 +456,7 @@ def _consolidate_intersections_rebuild_graph(G, tolerance=10, reconnect_edges=Tr
     # attach each node to its cluster of merged nodes. first get the original
     # graph's node points then spatial join to give each node the label of
     # cluster it's within
-    node_points = utils_graph.graph_to_gdfs(G, edges=False)[["geometry"]]
+    node_points = utils_graph.graph_to_gdfs(G, edges=False)[["geometry", "street_count", "highway"]]
     gdf = gpd.sjoin(node_points, node_clusters, how="left", predicate="within")
     gdf = gdf.drop(columns="geometry").rename(columns={"index_right": "cluster"})
 
@@ -465,7 +465,18 @@ def _consolidate_intersections_rebuild_graph(G, tolerance=10, reconnect_edges=Tr
     # move each component to its own cluster (otherwise you will connect
     # nodes together that are not truly connected, e.g., nearby deadends or
     # surface streets with bridge).
+
     """
+    groups = gdf.groupby("cluster")
+    for cluster_label, nodes_subset in groups:
+        if len(nodes_subset) > 1:
+            dead_ends = nodes_subset.query('street_count == 1')
+            # Move every dead end node into an own cluster
+            gdf.loc[dead_ends.index, "cluster"] = f"{cluster_label}-{dead_ends.index}"
+
+    print(gdf['cluster'])
+    """
+
     groups = gdf.groupby("cluster")
     for cluster_label, nodes_subset in groups:
         if len(nodes_subset) > 1:
@@ -486,7 +497,7 @@ def _consolidate_intersections_rebuild_graph(G, tolerance=10, reconnect_edges=Tr
 
     # give nodes unique integer IDs (subclusters with suffixes are strings)
     gdf["cluster"] = gdf["cluster"].factorize()[0]
-    """
+
 
     # STEP 4
     # create new empty graph and copy over misc graph data

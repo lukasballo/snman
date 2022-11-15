@@ -7,9 +7,9 @@ LOCAL_ROAD = '2_local_road'
 DEAD_END = '3_ded_end'
 
 
-def add_hierarchy(street_graph):
+def add_hierarchy(street_graph, iterations=20):
 
-    _identify_dead_ends(street_graph)
+    _identify_dead_ends(street_graph, iterations)
 
     for edge in street_graph.edges(data=True, keys=True):
         _add_edge_hierarchy(street_graph, edge)
@@ -40,10 +40,10 @@ def _add_edge_hierarchy(street_graph, edge):
         edge_data['hierarchy'] = '0_highway'
 
 
-def _identify_dead_ends(graph):
+def _identify_dead_ends(graph, iterations):
 
     # TODO: Auto detect how many iterations are necessary to get through the entire graph
-    for i in range(100):
+    for i in range(iterations):
 
         for node in graph.nodes():
 

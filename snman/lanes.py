@@ -50,7 +50,7 @@ def _generate_lanes_for_edge(edge):
     right_lanes_list = []
 
     # Reverse forward/backward if the edge has been reversed in the conversion into undirected graph
-    if edge.get(KEY_REVERSED):
+    if edge.get(KEY_REVERSED, False):
         _DIRECTION_FORWARD = DIRECTION_BACKWARD
         _DIRECTION_BACKWARD = DIRECTION_FORWARD
     else:

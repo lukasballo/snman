@@ -1,17 +1,22 @@
 
 
 in progress
+- konsolidierung der kreuzungen: nach ebenen unterscheiden
+- ebene für explizites zusammenführen von grossen kreuzungen
+- erkennung von oneway  verbessern, inkl. oneway=no, beispiel neumühlequai
 
 
 weitere todos
+- konsolidierung von kreuzungen: vermeiden, dass dead ends miteinander verbunden werden
 - megaknoten im zentrum beheben
-- richtingsprobleme beheben, beispiel kornhausbrücke
+- osm query based on polygon
 - parkplätze mit reinnehmen
 - optimierung der einbahnstrassen
 - richtige reihenfolge der spuren bei zusammenfügen von parallellen kanten
 
 
 erledigt
+- richtngsprobleme beheben, beispiel kornhausbrücke
 - schneiden bei seitlichen kreuzungen
 - fussgängernetz mit reinnehmen, prüfen bei landesmuseum
 - veloweg und velostreifen unterscheiden
