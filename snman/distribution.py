@@ -22,15 +22,21 @@ def set_given_lanes(street_graph):
 
         else:
 
+
+
             if data.get('hierarchy') in [hierarchy.MAIN_ROAD, hierarchy.LOCAL_ROAD]:
                 data['given_lanes'] += [lanes.LANETYPE_MOTORIZED + lanes.DIRECTION_TBD]
 
+            """
+        
             elif data.get('hierarchy') == hierarchy.DEAD_END:
                 data['given_lanes'] += [lanes.LANETYPE_MOTORIZED + lanes.DIRECTION_BOTH]
 
             # In case of highways keep all lanes as they are
             if data.get('hierarchy') == hierarchy.HIGHWAY:
                 data['given_lanes'] = data.get(lanes.KEY_LANES_DESCRIPTION)
+                
+            """
 
 def create_given_lanes_graph(street_graph):
     """

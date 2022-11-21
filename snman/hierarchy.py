@@ -2,9 +2,11 @@ from . import graph_tools
 from . import lanes
 
 HIGHWAY = '0_highway'
-MAIN_ROAD = '1_main_road',
+MAIN_ROAD = '1_main_road'
 LOCAL_ROAD = '2_local_road'
 DEAD_END = '3_ded_end'
+PATHWAY = '4_path'
+OTHER_HIERARCHY = '9_other'
 
 
 def add_hierarchy(street_graph, iterations=20):
@@ -19,25 +21,25 @@ def _add_edge_hierarchy(street_graph, edge):
 
     edge_data = edge[3]
 
-    edge_data['hierarchy'] = 'other'
+    edge_data['hierarchy'] = OTHER_HIERARCHY
 
     if edge_data.get('highway') in {'primary', 'primary_link', 'secondary', 'secondary_link', 'tertiary', 'tertiary_link'}:
-        edge_data['hierarchy'] = '1_main'
+        edge_data['hierarchy'] = MAIN_ROAD
 
     if edge_data.get('highway') in {'residential', 'living_street', 'unclassified', 'service'}:
-        edge_data['hierarchy'] = '2_local'
+        edge_data['hierarchy'] = LOCAL_ROAD
 
     if edge_data.get('highway') in {'path', 'footway', 'cycleway'}:
-        edge_data['hierarchy'] = '4_path'
+        edge_data['hierarchy'] = PATHWAY
 
     if edge_data.get('highway') in {'construction', 'track'}:
-        edge_data['hierarchy'] = '9_other'
+        edge_data['hierarchy'] = OTHER_HIERARCHY
 
     if edge_data.get('dead_end'):
-        edge_data['hierarchy'] = '3_dead_end'
+        edge_data['hierarchy'] = DEAD_END
 
     if edge_data.get('highway') in {'motorway', 'motorway_link', 'trunk', 'trunk_link'}:
-        edge_data['hierarchy'] = '0_highway'
+        edge_data['hierarchy'] = HIGHWAY
 
 
 def _identify_dead_ends(graph, iterations):

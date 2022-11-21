@@ -143,10 +143,10 @@ def _split_edge(street_graph, edge, split_point):
 
         # Extend the geometries to the split node
         edge1_data['geometry'] = shapely.ops.LineString(
-            list(new_lines[0].coords) + list(node_point.coords)
+            list(new_lines.geoms[0].coords) + list(node_point.coords)
         )
         edge2_data['geometry'] = shapely.ops.LineString(
-            list(node_point.coords) + list(new_lines[2].coords)
+            list(node_point.coords) + list(new_lines.geoms[2].coords)
         )
 
     # Split topology
@@ -199,10 +199,14 @@ def split_through_edges_in_intersections(street_graph, tolerance):
         axis=1
     )
     a = a[a['edge_endpoint_is_in_intersection']==False]
-    a['split_point'] = a.apply(
+
+    split_points = a.apply(
         lambda x: shapely.ops.nearest_points(x['intersection_centroid'], x['edge_geometry'])[1],
         axis=1
         )
+
+    if len(split_points) != 0:
+        a['split_point'] = split_points
 
     a.apply(
         lambda x: graph_tools._split_edge(street_graph, x['nx'], x['split_point']),

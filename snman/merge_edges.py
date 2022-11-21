@@ -35,16 +35,14 @@ def merge_parallel_edges(street_graph):
 
 def _merge_given_parallel_edges(street_graph, edges):
 
+    #for edge in edges:
+    #    print(edge[3].get('hierarchy'))
+
     # Take the edge with the highest hierarchy
     sorted_edges = sorted(edges, key=lambda x: x[3].get('hierarchy'))
     parent_edge = sorted_edges[0]
     u = parent_edge[0]
     v = parent_edge[1]
-
-    """
-    if (u==109 and v==3920) or (u==3920 and v==109):
-        print(edges)
-    """
 
     parent_edge[3]['_merge_parallel_src_ln_desc'] = str([edge[3].get('ln_desc') for edge in edges])
 

@@ -73,16 +73,17 @@ street_graph = ox.graph_from_place(
     one_edge_per_direction=False,
 )
 
-print('Convert CRS of street graph to 2056')
-snman.convert_crs_of_street_graph(street_graph, CRS)
-nodes = copy.copy(street_graph.nodes)
+if 1:
+    print('Convert CRS of street graph to 2056')
+    snman.convert_crs_of_street_graph(street_graph, CRS)
+    nodes = copy.copy(street_graph.nodes)
 
 if 1:
     print('Split through edges in intersections')
     # must be run a few times for including buffers of newly added nodes
     # TODO: Resolve shapely deprecation warnings
     intersections = None
-    for i in range(3):
+    for i in range(6):
         intersections, a = snman.split_through_edges_in_intersections(street_graph, INTERSECTION_TOLERANCE)
 
     print('Update precalculated attributes')
@@ -94,8 +95,9 @@ if 1:
     print('Save intersection geometries into a file')
     snman.export_gdf(intersections, export_path + 'intersections.gpkg', columns=['geometry'])
 
-print('Save raw street graph')
-snman.export_streetgraph(street_graph, export_path + 'raw_edges.gpkg', export_path + 'raw_nodes.gpkg')
+if 1:
+    print('Save raw street graph')
+    snman.export_streetgraph(street_graph, export_path + 'raw_edges.gpkg', export_path + 'raw_nodes.gpkg')
 
 if 1:
     print('Consolidate intersections')
@@ -103,16 +105,19 @@ if 1:
         street_graph, tolerance=INTERSECTION_TOLERANCE, rebuild_graph=True, dead_ends=True, reconnect_edges=True
     )
 
-print('Generate lanes')
-snman.generate_lanes(street_graph)
+if 1:
+    print('Generate lanes')
+    snman.generate_lanes(street_graph)
 
-print('Normalize edge directions, enforce direction from lower to higher node id')
-snman.normalize_edge_directions(street_graph)
+if 1:
+    print('Normalize edge directions, enforce direction from lower to higher node id')
+    snman.normalize_edge_directions(street_graph)
 
-snman.export_streetgraph(street_graph, export_path + 'edges_early.gpkg', export_path + 'nodes_early.gpkg')
+#snman.export_streetgraph(street_graph, export_path + 'edges_early.gpkg', export_path + 'nodes_early.gpkg')
 
-print('Convert into an undirected graph')
-street_graph = ox.utils_graph.get_undirected(street_graph)
+if 1:
+    print('Convert into an undirected graph')
+    street_graph = ox.utils_graph.get_undirected(street_graph)
 
 if 1:
     print('Identify hierarchy')
@@ -125,47 +130,55 @@ if 1:
         snman.merge_consecutive_edges(street_graph)
         pass
 
-print('Add lane stats')
-snman.generate_lane_stats(street_graph)
+if 1:
+    print('Add lane stats')
+    snman.generate_lane_stats(street_graph)
 
 if 0:
+    #TODO: Improve performance with geodataframe operations
     print('Add public transport')
     pt_network = snman.import_shp_to_gdf("C:/DATA/CLOUD STORAGE/polybox/Research/SNMan/SNMan Shared/stadt_zuerich_open_data/Linien_des_offentlichen_Verkehrs_-OGD/ZVV_LINIEN_GEN_L.shp")
     snman.match_pt(street_graph, pt_network)
 
-print('Add lane stats')
-snman.generate_lane_stats(street_graph)
+if 1:
+    print('Add lane stats')
+    snman.generate_lane_stats(street_graph)
 
-print('Update OSM tags')
-snman.update_osm_tags(street_graph)
+if 1:
+    print('Update OSM tags')
+    snman.update_osm_tags(street_graph)
 
-if 0:
+if 1:
     print('Set given lanes')
     snman.set_given_lanes(street_graph)
 
-if 0:
+if 1:
     print('Create directed graph of given lanes')
     given_lanes_graph = snman.create_given_lanes_graph(street_graph)
 
-print('Export network without lanes')
-snman.export_streetgraph(street_graph, export_path + 'edges.gpkg', export_path + 'nodes.gpkg')
+if 1:
+    print('Export network without lanes')
+    snman.export_streetgraph(street_graph, export_path + 'edges.gpkg', export_path + 'nodes.gpkg')
 
 if 1:
     print('Export network with lanes')
     #TODO: Fix problems with saving lanes as a GeoPackage
     snman.export_streetgraph_with_lanes(street_graph, 'ln_desc', export_path + 'edges_lanes.shp')
 
-#print('Export network with given lanes')
-#snman.export_streetgraph_with_lanes(street_graph, 'given_lanes', export_path + 'edges_given_lanes.shp')
-
-#print('Export given lanes')
-#snman.export_streetgraph(given_lanes_graph, export_path + 'given_lanes.gpkg', export_path + 'given_lanes_nodes.gpkg')
+if 1:
+    print('Export network with given lanes')
+    snman.export_streetgraph_with_lanes(street_graph, 'given_lanes', export_path + 'edges_given_lanes.shp')
 
 if 0:
+    print('Export given lanes')
+    snman.export_streetgraph(given_lanes_graph, export_path + 'given_lanes.gpkg', export_path + 'given_lanes_nodes.gpkg')
+
+if 1:
     print('Export OSM XML')
     snman.export_osm_xml(street_graph, export_path + 'new_network.osm',{
         'lanes', 'lanes:forward', 'lanes:backward', 'lanes:both_ways',
         'cycleway', 'cycleway:lane', 'cycleway:left', 'cycleway:left:lane', 'cycleway:right', 'cycleway:right:lane',
+        'bus:lanes:backward', 'bus:lanes:forward', 'vehicle:lanes:backward', 'vehicle:lanes:forward',
         'maxspeed'
     })
 
