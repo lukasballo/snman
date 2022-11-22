@@ -95,7 +95,7 @@ if 1:
     print('Save intersection geometries into a file')
     snman.export_gdf(intersections, export_path + 'intersections.gpkg', columns=['geometry'])
 
-if 1:
+if 0:
     print('Save raw street graph')
     snman.export_streetgraph(street_graph, export_path + 'raw_edges.gpkg', export_path + 'raw_nodes.gpkg')
 
@@ -165,7 +165,7 @@ if 1:
     #TODO: Fix problems with saving lanes as a GeoPackage
     snman.export_streetgraph_with_lanes(street_graph, 'ln_desc', export_path + 'edges_lanes.shp')
 
-if 1:
+if 0:
     print('Export network with given lanes')
     snman.export_streetgraph_with_lanes(street_graph, 'given_lanes', export_path + 'edges_given_lanes.shp')
 
@@ -173,7 +173,7 @@ if 0:
     print('Export given lanes')
     snman.export_streetgraph(given_lanes_graph, export_path + 'given_lanes.gpkg', export_path + 'given_lanes_nodes.gpkg')
 
-if 1:
+if 0:
     print('Export OSM XML')
     snman.export_osm_xml(street_graph, export_path + 'new_network.osm',{
         'lanes', 'lanes:forward', 'lanes:backward', 'lanes:both_ways',

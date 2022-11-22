@@ -69,6 +69,7 @@ def _reverse_edge(street_graph, edge, reverse_topology=True):
         Also flip the start and end node. Automatically false if the street_graph is undirected
 
     """
+
     u = edge[0]
     v = edge[1]
     key = edge[2]
