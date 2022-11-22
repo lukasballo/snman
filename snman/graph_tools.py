@@ -85,7 +85,7 @@ def _reverse_edge(street_graph, edge, reverse_topology=True):
         street_graph.remove_edge(u, v, key)
 
     # Reverse the lanes
-    if data.get('ln_desc'):
+    if data.get('ln_desc') is not None:
         data['ln_desc'] = lanes._reverse_lanes(data['ln_desc'])
 
     # Reverse the geometry

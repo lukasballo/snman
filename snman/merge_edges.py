@@ -2,6 +2,10 @@ import networkx as nx
 from . import lanes
 from . import graph_tools
 from shapely import geometry, ops
+from . import geometry_tools
+import math
+import numpy as np
+import itertools as it
 
 
 def merge_parallel_edges(street_graph):
@@ -35,35 +39,27 @@ def merge_parallel_edges(street_graph):
 
 def _merge_given_parallel_edges(street_graph, edges):
 
-    #for edge in edges:
-    #    print(edge[3].get('hierarchy'))
+    geometries = [edge[3].get('geometry') for edge in edges]
+    offsets = np.array(geometry_tools._offset_distance(geometries))
 
-    # Take the edge with the highest hierarchy
-    sorted_edges = sorted(edges, key=lambda x: x[3].get('hierarchy'))
-    parent_edge = sorted_edges[0]
+    for index, edge in enumerate(edges):
+        edge[3]['_geometry_offset'] = offsets[index]
+
+
+    sorted_edges = sorted(edges, key=lambda x: x[3].get('_geometry_offset'), reverse=True)
+    # take the middle edge as parent
+    i_parent_edge = math.floor(len(sorted_edges)/2)
+    parent_edge = sorted_edges[i_parent_edge]
     u = parent_edge[0]
     v = parent_edge[1]
 
-    parent_edge[3]['_merge_parallel_src_ln_desc'] = str([edge[3].get('ln_desc') for edge in edges])
-
-    #if (u==109 and v==3920) or (u==3920 and v==109):
-    #    print(edges)
+    parent_edge[3]['_merge_parallel_src_ln_desc'] = str([edge[3].get('ln_desc') for edge in sorted_edges])
+    parent_edge[3]['ln_desc'] = list(it.chain(*[edge[3].get('ln_desc') for edge in sorted_edges]))
 
     for index, edge in enumerate(sorted_edges):
-        edge_data = edge[3]
-        # skip the parent edge
-        if index == 0:
-            continue
-
-        lane_description = edge_data['ln_desc']
-        if edge[0] == v and edge[1] == u:
-            # reverse lane description for opposite direction
-            lane_description = lanes._reverse_lanes(lane_description)
-            pass
-
-        # merge lane descriptions
-        parent_edge[3]['ln_desc'] = lane_description + parent_edge[3]['ln_desc']
-        street_graph.remove_edges_from([edge])
+        # remove edge, except if it's the parent edge
+        if index != i_parent_edge:
+            street_graph.remove_edges_from([edge])
 
     # Take the highest hierarchy level from all source edges
     parent_edge[3]['hierarchy'] = min([edge[3].get('hierarchy') for edge in edges])
