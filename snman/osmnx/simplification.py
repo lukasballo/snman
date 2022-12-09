@@ -3,6 +3,7 @@
 import logging as lg
 
 import geopandas as gpd
+import pandas as pd
 import networkx as nx
 from shapely.geometry import LineString
 from shapely.geometry import MultiPolygon
@@ -12,6 +13,10 @@ from shapely.geometry import Polygon
 from . import stats
 from . import utils
 from . import utils_graph
+
+from .. import io
+
+import itertools as it
 
 
 def _is_endpoint(G, node, strict=True):
@@ -308,7 +313,7 @@ def simplify_graph(G, strict=False, remove_rings=True):
 
 
 def consolidate_intersections(
-    G, tolerance=10, rebuild_graph=True, dead_ends=False, reconnect_edges=True
+    G, tolerance=10, rebuild_graph=True, dead_ends=False, reconnect_edges=True, regions=[]
 ):
     """
     Consolidate intersections comprising clusters of nearby nodes.
@@ -378,7 +383,7 @@ def consolidate_intersections(
             # cannot rebuild a graph with no nodes or no edges, just return it
             return G
         else:
-            return _consolidate_intersections_rebuild_graph(G, tolerance, reconnect_edges)
+            return _consolidate_intersections_rebuild_graph(G, tolerance, reconnect_edges, regions=regions)
 
     else:
         if not G:
@@ -413,7 +418,7 @@ def _merge_nodes_geometric(G, tolerance):
     return gpd.GeoSeries(merged.geoms, crs=G.graph["crs"])
 
 
-def _consolidate_intersections_rebuild_graph(G, tolerance=10, reconnect_edges=True):
+def _consolidate_intersections_rebuild_graph(G, tolerance=10, reconnect_edges=True, regions=[], intersections=None):
     """
     Consolidate intersections comprising clusters of nearby nodes.
     Merge nodes and return a rebuilt graph with consolidated intersections and
@@ -444,60 +449,67 @@ def _consolidate_intersections_rebuild_graph(G, tolerance=10, reconnect_edges=Tr
         a rebuilt graph with consolidated intersections and reconnected
         edge geometries
     """
-    # STEP 1
-    # buffer nodes to passed-in distance and merge overlaps. turn merged nodes
-    # into gdf and get centroids of each cluster as x, y
-    node_clusters = gpd.GeoDataFrame(geometry=_merge_nodes_geometric(G, tolerance))
-    centroids = node_clusters.centroid
-    node_clusters["x"] = centroids.x
-    node_clusters["y"] = centroids.y
 
-    # STEP 2
-    # attach each node to its cluster of merged nodes. first get the original
-    # graph's node points then spatial join to give each node the label of
-    # cluster it's within
-    node_points = utils_graph.graph_to_gdfs(G, edges=False)[["geometry", "street_count", "highway"]]
-    gdf = gpd.sjoin(node_points, node_clusters, how="left", predicate="within")
-    gdf = gdf.drop(columns="geometry").rename(columns={"index_right": "cluster"})
+    gdf_node_groups = []
+    for region_label, region in enumerate(regions):
 
-    # STEP 3
-    # if a cluster contains multiple components (i.e., it's not connected)
-    # move each component to its own cluster (otherwise you will connect
-    # nodes together that are not truly connected, e.g., nearby deadends or
-    # surface streets with bridge).
+        nodes = io._get_nodes_within_polygon(G,region['geometry'])
+        if len(nodes) == 0:
+            continue
+        G_node_group = G.subgraph(nodes)
+        group_tolerance = region.get('tolerance',-1)
+        if group_tolerance == -1:
+            group_tolerance = tolerance
 
-    """
-    groups = gdf.groupby("cluster")
-    for cluster_label, nodes_subset in groups:
-        if len(nodes_subset) > 1:
-            dead_ends = nodes_subset.query('street_count == 1')
-            # Move every dead end node into an own cluster
-            gdf.loc[dead_ends.index, "cluster"] = f"{cluster_label}-{dead_ends.index}"
+        # STEP 1
+        # buffer nodes to passed-in distance and merge overlaps. turn merged nodes
+        # into gdf and get centroids of each cluster as x, y
+        node_clusters = gpd.GeoDataFrame(
+            geometry=_merge_nodes_geometric(G_node_group, group_tolerance)
+        )
+        centroids = node_clusters.centroid
+        node_clusters["x"] = centroids.x
+        node_clusters["y"] = centroids.y
 
-    print(gdf['cluster'])
-    """
 
-    groups = gdf.groupby("cluster")
-    for cluster_label, nodes_subset in groups:
-        if len(nodes_subset) > 1:
-            # identify all the (weakly connected) component in cluster
-            wccs = list(nx.weakly_connected_components(G.subgraph(nodes_subset.index)))
-            if len(wccs) > 1:
-                # if there are multiple components in this cluster
-                suffix = 0
-                for wcc in wccs:
-                    # set subcluster xy to the centroid of just these nodes
-                    idx = list(wcc)
-                    subcluster_centroid = node_points.loc[idx].unary_union.centroid
-                    gdf.loc[idx, "x"] = subcluster_centroid.x
-                    gdf.loc[idx, "y"] = subcluster_centroid.y
-                    # move to subcluster by appending suffix to cluster label
-                    gdf.loc[idx, "cluster"] = f"{cluster_label}-{suffix}"
-                    suffix += 1
+        # STEP 2
+        # attach each node to its cluster of merged nodes. first get the original
+        # graph's node points then spatial join to give each node the label of
+        # cluster it's within
+        node_points = utils_graph.graph_to_gdfs(G_node_group, edges=False)[["geometry", "street_count"]]
+        gdf_node_group = gpd.sjoin(node_points, node_clusters, how="left", predicate="within")
+        gdf_node_group = gdf_node_group.drop(columns="geometry").rename(columns={"index_right": "cluster"})
+
+        # STEP 3
+        # if a cluster contains multiple components (i.e., it's not connected)
+        # move each component to its own cluster (otherwise you will connect
+        # nodes together that are not truly connected, e.g., nearby deadends or
+        # surface streets with bridge).
+
+        groups = gdf_node_group.groupby("cluster")
+        for cluster_label, nodes_subset in groups:
+            if len(nodes_subset) > 1:
+                # identify all the (weakly connected) component in cluster
+                wccs = list(nx.weakly_connected_components(G_node_group.subgraph(nodes_subset.index)))
+                if len(wccs) > 0:
+                    # if there are multiple components in this cluster
+                    suffix = 0
+                    for wcc in wccs:
+                        # set subcluster xy to the centroid of just these nodes
+                        idx = list(wcc)
+                        subcluster_centroid = node_points.loc[idx].unary_union.centroid
+                        gdf_node_group.loc[idx, "x"] = subcluster_centroid.x
+                        gdf_node_group.loc[idx, "y"] = subcluster_centroid.y
+                        # move to subcluster by appending suffix to cluster label
+                        gdf_node_group.loc[idx, "cluster"] = f"{region_label}-{cluster_label}-{suffix}"
+                        suffix += 1
+
+        gdf_node_groups.append(gdf_node_group)
+
+    gdf = pd.concat(gdf_node_groups)
 
     # give nodes unique integer IDs (subclusters with suffixes are strings)
     gdf["cluster"] = gdf["cluster"].factorize()[0]
-
 
     # STEP 4
     # create new empty graph and copy over misc graph data

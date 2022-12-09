@@ -15,6 +15,8 @@ from .io import import_shp_to_gdf
 from .io import convert_crs_of_street_graph
 from .io import export_osm_xml
 from .io import export_matsim_xml
+from .io import load_regions
+from .io import load_intersections
 
 from .hierarchy import add_hierarchy
 
@@ -29,3 +31,7 @@ from .distribution import set_given_lanes
 from .distribution import create_given_lanes_graph
 
 from .geometry_tools import remove_multipart_geometries
+
+from .simplification import consolidate_intersections
+
+from .owtop import link_elimination

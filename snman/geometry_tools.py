@@ -61,3 +61,9 @@ def _offset_distance(linestrings):
         offsets.append(offset)
 
     return offsets
+
+def ensure_multipolygon(geometry):
+    if isinstance(geometry, shp.geometry.MultiPolygon):
+        return geometry
+    else:
+        return shp.geometry.MultiPolygon([geometry])

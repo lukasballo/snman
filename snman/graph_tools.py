@@ -1,11 +1,12 @@
-from . import lanes, graph_tools
 from .constants import *
+from . import lanes, io, constants
 from shapely.ops import substring
 import shapely
 import networkx as nx
 import copy
 import osmnx
 import geopandas as gpd
+import pandas as pd
 import itertools
 
 
@@ -94,7 +95,7 @@ def _reverse_edge(street_graph, edge, reverse_topology=True):
         data['geometry'] = substring(data['geometry'], 1, 0, normalized=True)
 
     # Flip the reversed flag
-    data[KEY_REVERSED] = not data.get(KEY_REVERSED, False)
+    data[constants.KEY_REVERSED] = not data.get(constants.KEY_REVERSED, False)
 
     # Add the new edge
     if reverse_topology:
@@ -164,93 +165,151 @@ def _split_edge(street_graph, edge, split_point):
             _reverse_edge(street_graph, (v, split_node_id, key2, edge2_data))
 
 
-def split_through_edges_in_intersections(street_graph, tolerance):
-    intersections_geom = osmnx.simplification._merge_nodes_geometric(
-        street_graph,
-        tolerance
-        )
-    edges = street_graph.edges(data=True, keys=True)
-    edges_geom = gpd.GeoSeries(
-        [edge[3].get('geometry') for edge in edges],
-        crs=street_graph.graph["crs"]
-        )
+def split_through_edges_in_intersections(street_graph, tolerance, regions=[]):
 
-    intersections = gpd.GeoDataFrame({'geometry': intersections_geom},geometry='geometry')
-    intersections['intersection_geometry'] = intersections_geom
-    intersections['intersection_centroid'] = intersections.centroid
+    intersections_collection = []
+    for region_label, region in enumerate(regions):
 
-    edges = gpd.GeoDataFrame({'nx': edges, 'geometry': edges_geom}, geometry='geometry')
-    edges['edge_geometry'] = edges['geometry']
+        nodes = io._get_nodes_within_polygon(street_graph, region['geometry'])
+        if len(nodes) == 0:
+            continue
+        region_subgraph = street_graph.subgraph(nodes)
+        group_tolerance = region.get('tolerance',-1)
+        if group_tolerance == -1:
+            group_tolerance = tolerance
 
-    # create new column with endpoints of each edge,
-    # we will need them to detect if an edge start/ends in an intersection buffer
-    edges['edge_endpoints'] = edges.apply(
-        lambda x: shapely.ops.MultiPoint([
-            x['geometry'].coords[0],
-            x['geometry'].coords[-1]
-            ])
-            if isinstance(x.get('geometry'), shapely.ops.LineString) and not x.get('geometry').is_empty
-            else None,
-        axis=1
-        )
+        intersections_geom = osmnx.simplification._merge_nodes_geometric(
+            region_subgraph,
+            group_tolerance
+            )
 
-    a = gpd.sjoin(intersections, edges, how="inner", predicate="intersects", lsuffix='i', rsuffix='e')
-    a['edge_endpoint_is_in_intersection'] = a.apply(
-        lambda x: x['intersection_geometry'].intersects(x['edge_endpoints']),
-        axis=1
-    )
-    a = a[a['edge_endpoint_is_in_intersection']==False]
+        edges = street_graph.edges(data=True, keys=True)
+        edges_geom = gpd.GeoSeries(
+            [edge[3].get('geometry') for edge in edges],
+            crs=street_graph.graph["crs"]
+            )
 
-    split_points = a.apply(
-        lambda x: shapely.ops.nearest_points(x['intersection_centroid'], x['edge_geometry'])[1],
-        axis=1
+        intersections = gpd.GeoDataFrame({'geometry': intersections_geom},geometry='geometry')
+
+        # clip the resulting intersections with the group polygon
+        intersections['geometry'] = intersections.apply(
+            lambda x: x['geometry'].intersection(region['geometry']),
+            axis=1
         )
 
-    if len(split_points) != 0:
-        a['split_point'] = split_points
+        intersections['intersection_geometry'] = intersections['geometry']
+        intersections['intersection_centroid'] = intersections.centroid
 
-    a.apply(
-        lambda x: graph_tools._split_edge(street_graph, x['nx'], x['split_point']),
-        axis=1
+        edges = gpd.GeoDataFrame({'nx': edges, 'geometry': edges_geom}, geometry='geometry')
+        edges['edge_geometry'] = edges['geometry']
+
+        # create new column with endpoints of each edge,
+        # we will need them to detect if an edge start/ends in an intersection buffer
+        edges['edge_endpoints'] = edges.apply(
+            lambda x: shapely.ops.MultiPoint([
+                x['geometry'].coords[0],
+                x['geometry'].coords[-1]
+                ])
+                if isinstance(x.get('geometry'), shapely.ops.LineString) and not x.get('geometry').is_empty
+                else None,
+            axis=1
+            )
+
+        a = gpd.sjoin(intersections, edges, how="inner", predicate="intersects", lsuffix='i', rsuffix='e')
+        a['edge_endpoint_is_in_intersection'] = a.apply(
+            lambda x: x['intersection_geometry'].intersects(x['edge_endpoints']),
+            axis=1
         )
+        a = a[a['edge_endpoint_is_in_intersection']==False]
 
-    return intersections, a
+        split_points = a.apply(
+            lambda x: shapely.ops.nearest_points(x['intersection_centroid'], x['edge_geometry'])[1],
+            axis=1
+            )
+
+        if len(split_points) != 0:
+            a['split_point'] = split_points
+
+        a.apply(
+            lambda x: _split_edge(street_graph, x['nx'], x['split_point']),
+            axis=1
+            )
+
+        intersections_collection.append(intersections)
+
+    intersections = pd.concat(intersections_collection)
+    intersections['index'] = range(len(intersections))
+    return intersections.set_index('index')
 
 
 def connect_components_in_intersections(street_graph, intersections):
+    """
+    Creates connections between weakly connected components so that they can be merged into a single intersection
+    In this process, we use the following restrictions:
+    - ignoring dead-end nodes (so that we don't connect adjacent dead-ends)
+    - connecting only components that are on the same layer, e.g. on the same level of a multi-level intersection
 
+    Parameters
+    ----------
+    street_graph : nx.MultiDiGraph
+
+    intersections : gpd.GeoDataFrame
+        Output from the function split_through_edges_in_intersections()
+    """
+
+    # get the nodes as a geodataframe
     node_points = osmnx.graph_to_gdfs(street_graph, edges=False)[["geometry", "street_count", "highway"]]
-    # Eliminate dead ends from the process to keep them disconnected
+    # eliminate dead ends from the process to keep them disconnected
     node_points = node_points.query('street_count != 1')
+    # assign each node to an intersection (polygon)
     gdf = gpd.sjoin(node_points, intersections, how="left", predicate="within")
+    # clean up the columns of the resulting geodataframe (cluster=id of the intersection geometry)
     gdf = gdf.drop(columns="geometry").rename(columns={"index_right": "cluster"})
 
     groups = gdf.groupby("cluster")
     for cluster_label, nodes_subset in groups:
         if len(nodes_subset) > 1:
-            # identify all the (weakly connected) component in cluster
+            # identify all (weakly connected) components in cluster
+            # wccs is a list of sets containing id's of the nodes in each weakly connected component
             wccs = list(nx.weakly_connected_components(street_graph.subgraph(nodes_subset.index)))
-            # only if there are multiple components (one component = no need for further connections)
-            if len(wccs) > 1:
-                nodes = []
-                #print('wccs', wccs)
-                for wcc in wccs:
-                    first_node = min(wcc)
-                    nodes.append(first_node)
-                #print(nodes)
-                for combination in itertools.combinations(nodes,2):
-                    u = min(combination)
-                    v = max(combination)
-                    all_nodes = dict(street_graph.nodes(data=True))
-                    node_u = all_nodes.get(u)
-                    node_v = all_nodes.get(v)
-                    geom = ''
-                    if node_u and node_v:
-                        geom = shapely.ops.LineString((
-                            shapely.ops.Point(node_u.get('x'), node_u.get('y')),
-                            shapely.ops.Point(node_v.get('x'), node_v.get('y'))
-                        ))
-                    street_graph.add_edge(u,v,geometry=geom)
+            # skip this node if there are not at least two components (one component = no need for further connections)
+            if len(wccs) <= 1:
+                continue
+            nodes = []
+            layers = {}
+            for wcc in wccs:
+                # select a node that will be used to make the connector edge
+                first_node = min(wcc)
+                nodes.append(first_node)
+                # find out the layers of each wcc
+                this_wcc_layers = [a.get('layer',0) for u,v,k,a in street_graph.edges(wcc, keys=True, data=True)]
+                if this_wcc_layers != []:
+                    layer = max(set(this_wcc_layers), key = this_wcc_layers.count)
+                else:
+                    layer = None
+                layers[first_node] = layer
+            # iterate over all combinations of the selected nodes to create a complete from-to mesh
+            for combination in itertools.combinations(nodes,2):
+                u = min(combination)
+                v = max(combination)
+                layer_u = layers[u]
+                layer_v = layers[v]
+                # skip this connector if the layer sets don't match
+                if layer_u != layer_v:
+                    continue
+                all_nodes = dict(street_graph.nodes(data=True))
+                node_u = all_nodes.get(u)
+                node_v = all_nodes.get(v)
+                geom = ''
+                if node_u and node_v:
+                    geom = shapely.ops.LineString((
+                        shapely.ops.Point(node_u.get('x'), node_u.get('y')),
+                        shapely.ops.Point(node_v.get('x'), node_v.get('y'))
+                    ))
+                street_graph.add_edge(
+                    u,v,geometry=geom,
+                    _components_connector=True, layer=max(layers.items())[1], _layers=str(layers), osmid='0'
+                )
 
 def update_precalculated_attributes(street_graph):
     street_count = osmnx.stats.count_streets_per_node(street_graph)

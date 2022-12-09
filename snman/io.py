@@ -1,8 +1,10 @@
 import networkx as nx
 from . import osmnx as ox
-from . import constants, graph_tools, lanes
+from . import constants, graph_tools, geometry_tools, lanes
 import geopandas as gpd
+import pandas as pd
 import pyproj
+import shapely as shp
 import shapely.ops
 import shapely.geometry
 import shapely
@@ -97,10 +99,11 @@ def export_gdf(gdf, file_path, columns=[]):
 
 
 
-def import_shp_to_gdf(file_path):
-    edges = gpd.read_file(file_path)
-    edges = edges.to_crs(2056)
-    return edges
+def import_shp_to_gdf(file_path, crs=2056, index=None):
+    gdf = gpd.read_file(file_path).to_crs(crs)
+    if index:
+        gdf=gdf.set_index(index)
+    return gdf
 
 
 def convert_crs_of_street_graph(street_graph, to_crs):
@@ -260,3 +263,36 @@ def export_matsim_xml(street_graph, file_name):
     ET.indent(tree)
     tree.write(file_name, encoding='UTF-8', xml_declaration=True)
     #TODO: Add DOCTYPE to the file: <!DOCTYPE network SYSTEM "http://www.matsim.org/files/dtd/network_v2.dtd">
+
+
+def load_regions(path, default_region=True, street_graph=None):
+    regions = import_shp_to_gdf(path)
+
+    # create a new region containing all points that don't belong to a region yet
+    if default_region:
+        # create a convex hull around all node geometries + some buffer to be safe
+        nodes_gdf = ox.utils_graph.graph_to_gdfs(street_graph, edges=False)
+        polygon = nodes_gdf.geometry.unary_union.convex_hull.buffer(1000)
+        # merge all other polygons
+        other_regions_polygons = geometry_tools.ensure_multipolygon(regions['geometry'].unary_union)
+        # cut them out of this default polygon
+        polygon = polygon.difference(other_regions_polygons)
+        new_row = gpd.GeoDataFrame({'geometry': [polygon], 'tolerance': [-1]}, geometry='geometry')
+        regions = pd.concat([regions, new_row], ignore_index=True)
+
+    return regions
+
+
+def load_intersections(path_polygons, path_points):
+    polygons = import_shp_to_gdf(path_polygons)
+    points = import_shp_to_gdf(path_points)
+    # Duplicate the point geometries so that they get taken along after the spatial join
+    points['point_geometry'] = points['geometry']
+    intersections = gpd.sjoin(points, polygons, how="right", predicate="within")[['geometry','point_geometry']]
+    return intersections
+
+
+def _get_nodes_within_polygon(street_graph, polygon):
+    nodes_gdf = ox.graph_to_gdfs(street_graph, edges=False)
+    nodes_gdf = nodes_gdf[nodes_gdf.within(polygon)]
+    return set(nodes_gdf.index.values)

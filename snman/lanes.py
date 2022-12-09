@@ -1,6 +1,6 @@
+from .constants import *
 import math
 import networkx as nx
-from .constants import *
 
 
 def generate_lanes(street_graph):
@@ -101,18 +101,28 @@ def _generate_lanes_for_edge(edge):
         n_lanes_motorized_backward = n_lanes_backward
         n_lanes_motorized_both = n_lanes_both
 
-    # If the entire edge is only for cycling (+walking)
-    if edge.get('highway') in ['footway', 'path', 'track', 'cycleway', 'pedestrian']:
-        if edge.get('bicycle') in ['yes', 'designated'] or edge.get('highway') == 'cycleway':
-            if edge.get('oneway'):
-                forward_lanes_list.extend([LANETYPE_CYCLING_TRACK + _DIRECTION_FORWARD])
-            else:
-                backward_lanes_list.extend([LANETYPE_CYCLING_TRACK + DIRECTION_BOTH])
+    # If the entire edge is only for cycling
+    if edge.get('highway') in {'cycleway'}:
+        if edge.get('oneway'):
+            forward_lanes_list.extend([LANETYPE_FOOT_CYCLING_MIXED + DIRECTION_BOTH])
         else:
-            both_dir_lanes_list.extend([LANETYPE_FOOT + DIRECTION_BOTH])
+            forward_lanes_list.extend([LANETYPE_CYCLING_TRACK + _DIRECTION_FORWARD])
+
+    # If the entire edge is only for walking+cycling
+    if edge.get('highway') in {'footway', 'path', 'track', 'pedestrian'}:
+        if edge.get('bicycle') == 'yes':
+            forward_lanes_list.extend([LANETYPE_FOOT_CYCLING_MIXED + DIRECTION_BOTH])
+        elif edge.get('bicycle') == 'designated':
+            forward_lanes_list.extend([LANETYPE_FOOT + DIRECTION_BOTH])
+            forward_lanes_list.extend([LANETYPE_CYCLING_TRACK + _DIRECTION_FORWARD])
+        else:
+            forward_lanes_list.extend([LANETYPE_FOOT + DIRECTION_BOTH])
 
     # Everything else
     else:
+        # Add sidewalk left
+        if edge.get('sidewalk') in {'left', 'both'}:
+            left_lanes_list.extend([LANETYPE_FOOT + DIRECTION_BOTH])
         # Add cycling lane left
         if edge.get('cycleway:left') == 'lane'\
                 or edge.get('cycleway:both') == 'lane'\
@@ -124,6 +134,9 @@ def _generate_lanes_for_edge(edge):
                 or edge.get('cycleway:both') == 'lane'\
                 or edge.get('cycleway') == 'lane':
             right_lanes_list.extend([LANETYPE_CYCLING_LANE + _DIRECTION_FORWARD])
+        # Add sidewalk right
+        if edge.get('sidewalk') in {'right', 'both'}:
+            right_lanes_list.extend([LANETYPE_FOOT + DIRECTION_BOTH])
 
         backward_lanes_list.extend([LANETYPE_MOTORIZED + _DIRECTION_BACKWARD] * n_lanes_motorized_backward)
         backward_lanes_list.extend([LANETYPE_DEDICATED_PT + _DIRECTION_BACKWARD] * n_lanes_dedicated_pt_backward)

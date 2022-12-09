@@ -12,55 +12,53 @@ def set_given_lanes(street_graph):
     #TODO: Add support for dedicated transit lanes
 
     for id, data in street_graph.edges.items():
-        data['given_lanes'] = []
+        data[constants.KEY_GIVEN_LANES_DESCRIPTION] = []
 
+        """
+        # In case of highways keep all lanes as they are
+        if data.get('hierarchy') == hierarchy.HIGHWAY:
+            data[constants.KEY_GIVEN_LANES_DESCRIPTION] = data.get(lanes.KEY_LANES_DESCRIPTION)
+        """
+
+        # For roads with public transport, keep both directions
         if data.get('pt_tram') or data.get('pt_bus'):
-            data['given_lanes'] += [
+            data[constants.KEY_GIVEN_LANES_DESCRIPTION] += [
                 lanes.LANETYPE_MOTORIZED + lanes.DIRECTION_BACKWARD,
                 lanes.LANETYPE_MOTORIZED + lanes.DIRECTION_FORWARD
             ]
+        # For normal roads, keep one single-direction lane
+        elif data.get('hierarchy') in [hierarchy.MAIN_ROAD, hierarchy.LOCAL_ROAD, hierarchy.HIGHWAY]:
+            data[constants.KEY_GIVEN_LANES_DESCRIPTION] += [lanes.LANETYPE_MOTORIZED + lanes.DIRECTION_TBD]
 
-        else:
+        # For dead ends, create a single bi-directional lane
+        elif data.get('hierarchy') == hierarchy.DEAD_END:
+            data[constants.KEY_GIVEN_LANES_DESCRIPTION] += [lanes.LANETYPE_MOTORIZED + lanes.DIRECTION_BOTH]
 
 
 
-            if data.get('hierarchy') in [hierarchy.MAIN_ROAD, hierarchy.LOCAL_ROAD]:
-                data['given_lanes'] += [lanes.LANETYPE_MOTORIZED + lanes.DIRECTION_TBD]
-
-            """
-        
-            elif data.get('hierarchy') == hierarchy.DEAD_END:
-                data['given_lanes'] += [lanes.LANETYPE_MOTORIZED + lanes.DIRECTION_BOTH]
-
-            # In case of highways keep all lanes as they are
-            if data.get('hierarchy') == hierarchy.HIGHWAY:
-                data['given_lanes'] = data.get(lanes.KEY_LANES_DESCRIPTION)
-                
-            """
-
-def create_given_lanes_graph(street_graph):
+def create_given_lanes_graph(G):
     """
     Returns a directed graph of given (mandatory) lanes. Lanes with changeable direction are marked with an attribute
     """
-    given_lanes_graph = nx.DiGraph()
-    given_lanes_graph.graph['crs'] = street_graph.graph['crs']
-    given_lanes_graph.add_nodes_from(street_graph.nodes.items())
+    H = nx.DiGraph()
+    H.graph['crs'] = G.graph['crs']
+    H.add_nodes_from(G.nodes.items())
 
-    for id, data in street_graph.edges.items():
+    for id, data in G.edges.items():
         u = id[0]
         v = id[1]
-        given_lanes = data.get('given_lanes',[])
+        given_lanes = data.get(constants.KEY_GIVEN_LANES_DESCRIPTION,[])
 
         for lane in given_lanes:
             lane_properties = lanes._lane_properties(lane)
 
             if lane_properties.direction in [lanes.DIRECTION_FORWARD, lanes.DIRECTION_BOTH]:
-                given_lanes_graph.add_edge(u, v, fixed_direction=True)
+                H.add_edge(u, v, fixed=True)
 
             if lane_properties.direction in [lanes.DIRECTION_BACKWARD, lanes.DIRECTION_BOTH]:
-                given_lanes_graph.add_edge(v, u, fixed_direction=True)
+                H.add_edge(v, u, fixed=True)
 
-            if lane_properties.direction in [lanes.DIRECTION_BOTH]:
-                given_lanes_graph.add_edge(u, v, fixed_direction=False)
+            if lane_properties.direction in [lanes.DIRECTION_TBD]:
+                H.add_edge(u, v, fixed=False)
 
-    return given_lanes_graph
+    return H
