@@ -14,9 +14,7 @@ from . import stats
 from . import utils
 from . import utils_graph
 
-from .. import io
-
-import itertools as it
+from snman import io
 
 
 def _is_endpoint(G, node, strict=True):

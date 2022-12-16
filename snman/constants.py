@@ -1,4 +1,4 @@
-from snman import osmnx as ox
+from archive import osmnx as ox
 
 ox.config(log_console=False, use_cache=True)
 

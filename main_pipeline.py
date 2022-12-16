@@ -5,7 +5,7 @@ import geopandas as gpd
 import copy
 import shapely as shp
 import networkx as nx
-import osmnx as ox
+import snman.osmnx_customized as oxc
 import snman
 
 print('Starting...')
@@ -16,10 +16,10 @@ INTERSECTION_TOLERANCE = 10
 inputs_path = 'C:/DATA/CLOUD STORAGE/polybox/Research/SNMan/SNMan Shared/inputs/'
 export_path = 'C:/DATA/CLOUD STORAGE/polybox/Research/SNMan/SNMan Shared/qgis_previews/'
 
-ox.utils.config(useful_tags_way=snman.constants.OSM_TAGS)
+oxc.utils.config(useful_tags_way=snman.constants.OSM_TAGS)
 
 print('Get data from OSM server')
-G = snman.osmnx.graph_from_place(
+G = oxc.graph_from_place(
     'Seebach, Zurich, Switzerland',
     custom_filter=snman.constants.OSM_FILTER,
     simplify=True,
@@ -84,7 +84,7 @@ if 1:
 
 if 1:
     print('Convert into an undirected graph')
-    G = ox.utils_graph.get_undirected(G)
+    G = oxc.utils_graph.get_undirected(G)
 
 if 1:
     print('Identify hierarchy')
@@ -145,11 +145,12 @@ if 0:
         'maxspeed'
     })
 
-print('Link elimination')
-G_minimal_graph_output = snman.link_elimination(G_minimal_graph_input)
+if 0:
+    print('Link elimination')
+    G_minimal_graph_output = snman.link_elimination(G_minimal_graph_input)
 
-print('Export minimal graph - output')
-snman.export_streetgraph(G_minimal_graph_output, export_path + 'minimal_graph_out_edges.gpkg', export_path + 'minimal_graph_out_nodes.gpkg')
+    print('Export minimal graph - output')
+    snman.export_streetgraph(G_minimal_graph_output, export_path + 'minimal_graph_out_edges.gpkg', export_path + 'minimal_graph_out_nodes.gpkg')
 
 
 print('Done!')

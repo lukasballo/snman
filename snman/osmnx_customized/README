@@ -1,0 +1,4 @@
+based on osmnx version 1.2.3
+with custom changes but with full backward compatibility, just with additional optional arguments in functions
+
+the changes may be published as a series of pull requests in the official osmnx repo at a later stage
