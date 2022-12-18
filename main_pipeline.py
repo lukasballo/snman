@@ -33,7 +33,7 @@ snman.convert_crs_of_street_graph(G, snman.constants.CRS)
 nodes = copy.copy(G.nodes)
 
 print('Load regions')
-regions = snman.load_regions(inputs_path + 'regions/regions.shp', default_region=True, street_graph=G)
+regions = snman.load_regions(inputs_path + 'regions/regions.shp', default_tolerance=10, street_graph=G)
 
 print('Load manual intersections')
 given_intersections_gdf = snman.load_intersections(
@@ -42,26 +42,38 @@ given_intersections_gdf = snman.load_intersections(
 )
 
 print('Detect intersections')
-intersections_gdf = snman.simplification.merge_nodes_geometric(G, 10, given_intersections_gdf=given_intersections_gdf)
+intersections_gdf = snman.simplification.merge_nodes_geometric(
+    G, INTERSECTION_TOLERANCE,
+    given_intersections_gdf=given_intersections_gdf,
+    regions=regions
+)
 
 print('Save intersection geometries into a file')
-snman.export_gdf(intersections_gdf, export_path + 'intersections.gpkg', columns=['geometry'])
 snman.export_gdf(intersections_gdf, export_path + 'intersections_polygons.gpkg', columns=['geometry'])
 snman.export_gdf(gpd.GeoDataFrame(intersections_gdf, geometry='point_geometry'), export_path + 'intersections_points.gpkg', columns=['point_geometry'])
 
-if 0:
+if 1:
     # must be run a few times for including buffers of newly added nodes
-    for i in range(6):
+    for i in range(3):
         print('Split through edges in intersections')
-        intersections = snman.split_through_edges_in_intersections(G, INTERSECTION_TOLERANCE, regions=regions)
+        intersections = snman.split_through_edges_in_intersections(G, intersections_gdf)
 
         print('Update precalculated attributes')
         snman.update_precalculated_attributes(G)
 
+        print('Detect intersections')
+        intersections_gdf = snman.simplification.merge_nodes_geometric(
+            G, INTERSECTION_TOLERANCE,
+            given_intersections_gdf=given_intersections_gdf,
+            regions=regions
+        )
+
+        print('Save intersection geometries into a file')
+        snman.export_gdf(intersections_gdf, export_path + 'intersections_polygons.gpkg', columns=['geometry'])
+        snman.export_gdf(gpd.GeoDataFrame(intersections_gdf, geometry='point_geometry'), export_path + 'intersections_points.gpkg', columns=['point_geometry'])
+
         print('Add connections between components in intersections')
-        snman.connect_components_in_intersections(G, intersections)
-
-
+        snman.connect_components_in_intersections(G, intersections_gdf, separate_layers=False)
 
 if 1:
     print('Save raw street graph')
@@ -101,7 +113,7 @@ if 1:
     print('Add lane stats')
     snman.generate_lane_stats(G)
 
-if 0:
+if 1:
     #TODO: Improve performance with geodataframe operations
     print('Add public transport')
     pt_network = snman.import_shp_to_gdf("C:/DATA/CLOUD STORAGE/polybox/Research/SNMan/SNMan Shared/stadt_zuerich_open_data/Linien_des_offentlichen_Verkehrs_-OGD/ZVV_LINIEN_GEN_L.shp")
@@ -145,7 +157,7 @@ if 0:
         'maxspeed'
     })
 
-if 0:
+if 1:
     print('Link elimination')
     G_minimal_graph_output = snman.link_elimination(G_minimal_graph_input)
 

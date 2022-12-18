@@ -65,7 +65,7 @@ def export_streetgraph_with_lanes(street_graph, lanes_attribute, file_name):
             if geom and round(centerline_offset,1) != 0:
                 geom = geom.parallel_offset(centerline_offset, 'right')
                 # the above function reverses direction when the offset is positive, this steps reverses it back
-                if centerline_offset > 0 and ~geom.is_empty:
+                if centerline_offset > 0 and not geom.is_empty:
                     #geom.coords = list(geom.coords)[::-1]
                     shapely.ops.substring(geom, 1, 0, normalized=True)
                     pass
@@ -261,11 +261,11 @@ def export_matsim_xml(street_graph, file_name):
     #TODO: Add DOCTYPE to the file: <!DOCTYPE network SYSTEM "http://www.matsim.org/files/dtd/network_v2.dtd">
 
 
-def load_regions(path, default_region=True, street_graph=None):
+def load_regions(path, default_tolerance=None, street_graph=None):
     regions = import_shp_to_gdf(path)
 
     # create a new region containing all points that don't belong to a region yet
-    if default_region:
+    if default_tolerance and street_graph is not None:
         # create a convex hull around all node geometries + some buffer to be safe
         nodes_gdf = ox.utils_graph.graph_to_gdfs(street_graph, edges=False)
         polygon = nodes_gdf.geometry.unary_union.convex_hull.buffer(1000)
@@ -273,7 +273,7 @@ def load_regions(path, default_region=True, street_graph=None):
         other_regions_polygons = geometry_tools.ensure_multipolygon(regions['geometry'].unary_union)
         # cut them out of this default polygon
         polygon = polygon.difference(other_regions_polygons)
-        new_row = gpd.GeoDataFrame({'geometry': [polygon], 'tolerance': [-1]}, geometry='geometry')
+        new_row = gpd.GeoDataFrame({'geometry': [polygon], 'tolerance': [default_tolerance]}, geometry='geometry')
         regions = pd.concat([regions, new_row], ignore_index=True)
 
     return regions

@@ -8,6 +8,7 @@ import osmnx
 import geopandas as gpd
 import pandas as pd
 import itertools
+from . import osmnx_customized as oxc
 
 
 def _edge_hash(edge):
@@ -92,6 +93,8 @@ def _reverse_edge(street_graph, edge, reverse_topology=True):
 
     # Reverse the geometry
     if data.get('geometry') and data.get('geometry') != shapely.ops.LineString():
+        #print(data)
+        #print(data['geometry'].wkt)
         data['geometry'] = substring(data['geometry'], 1, 0, normalized=True)
 
     # Flip the reversed flag
@@ -110,25 +113,23 @@ def _reverse_edge(street_graph, edge, reverse_topology=True):
         return edge
 
 
-def _split_edge(street_graph, edge, split_point):
-
-    u = edge[0]
-    v = edge[1]
-    key = edge[2]
-    edge_data = edge[3]
+def _split_edge(street_graph, u, v, key, split_point):
 
     # Don't continue if the edge does not exist
     if not street_graph.has_edge(u,v,key):
         #print('edge does not exist:', u, v, key)
         return False
 
-    # Assign a new node id
-    split_node_id = len(street_graph.nodes)
+    edge_data = street_graph.get_edge_data(u,v,key)
 
+    # Assign a new node id
+    split_node_id = max(street_graph.nodes) + 1
+
+    # duplicate the existing edge data as a basis for the data of the two new edges
     edge1_data = copy.deepcopy(edge_data)
     edge2_data = copy.deepcopy(edge_data)
 
-    # Split geometry
+    # split geometry
     line = edge_data.get('geometry', False)
     if line != False:
         node_point = split_point
@@ -147,9 +148,11 @@ def _split_edge(street_graph, edge, split_point):
         edge1_data['geometry'] = shapely.ops.LineString(
             list(new_lines.geoms[0].coords) + list(node_point.coords)
         )
+        edge1_data['_split'] = 1
         edge2_data['geometry'] = shapely.ops.LineString(
             list(node_point.coords) + list(new_lines.geoms[2].coords)
         )
+        edge2_data['_split'] = 2
 
     # Split topology
     street_graph.add_node(split_node_id, x=split_point.x, y=split_point.y, _split_node = True)
@@ -165,84 +168,56 @@ def _split_edge(street_graph, edge, split_point):
             _reverse_edge(street_graph, (v, split_node_id, key2, edge2_data))
 
 
-def split_through_edges_in_intersections(street_graph, tolerance, regions=[]):
+def split_through_edges_in_intersections(G, intersections):
 
-    intersections_collection = []
-    for region_label, region in enumerate(regions):
+    intersections = intersections.copy()
+    intersections['ix_geometry'] = intersections['geometry']
+    intersections['ix_centroid'] = intersections.centroid
 
-        nodes = io._get_nodes_within_polygon(street_graph, region['geometry'])
-        if len(nodes) == 0:
-            continue
-        region_subgraph = street_graph.subgraph(nodes)
-        group_tolerance = region.get('tolerance',-1)
-        if group_tolerance == -1:
-            group_tolerance = tolerance
+    edges = oxc.graph_to_gdfs(G, nodes=False)
+    edges['e_geometry'] = edges['geometry']
+    #edges['u'] = edges.index.get_level_values('u')
+    #edges['v'] = edges.index.get_level_values('v')
+    #edges['key'] = edges.index.get_level_values('key')
 
-        intersections_geom = osmnx.simplification._merge_nodes_geometric(
-            region_subgraph,
-            group_tolerance
-            )
+    # create new column with endpoints of each edge,
+    # we will need them to detect if an edge start/ends in an intersection buffer
+    edges['e_endpoints'] = edges.apply(
+        lambda x: shapely.ops.MultiPoint([
+            x['geometry'].coords[0],
+            x['geometry'].coords[-1]
+        ])
+        if isinstance(x.get('geometry'), shapely.ops.LineString) and not x.get('geometry').is_empty
+        else None,
+        axis=1
+    )
 
-        edges = street_graph.edges(data=True, keys=True)
-        edges_geom = gpd.GeoSeries(
-            [edge[3].get('geometry') for edge in edges],
-            crs=street_graph.graph["crs"]
-            )
+    # build pairs of intersections and intersecting edges, keep index from edges
+    a = gpd.sjoin(edges, intersections, how="inner", predicate="intersects", lsuffix='e', rsuffix='i')
+    # stop here if there are no edge/intersection pairs
+    if len(a) == 0:
+        return
+    # add a new column telling us whether the edge starts/ends within the intersection
+    a['edge_endpoint_in_intersection'] = a.apply(
+        lambda x: x['ix_geometry'].intersects(x['e_endpoints']),
+        axis=1
+    )
+    # filter for only those intersection/edge pairs where the edge does not start/end in the intersection
+    a = a[a['edge_endpoint_in_intersection'] == False]
 
-        intersections = gpd.GeoDataFrame({'geometry': intersections_geom},geometry='geometry')
+    # find out where should the edge be split
+    a['split_point'] = a.apply(
+        lambda x: shapely.ops.nearest_points(x['ix_centroid'], x['e_geometry'])[1],
+        axis=1
+    )
 
-        # clip the resulting intersections with the group polygon
-        intersections['geometry'] = intersections.apply(
-            lambda x: x['geometry'].intersection(region['geometry']),
-            axis=1
-        )
-
-        intersections['intersection_geometry'] = intersections['geometry']
-        intersections['intersection_centroid'] = intersections.centroid
-
-        edges = gpd.GeoDataFrame({'nx': edges, 'geometry': edges_geom}, geometry='geometry')
-        edges['edge_geometry'] = edges['geometry']
-
-        # create new column with endpoints of each edge,
-        # we will need them to detect if an edge start/ends in an intersection buffer
-        edges['edge_endpoints'] = edges.apply(
-            lambda x: shapely.ops.MultiPoint([
-                x['geometry'].coords[0],
-                x['geometry'].coords[-1]
-                ])
-                if isinstance(x.get('geometry'), shapely.ops.LineString) and not x.get('geometry').is_empty
-                else None,
-            axis=1
-            )
-
-        a = gpd.sjoin(intersections, edges, how="inner", predicate="intersects", lsuffix='i', rsuffix='e')
-        a['edge_endpoint_is_in_intersection'] = a.apply(
-            lambda x: x['intersection_geometry'].intersects(x['edge_endpoints']),
-            axis=1
-        )
-        a = a[a['edge_endpoint_is_in_intersection']==False]
-
-        split_points = a.apply(
-            lambda x: shapely.ops.nearest_points(x['intersection_centroid'], x['edge_geometry'])[1],
-            axis=1
-            )
-
-        if len(split_points) != 0:
-            a['split_point'] = split_points
-
-        a.apply(
-            lambda x: _split_edge(street_graph, x['nx'], x['split_point']),
-            axis=1
-            )
-
-        intersections_collection.append(intersections)
-
-    intersections = pd.concat(intersections_collection)
-    intersections['index'] = range(len(intersections))
-    return intersections.set_index('index')
+    a.apply(
+        lambda row: _split_edge(G, *row.name, row.split_point),
+        axis=1
+    )
 
 
-def connect_components_in_intersections(street_graph, intersections):
+def connect_components_in_intersections(street_graph, intersections, separate_layers=True):
     """
     Creates connections between weakly connected components so that they can be merged into a single intersection
     In this process, we use the following restrictions:
@@ -295,7 +270,7 @@ def connect_components_in_intersections(street_graph, intersections):
                 layer_u = layers[u]
                 layer_v = layers[v]
                 # skip this connector if the layer sets don't match
-                if layer_u != layer_v:
+                if separate_layers and layer_u != layer_v:
                     continue
                 all_nodes = dict(street_graph.nodes(data=True))
                 node_u = all_nodes.get(u)

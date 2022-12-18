@@ -1,53 +1,58 @@
 import geopandas as gpd
 import pandas as pd
 import shapely as shp
-import osmnx as ox
+from . import osmnx_customized as oxc
 from . import io, geometry_tools
 import networkx as nx
 import itertools as it
 
 def merge_nodes_geometric(G, tolerance, given_intersections_gdf=None, regions=None):
-    """
-    Geometrically merge nodes within some distance of each other.
-    Parameters
-    ----------
-    G : networkx.MultiDiGraph
-        a projected graph
-    tolerance : float
-        buffer nodes to this distance (in graph's geometry's units) then merge
-        overlapping polygons into a single polygon via a unary union operation
-    Returns
-    -------
-    merged : GeoSeries
-        the merged overlapping polygons of the buffered nodes
-    """
+
     if regions is None:
         # buffer nodes GeoSeries then get unary union to merge overlaps
-        auto_intersections = ox.utils_graph.graph_to_gdfs(G, edges=False)["geometry"].buffer(tolerance).unary_union
+        auto_intersections = oxc.utils_graph.graph_to_gdfs(G, edges=False)["geometry"].buffer(tolerance).unary_union
     else:
-        pass
-        """
-        auto_intersections = []
-        for i, row in regions.iterrows():
-            nodes = io._get_nodes_within_polygon(G, row['geometry'])
-            H = G.subgraph(nodes)
-            if len(H.nodes) == 0: continue
-            sub_intersections = ox.utils_graph.graph_to_gdfs(H, edges=False)["geometry"].buffer(tolerance).unary_union
-            sub_intersections = sub_intersections.intersection(row['geometry'])
-            sub_intersections = geometry_tools.ensure_multipolygon(sub_intersections)
-            sub_intersections = list(sub_intersections.geoms)
-            intersections.extend(sub_intersections)
-        print(intersections, len(intersections))
-        intersections = geometry_tools.ensure_multipolygon(intersections)
-        """
+        # for every region, create buffers and clip them with the region polygon
+        auto_intersections = regions.apply(
+            lambda region: shp.geometry.MultiPolygon(
+                oxc.utils_graph
+                    .graph_to_gdfs(G, edges=False)["geometry"]
+                    .buffer(region.tolerance)
+                    .unary_union
+                    .intersection(region.geometry)
+            ),
+            axis=1
+        )
+        # unite the results into one geoseries
+        auto_intersections = list(map(lambda multipolygon: multipolygon.geoms, auto_intersections))
+        auto_intersections = list(it.chain.from_iterable(auto_intersections))
+        auto_intersections = shp.geometry.MultiPolygon(auto_intersections)
+
+
 
     if given_intersections_gdf is not None:
         given_intersections = geometry_tools.ensure_multipolygon(given_intersections_gdf['geometry'].unary_union)
-        auto_intersections = geometry_tools.ensure_multipolygon(auto_intersections.difference(given_intersections))
-        auto_intersections = gpd.GeoSeries(auto_intersections.geoms, crs=G.graph["crs"])
-        auto_intersections_gdf = gpd.GeoDataFrame({'geometry': auto_intersections, 'point_geometry': auto_intersections.centroid})
+        # subtract the given intersection from every detected intersection separately to avoid a unary union of
+        # the resulting geometries
+        auto_intersections = list(
+            map(lambda geom:
+                geometry_tools.ensure_multipolygon(geom.difference(given_intersections)),
+                list(auto_intersections.geoms)
+            )
+        )
 
-    return pd.concat([given_intersections_gdf, auto_intersections_gdf])
+    auto_intersections = gpd.GeoSeries(auto_intersections, crs=G.graph["crs"])
+
+    intersections_gdf = gpd.GeoDataFrame({
+        'geometry': auto_intersections
+    })
+
+    if given_intersections_gdf is not None:
+        intersections_gdf = pd.concat([given_intersections_gdf, intersections_gdf], ignore_index=True)
+
+    intersections_gdf['point_geometry'] = intersections_gdf.centroid
+
+    return intersections_gdf
 
 def consolidate_intersections(G, intersections, reconnect_edges=True):
     """
@@ -94,7 +99,7 @@ def consolidate_intersections(G, intersections, reconnect_edges=True):
     # attach each node to its cluster of merged nodes. first get the original
     # graph's node points then spatial join to give each node the label of
     # cluster it's within
-    node_points = ox.utils_graph.graph_to_gdfs(G, edges=False)[["geometry", "street_count"]]
+    node_points = oxc.utils_graph.graph_to_gdfs(G, edges=False)[["geometry", "street_count"]]
     gdf = gpd.sjoin(node_points, node_clusters, how="left", predicate="within")
     gdf = gdf.drop(columns="geometry").rename(columns={"index_right": "cluster"})
 
@@ -156,7 +161,7 @@ def consolidate_intersections(G, intersections, reconnect_edges=True):
 
     # calculate street_count attribute for all nodes lacking it
     null_nodes = [n for n, sc in H.nodes(data="street_count") if sc is None]
-    street_count = ox.stats.count_streets_per_node(H, nodes=null_nodes)
+    street_count = oxc.stats.count_streets_per_node(H, nodes=null_nodes)
     nx.set_node_attributes(H, street_count, name="street_count")
 
     if not G.edges or not reconnect_edges:
@@ -166,7 +171,7 @@ def consolidate_intersections(G, intersections, reconnect_edges=True):
 
     # STEP 6
     # create new edge from cluster to cluster for each edge in original graph
-    gdf_edges = ox.utils_graph.graph_to_gdfs(G, nodes=False)
+    gdf_edges = oxc.utils_graph.graph_to_gdfs(G, nodes=False)
     for u, v, k, data in G.edges(keys=True, data=True):
         u2 = gdf.loc[u, "cluster"]
         v2 = gdf.loc[v, "cluster"]

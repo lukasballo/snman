@@ -445,7 +445,12 @@ def graph_from_polygon(
 
         # create buffered graph from the downloaded data
         bidirectional = network_type in settings.bidirectional_network_types
-        G_buff = _create_graph(response_jsons, retain_all=True, bidirectional=bidirectional)
+        G_buff = _create_graph(
+            response_jsons,
+            retain_all=True,
+            bidirectional=bidirectional,
+            one_edge_per_direction=one_edge_per_direction
+        )
 
         # truncate buffered graph to the buffered polygon and retain_all for
         # now. needed because overpass returns entire ways that also include
@@ -586,7 +591,7 @@ def _create_graph(response_jsons, retain_all=False, bidirectional=False, one_edg
         G.add_node(node, **data)
 
     # add each osm way (ie, a path of edges) to the graph
-    _add_paths(G, paths.values(), bidirectional, one_edge_per_direction)
+    _add_paths(G, paths.values(), bidirectional=bidirectional, one_edge_per_direction=one_edge_per_direction)
 
     # retain only the largest connected component if retain_all is False
     if not retain_all:
