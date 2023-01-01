@@ -1,6 +1,3 @@
-# import osmnx as ox
-# import matplotlib.pyplot as plt
-# import fiona
 import geopandas as gpd
 import copy
 import shapely as shp
@@ -12,21 +9,29 @@ print('Starting...')
 
 # Constants
 INTERSECTION_TOLERANCE = 10
-
 inputs_path = 'C:/DATA/CLOUD STORAGE/polybox/Research/SNMan/SNMan Shared/inputs/'
 export_path = 'C:/DATA/CLOUD STORAGE/polybox/Research/SNMan/SNMan Shared/qgis_previews/'
-
 oxc.utils.config(useful_tags_way=snman.constants.OSM_TAGS)
 
+# =====================================================================================
+# LOAD DATA
+# =====================================================================================
+
+print('Load perimeters')
+perimeters = snman.load_perimeters(inputs_path + 'perimeters/perimeters.shp')
+
 print('Get data from OSM server')
-G = oxc.graph_from_place(
-    'Seebach, Zurich, Switzerland',
+G = oxc.graph_from_polygon(
+    perimeters.loc['zurich-birmensdorf']['geometry'],
     custom_filter=snman.constants.OSM_FILTER,
     simplify=True,
     simplify_strict=False,
     retain_all=True,
     one_edge_per_direction=False,
 )
+
+print('Prepare graph')
+snman.prepare_graph(G)
 
 print('Convert CRS of street graph to 2056')
 snman.convert_crs_of_street_graph(G, snman.constants.CRS)
@@ -40,6 +45,12 @@ given_intersections_gdf = snman.load_intersections(
     inputs_path + 'intersection_polygons/intersection_polygons.shp',
     inputs_path + 'intersection_points/intersection_points.shp'
 )
+
+
+
+# =====================================================================================
+# CONSOLIDATE INTERSECTIONS
+# =====================================================================================
 
 print('Detect intersections')
 intersections_gdf = snman.simplification.merge_nodes_geometric(
@@ -86,6 +97,10 @@ if 1:
         reconnect_edges=True
     )
 
+# =====================================================================================
+# ENRICH AND ADJUST GRAPH
+# =====================================================================================
+
 if 1:
     print('Generate lanes')
     snman.generate_lanes(G)
@@ -102,6 +117,10 @@ if 1:
     print('Identify hierarchy')
     snman.add_hierarchy(G)
 
+# =====================================================================================
+# CONSOLIDATE PARALLEL AND CONSECUTIVE EDGES
+# =====================================================================================
+
 if 1:
     print('Merge parallel and consecutive edges, repeat a few times')
     for i in range(5):
@@ -110,10 +129,19 @@ if 1:
         pass
 
 if 1:
+    print('Simplify link geometries')
+    for id, edge in G.edges.items():
+        edge['geometry'] = edge['geometry'].simplify(20, preserve_topology=False)
+
+if 1:
     print('Add lane stats')
     snman.generate_lane_stats(G)
 
-if 1:
+# =====================================================================================
+# ENRICH
+# =====================================================================================
+
+if 0:
     #TODO: Improve performance with geodataframe operations
     print('Add public transport')
     pt_network = snman.import_shp_to_gdf("C:/DATA/CLOUD STORAGE/polybox/Research/SNMan/SNMan Shared/stadt_zuerich_open_data/Linien_des_offentlichen_Verkehrs_-OGD/ZVV_LINIEN_GEN_L.shp")
@@ -124,6 +152,17 @@ if 0:
     snman.update_osm_tags(G)
 
 if 1:
+    print('Add elevation')
+    spn = oxc.stats.count_streets_per_node(G, nodes=G.nodes)
+    nx.set_node_attributes(G, values=spn, name="street_count")
+    G = oxc.elevation.add_node_elevations_raster(G, inputs_path + 'ch_dhm_25/2056/ch_dhm_2056.tif', cpus=1)
+    G = oxc.elevation.add_edge_grades(G, add_absolute=False)
+
+# =====================================================================================
+# GIVEN LANES
+# =====================================================================================
+
+if 1:
     print('Set given lanes')
     snman.set_given_lanes(G)
 
@@ -131,9 +170,15 @@ if 1:
     print('Create directed graph of given lanes')
     G_minimal_graph_input = snman.create_given_lanes_graph(G)
 
+# =====================================================================================
+# EXPORT
+# =====================================================================================
+
 if 1:
     print('Export network without lanes')
-    snman.export_streetgraph(G, export_path + 'edges.gpkg', export_path + 'nodes.gpkg')
+    snman.export_streetgraph(G, export_path + 'edges.gpkg', export_path + 'nodes.gpkg',
+        edge_columns=['grade', 'ln_desc', 'width_total_m', 'width_motorized_m', 'length', 'n_lanes_motorized', 'cycling_forward', 'cycling_backward']
+    )
 
 if 1:
     print('Export network with lanes')
@@ -144,7 +189,7 @@ if 1:
     print('Export network with given lanes')
     snman.export_streetgraph_with_lanes(G, 'given_lanes', export_path + 'edges_given_lanes.shp')
 
-if 1:
+if 0:
     print('Export given lanes')
     snman.export_streetgraph(G_minimal_graph_input, export_path + 'given_lanes.gpkg', export_path + 'given_lanes_nodes.gpkg')
 
@@ -157,7 +202,11 @@ if 0:
         'maxspeed'
     })
 
-if 1:
+# =====================================================================================
+# REBUILD AND EXPORT
+# =====================================================================================
+
+if 0:
     print('Link elimination')
     G_minimal_graph_output = snman.link_elimination(G_minimal_graph_input)
 

@@ -284,7 +284,11 @@ def count_streets_per_node(G, nodes=None):
     # get one copy of each self-loop edge, because bi-directional self-loops
     # appear twice in the undirected graph (u,v,0 and u,v,1 where u=v), but
     # one-way self-loops will appear only once
-    Gu = G.to_undirected(reciprocal=False, as_view=True)
+    if G.is_directed():
+        Gu = G.to_undirected(reciprocal=False, as_view=True)
+    else:
+        Gu = G.copy(as_view=True)
+
     self_loop_edges = set(nx.selfloop_edges(Gu))
 
     # get all non-self-loop undirected edges, including parallel edges

@@ -9,13 +9,22 @@ DIRECTION_TBD = '?'
 
 LANETYPE_MOTORIZED = 'M'            # A normal lane accessible to car, public transport, and cyclists
 LANETYPE_DEDICATED_PT = 'T'         # Only for public transport
-LANETYPE_CYCLING_TRACK = 'P'        # Only for cyclists
+LANETYPE_CYCLING_TRACK = 'P'        # Only for cyclists and separated from other modes
 LANETYPE_CYCLING_LANE = 'L'         # Advisory cycling lane, in some cases also used by other traffic
-LANETYPE_CYCLING_PSEUDO = 'S'       # Allowing cyclists to travel despite missing separate infrastructure,
-                                    # e.g. in the opposite direction of one-way streets
+LANETYPE_CYCLING_PSEUDO = 'S'       # Contraflow cycling in one-way streets without cycling infrastructure
 LANETYPE_FOOT_CYCLING_MIXED = 'X'   # Mixed, for cyclists and pedestrians
 LANETYPE_FOOT = 'F'                 # Pedestrians only
 
+# For assessing cycling quality, from best to worst
+CYCLING_QUALITY_HIERARCHY = [
+    LANETYPE_CYCLING_TRACK,
+    LANETYPE_FOOT_CYCLING_MIXED,
+    LANETYPE_CYCLING_LANE,
+    LANETYPE_MOTORIZED,
+    LANETYPE_CYCLING_PSEUDO
+]
+
+# For sorting lanes in the crosssection
 LANETYPE_ORDER = ['T', 'M', 'L', 'P', 'S', 'F']
 DIRECTION_ORDER = ['<', '-', '>']
 
@@ -23,10 +32,7 @@ KEY_LANES_DESCRIPTION = 'ln_desc'   # under which key of each edge is the existi
 KEY_GIVEN_LANES_DESCRIPTION = 'given_lanes'
 KEY_REVERSED = '_reversed'          # which key tells if the edge has been reversed
 
-
-# > = unidirectional lane with defined direction
-# ? = unidirectional lane with direction yet to be defined
-# - = bidirectional lane (e.g. local streets with light traffic or cycling paths without lanes)
+# in meters
 DEFAULT_LANE_WIDTHS = {
 
     LANETYPE_MOTORIZED + DIRECTION_FORWARD: 3,
@@ -67,41 +73,52 @@ DEFAULT_LANE_WIDTHS = {
 }
 
 
-OSM_TAGS = ['bridge', 'tunnel', 'layer', 'oneway', 'ref', 'name',
-                    'highway', 'maxspeed', 'service', 'access', 'area',
-                    'landuse', 'width', 'est_width', 'junction', 'surface',
-                    'lanes', 'lanes:forward', 'lanes:backward',
-                    'cycleway', 'cycleway:both', 'cycleway:left', 'cycleway:right',
-                    'bicycle', 'bicycle:conditional',
-                    'sidewalk', 'sidewalk:left', 'sidewalk:right', 'foot',
-                    'psv', 'bus', 'bus:lanes:forward', 'bus:lanes:backward',
-                    'vehicle:lanes:backward', 'vehicle:lanes:forward',
-                    'footway',
-            ]
+OSM_TAGS = {
+    'bridge', 'tunnel', 'layer', 'oneway', 'oneway:bicycle', 'ref', 'name',
+    'highway', 'maxspeed', 'service', 'access', 'area',
+    'landuse', 'width', 'est_width', 'junction', 'surface',
+    'lanes', 'lanes:forward', 'lanes:backward',
+    'cycleway', 'cycleway:both', 'cycleway:left', 'cycleway:right',
+    'bicycle', 'bicycle:conditional',
+    'sidewalk', 'sidewalk:left', 'sidewalk:right', 'foot',
+    'psv', 'bus', 'bus:lanes:forward', 'bus:lanes:backward',
+    'vehicle:lanes:backward', 'vehicle:lanes:forward',
+    'footway'
+}
 
 OSM_FILTER = [
     (
         f'["highway"]["area"!~"yes"]["access"!~"private"]'
-        f'["highway"!~"abandoned|bridleway|bus_guideway|construction|corridor|elevator|'
+        f'["highway"!~"abandoned|bridleway|bus_guideway|corridor|elevator|'
         f'escalator|planned|platform|proposed|raceway"]'
         f'["service"!~"alley|driveway|emergency_access|parking|parking_aisle|private"]'
         f'["access"!~"no"]'
     ),
     (
         f'["highway"]["bicycle"]["bicycle"!~"no"]["area"!~"yes"]'
+        f'["highway"!~"abandoned|bridleway|bus_guideway|corridor|elevator|'
+        f'escalator|planned|platform|proposed|raceway"]'
     ),
     (
         f'["highway"]["bicycle:conditional"]["area"!~"yes"]'
+        f'["highway"!~"abandoned|bridleway|bus_guideway|corridor|elevator|'
+        f'escalator|planned|platform|proposed|raceway"]'
     ),
     (
         f'["highway"]["bus"="yes"]["area"!~"yes"]'
+        f'["highway"!~"abandoned|bridleway|bus_guideway|corridor|elevator|'
+        f'escalator|planned|platform|proposed|raceway"]'
     ),
     (
         f'["highway"]["psv"="yes"]["area"!~"yes"]'
+        f'["highway"!~"abandoned|bridleway|bus_guideway|corridor|elevator|'
+        f'escalator|planned|platform|proposed|raceway"]'
     ),
     # pedestrian paths incl. those mapped as area
     (
         f'["highway"="footway|pedestrian"]'
+        f'["highway"!~"abandoned|bridleway|bus_guideway|corridor|elevator|'
+        f'escalator|planned|platform|proposed|raceway"]'
     )
 ]
 

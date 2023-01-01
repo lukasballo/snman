@@ -8,24 +8,45 @@ import itertools as it
 
 def merge_nodes_geometric(G, tolerance, given_intersections_gdf=None, regions=None):
 
+    G_gdf = oxc.utils_graph.graph_to_gdfs(G, edges=False)
+
+    # exclude nodes already covered by given intersections
+    # this is important to get rid of residuals from the buffers after subtracting the given intersections
+    if given_intersections_gdf is not None:
+        G_gdf = G_gdf[~G_gdf.within(given_intersections_gdf.unary_union)]
+
     if regions is None:
         # buffer nodes GeoSeries then get unary union to merge overlaps
-        auto_intersections = oxc.utils_graph.graph_to_gdfs(G, edges=False)["geometry"].buffer(tolerance).unary_union
+        auto_intersections = (
+            G_gdf["geometry"]
+                .buffer(list(map(lambda n_streets: 1 if n_streets<3 else tolerance,G_gdf.street_count)))
+                .unary_union
+        )
     else:
         # for every region, create buffers and clip them with the region polygon
         auto_intersections = regions.apply(
             lambda region: shp.geometry.MultiPolygon(
-                oxc.utils_graph
-                    .graph_to_gdfs(G, edges=False)["geometry"]
-                    .buffer(region.tolerance)
+                G_gdf["geometry"]
+                    # use a small buffer for those nodes that have less than 3 streets
+                    # this way, we avoid the creation of large intersections through chaining of unnecessary nodes
+                    .buffer(
+                        list(
+                            map(
+                                lambda n_streets: 1 if n_streets<3 else region.tolerance,
+                                G_gdf.street_count
+                            )
+                        )
+                    )
                     .unary_union
                     .intersection(region.geometry)
             ),
             axis=1
         )
-        # unite the results into one geoseries
+        # create a list of lists with individual polygons
         auto_intersections = list(map(lambda multipolygon: multipolygon.geoms, auto_intersections))
+        # flatten into a single list of polygons
         auto_intersections = list(it.chain.from_iterable(auto_intersections))
+        # convert into a single multipolygon (across all regions)
         auto_intersections = shp.geometry.MultiPolygon(auto_intersections)
 
 

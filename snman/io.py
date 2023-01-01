@@ -1,4 +1,4 @@
-from archive import osmnx as ox
+from . import osmnx_customized as oxc
 from . import geometry_tools, lanes
 import geopandas as gpd
 import pandas as pd
@@ -11,7 +11,7 @@ import numpy as np
 import copy
 import itertools
 
-def export_streetgraph(street_graph, file_name_edges, file_name_nodes):
+def export_streetgraph(street_graph, file_name_edges, file_name_nodes, edge_columns=None, node_columns=None):
     """
     Exports street graph as a shape file
 
@@ -19,7 +19,13 @@ def export_streetgraph(street_graph, file_name_edges, file_name_nodes):
     ------
     street_graph : nx.MultiGraph
     """
-    nodes, edges = ox.graph_to_gdfs(street_graph)
+    nodes, edges = oxc.graph_to_gdfs(street_graph)
+
+    if edge_columns:
+        edges = edges[edge_columns + ['geometry']]
+
+    if node_columns:
+        nodes = nodes[node_columns + ['geometry']]
 
     # Limit every attribute to 10 characters to match the SHP format restrictions
     if file_name_edges.split()[-1] == 'shp':
@@ -261,13 +267,18 @@ def export_matsim_xml(street_graph, file_name):
     #TODO: Add DOCTYPE to the file: <!DOCTYPE network SYSTEM "http://www.matsim.org/files/dtd/network_v2.dtd">
 
 
+def load_perimeters(path):
+    perimeters = import_shp_to_gdf(path, crs=4326, index='id')
+    return perimeters
+
+
 def load_regions(path, default_tolerance=None, street_graph=None):
     regions = import_shp_to_gdf(path)
 
     # create a new region containing all points that don't belong to a region yet
     if default_tolerance and street_graph is not None:
         # create a convex hull around all node geometries + some buffer to be safe
-        nodes_gdf = ox.utils_graph.graph_to_gdfs(street_graph, edges=False)
+        nodes_gdf = oxc.utils_graph.graph_to_gdfs(street_graph, edges=False)
         polygon = nodes_gdf.geometry.unary_union.convex_hull.buffer(1000)
         # merge all other polygons
         other_regions_polygons = geometry_tools.ensure_multipolygon(regions['geometry'].unary_union)
@@ -289,6 +300,6 @@ def load_intersections(path_polygons, path_points):
 
 
 def _get_nodes_within_polygon(street_graph, polygon):
-    nodes_gdf = ox.graph_to_gdfs(street_graph, edges=False)
+    nodes_gdf = oxc.graph_to_gdfs(street_graph, edges=False)
     nodes_gdf = nodes_gdf[nodes_gdf.within(polygon)]
     return set(nodes_gdf.index.values)

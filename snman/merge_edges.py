@@ -45,18 +45,27 @@ def _merge_given_parallel_edges(street_graph, edges):
     for index, edge in enumerate(edges):
         edge[3]['_geometry_offset'] = offsets[index]
 
+    # sort the edges geometrically from left to the right
+    edges_sorted_by_go = sorted(edges, key=lambda x: x[3].get('_geometry_offset'), reverse=True)
 
-    sorted_edges = sorted(edges, key=lambda x: x[3].get('_geometry_offset'), reverse=True)
-    # take the middle edge as parent
-    i_parent_edge = math.floor(len(sorted_edges)/2)
-    parent_edge = sorted_edges[i_parent_edge]
+    # take the edge with the highest hierarchy as a parent edge
+    i_parent_edge = 0
+    edges_sorted_by_hierarchy = sorted(edges, key=lambda x: x[3].get('hierarchy'))
+    parent_edge = edges_sorted_by_hierarchy[i_parent_edge]
     u = parent_edge[0]
     v = parent_edge[1]
 
-    parent_edge[3]['_merge_parallel_src_ln_desc'] = str([edge[3].get('ln_desc') for edge in sorted_edges])
-    parent_edge[3]['ln_desc'] = list(it.chain(*[edge[3].get('ln_desc') for edge in sorted_edges]))
+    # merge the lanes from all
+    parent_edge[3]['_merge_parallel_src_ln_desc'] = str([edge[3].get('ln_desc') for edge in edges_sorted_by_go])
+    parent_edge[3]['ln_desc'] = list(it.chain(*[edge[3].get('ln_desc') for edge in edges_sorted_by_go]))
 
-    for index, edge in enumerate(sorted_edges):
+    # set the maximum maxspeed
+    maxspeeds = [edge[3].get('maxspeed') for edge in edges]
+    maxspeeds = list(filter(lambda e: isinstance(e, int), maxspeeds))
+    maxspeed = max(maxspeeds) if len(maxspeeds) > 0 else None
+    parent_edge[3]['maxspeed'] = maxspeed
+
+    for index, edge in enumerate(edges_sorted_by_hierarchy):
         # remove edge, except if it's the parent edge
         if index != i_parent_edge:
             street_graph.remove_edges_from([edge])
