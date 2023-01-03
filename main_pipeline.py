@@ -22,7 +22,7 @@ perimeters = snman.load_perimeters(inputs_path + 'perimeters/perimeters.shp')
 
 print('Get data from OSM server')
 G = oxc.graph_from_polygon(
-    perimeters.loc['zurich-birmensdorf']['geometry'],
+    perimeters.loc['meister']['geometry'],
     custom_filter=snman.constants.OSM_FILTER,
     simplify=True,
     simplify_strict=False,
@@ -61,13 +61,15 @@ intersections_gdf = snman.simplification.merge_nodes_geometric(
 
 print('Save intersection geometries into a file')
 snman.export_gdf(intersections_gdf, export_path + 'intersections_polygons.gpkg', columns=['geometry'])
-snman.export_gdf(gpd.GeoDataFrame(intersections_gdf, geometry='point_geometry'), export_path + 'intersections_points.gpkg', columns=['point_geometry'])
 
 if 1:
     # must be run a few times for including buffers of newly added nodes
     for i in range(3):
         print('Split through edges in intersections')
         intersections = snman.split_through_edges_in_intersections(G, intersections_gdf)
+
+        print('Add layers to nodes')
+        snman.graph_tools._add_layers_to_nodes(G)
 
         print('Update precalculated attributes')
         snman.update_precalculated_attributes(G)
@@ -79,12 +81,11 @@ if 1:
             regions=regions
         )
 
-        print('Save intersection geometries into a file')
-        snman.export_gdf(intersections_gdf, export_path + 'intersections_polygons.gpkg', columns=['geometry'])
-        snman.export_gdf(gpd.GeoDataFrame(intersections_gdf, geometry='point_geometry'), export_path + 'intersections_points.gpkg', columns=['point_geometry'])
+        #print('Save intersection geometries into a file')
+        #snman.export_gdf(intersections_gdf, export_path + 'intersections_polygons.gpkg', columns=['geometry'])
 
         print('Add connections between components in intersections')
-        snman.connect_components_in_intersections(G, intersections_gdf, separate_layers=False)
+        snman.connect_components_in_intersections(G, intersections_gdf, separate_layers=True)
 
 if 1:
     print('Save raw street graph')
@@ -142,7 +143,7 @@ if 1:
 # =====================================================================================
 
 if 0:
-    #TODO: Improve performance with geodataframe operations
+    #TODO: Improve performance
     print('Add public transport')
     pt_network = snman.import_shp_to_gdf("C:/DATA/CLOUD STORAGE/polybox/Research/SNMan/SNMan Shared/stadt_zuerich_open_data/Linien_des_offentlichen_Verkehrs_-OGD/ZVV_LINIEN_GEN_L.shp")
     snman.match_pt(G, pt_network)
@@ -162,11 +163,11 @@ if 1:
 # GIVEN LANES
 # =====================================================================================
 
-if 1:
+if 0:
     print('Set given lanes')
     snman.set_given_lanes(G)
 
-if 1:
+if 0:
     print('Create directed graph of given lanes')
     G_minimal_graph_input = snman.create_given_lanes_graph(G)
 
@@ -185,7 +186,7 @@ if 1:
     #TODO: Fix problems with saving lanes as a GeoPackage
     snman.export_streetgraph_with_lanes(G, 'ln_desc', export_path + 'edges_lanes.shp')
 
-if 1:
+if 0:
     print('Export network with given lanes')
     snman.export_streetgraph_with_lanes(G, 'given_lanes', export_path + 'edges_given_lanes.shp')
 

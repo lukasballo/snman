@@ -72,6 +72,10 @@ DEFAULT_LANE_WIDTHS = {
 
 }
 
+# Which highway=* values represent different infrastructures (primarily) for pedestrians and cyclists
+PEDESTRIAN_HIGHWAY_VALUES = {'footway', 'path', 'track', 'pedestrian', 'steps'}
+CYCLING_HIGHWAY_VALUES = {'cycleway'}
+ACTIVE_HIGHWAY_VALUES = PEDESTRIAN_HIGHWAY_VALUES.union(CYCLING_HIGHWAY_VALUES)
 
 OSM_TAGS = {
     'bridge', 'tunnel', 'layer', 'oneway', 'oneway:bicycle', 'ref', 'name',

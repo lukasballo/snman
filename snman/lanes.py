@@ -112,7 +112,7 @@ def _generate_lanes_for_edge(edge):
     # PART 3: GENERATE LANES
 
     # Cycleway [with walking]
-    if edge.get('highway') == 'cycleway':
+    if edge.get('highway') in CYCLING_HIGHWAY_VALUES:
         # walking allowed without segregation
         if edge.get('foot') in {'yes', 'designated'} and edge.get('segregated') != 'yes':
             # oneway for cyclists
@@ -141,9 +141,10 @@ def _generate_lanes_for_edge(edge):
                 both_dir_lanes_list.extend([LANETYPE_CYCLING_TRACK + DIRECTION_BOTH])
 
     # Walkway [with cycling]
-    elif edge.get('highway') in {'footway', 'path', 'track', 'pedestrian', 'steps'}:
+    elif edge.get('highway') in PEDESTRIAN_HIGHWAY_VALUES:
         # cycling allowed without segregation
-        if edge.get('bicycle') in {'yes', 'designated'} and edge.get('segregated') != 'yes':
+        if (edge.get('bicycle') in {'yes', 'designated'} or edge.get('bicycle:conditional'))\
+                and edge.get('segregated') != 'yes':
             # oneway for cyclists
             if edge.get('oneway') in {'yes', 1} or edge.get('oneway:bicycle') in {'yes', 1}:
                 both_dir_lanes_list.extend([LANETYPE_FOOT_CYCLING_MIXED + _DIRECTION_FORWARD])
@@ -151,7 +152,8 @@ def _generate_lanes_for_edge(edge):
             else:
                 both_dir_lanes_list.extend([LANETYPE_FOOT_CYCLING_MIXED + DIRECTION_BOTH])
         # cycling allowed with segregation
-        elif edge.get('bicycle') in {'yes', 'designated'} and edge.get('segregated') == 'yes':
+        elif (edge.get('bicycle') in {'yes', 'designated'} or edge.get('bicycle:conditional'))\
+                and edge.get('segregated') == 'yes':
             # oneway for cyclists
             if edge.get('oneway') in {'yes', 1} or edge.get('oneway:bicycle') in {'yes', 1}:
                 both_dir_lanes_list.extend([LANETYPE_FOOT + DIRECTION_BOTH])

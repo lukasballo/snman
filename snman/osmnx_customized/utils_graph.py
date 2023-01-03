@@ -407,10 +407,16 @@ def _is_duplicate_edge(data1, data2):
     """
     is_dupe = False
 
+    if data1.get("osmid") is None:
+        print(data1)
+
+    if data2.get("osmid") is None:
+        print(data2)
+
     # if either edge's osmid contains multiple values (due to simplification)
     # compare them as sets to see if they contain the same values
-    osmid1 = set(data1["osmid"]) if isinstance(data1["osmid"], list) else data1["osmid"]
-    osmid2 = set(data2["osmid"]) if isinstance(data2["osmid"], list) else data2["osmid"]
+    osmid1 = set(data1.get("osmid")) if isinstance(data1.get("osmid"), list) else data1.get("osmid")
+    osmid2 = set(data2.get("osmid")) if isinstance(data2.get("osmid"), list) else data2.get("osmid")
 
     # if they contain the same osmid or set of osmids (due to simplification)
     if osmid1 == osmid2:

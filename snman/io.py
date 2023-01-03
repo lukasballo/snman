@@ -36,6 +36,8 @@ def export_streetgraph(street_graph, file_name_edges, file_name_nodes, edge_colu
         edges['ln_desc'] = edges['ln_desc'].apply(lambda ln_desc: ' | '.join(ln_desc))
     if 'given_lanes' in edges:
         edges['given_lanes'] = edges['given_lanes'].apply(lambda ln_desc: ' | '.join(ln_desc))
+    if 'layers' in nodes:
+        nodes['layers'] = nodes['layers'].apply(lambda layers: str(layers))
 
     export_gdf(edges, file_name_edges)
     export_gdf(nodes, file_name_nodes)

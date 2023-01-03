@@ -133,8 +133,13 @@ def consolidate_intersections(G, intersections, reconnect_edges=True):
     groups = gdf.groupby("cluster")
     for cluster_label, nodes_subset in groups:
         if len(nodes_subset) > 1:
+            Gs = G.subgraph(nodes_subset.index).copy()
+            # Ignore pedestrian links for the detection of weakly connected components
+            #for id, edge in Gs.copy().edges.items():
+            #    if edge.get('highway') in {'path', 'footway', 'steps'}:
+            #        Gs.remove_edge(*id)
             # identify all the (weakly connected) component in cluster
-            wccs = list(nx.weakly_connected_components(G.subgraph(nodes_subset.index)))
+            wccs = list(nx.weakly_connected_components(Gs))
             if len(wccs) > 0:
                 # if there are multiple components in this cluster
                 suffix = 0
