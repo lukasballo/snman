@@ -66,6 +66,9 @@ def _is_endpoint(G, node, strict=True):
         # endpoint
         return True
 
+    elif G.nodes[node].get('highway') == 'traffic_signals':
+        return True
+
     # rule 4
     elif not strict:
         # non-strict mode: do its incident edges have different OSM IDs?

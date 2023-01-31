@@ -83,12 +83,13 @@ def export_streetgraph_with_lanes(street_graph, lanes_attribute, file_name):
                 'direction': lane_properties.direction,
                 'descr': lane,
                 'width_m': lane_properties.width,
+                'layer': data.get('layer'),
                 'geometry': geom
             })
 
     lanes_gdf = gpd.GeoDataFrame(
         lanes_list,
-        columns=['type', 'direction', 'descr', 'width_m', 'geometry'],
+        columns=['type', 'direction', 'descr', 'width_m', 'layer', 'geometry'],
         geometry='geometry'
     )
 

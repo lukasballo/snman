@@ -94,36 +94,51 @@ OSM_FILTER = [
     (
         f'["highway"]["area"!~"yes"]["access"!~"private"]'
         f'["highway"!~"abandoned|bridleway|bus_guideway|corridor|elevator|'
-        f'escalator|planned|platform|proposed|raceway"]'
+        f'escalator|planned|platform|proposed|raceway|construction"]'
         f'["service"!~"alley|driveway|emergency_access|parking|parking_aisle|private"]'
         f'["access"!~"no"]'
     ),
     (
         f'["highway"]["bicycle"]["bicycle"!~"no"]["area"!~"yes"]'
         f'["highway"!~"abandoned|bridleway|bus_guideway|corridor|elevator|'
-        f'escalator|planned|platform|proposed|raceway"]'
+        f'escalator|planned|platform|proposed|raceway|construction"]'
     ),
     (
         f'["highway"]["bicycle:conditional"]["area"!~"yes"]'
         f'["highway"!~"abandoned|bridleway|bus_guideway|corridor|elevator|'
-        f'escalator|planned|platform|proposed|raceway"]'
+        f'escalator|planned|platform|proposed|raceway|construction"]'
     ),
     (
         f'["highway"]["bus"="yes"]["area"!~"yes"]'
         f'["highway"!~"abandoned|bridleway|bus_guideway|corridor|elevator|'
-        f'escalator|planned|platform|proposed|raceway"]'
+        f'escalator|planned|platform|proposed|raceway|construction"]'
     ),
     (
         f'["highway"]["psv"="yes"]["area"!~"yes"]'
         f'["highway"!~"abandoned|bridleway|bus_guideway|corridor|elevator|'
-        f'escalator|planned|platform|proposed|raceway"]'
+        f'escalator|planned|platform|proposed|raceway|construction"]'
     ),
     # pedestrian paths incl. those mapped as area
     (
         f'["highway"="footway|pedestrian"]'
         f'["highway"!~"abandoned|bridleway|bus_guideway|corridor|elevator|'
-        f'escalator|planned|platform|proposed|raceway"]'
+        f'escalator|planned|platform|proposed|raceway|construction"]'
     )
 ]
 
 CRS = 'epsg:2056'
+
+EXPORT_EDGE_COLUMNS = [
+    'grade',
+    'ln_desc',
+    'width_total_m',
+    'width_motorized_m',
+    'length',
+    'n_lanes_motorized',
+    'cycling_forward',
+    'cycling_backward',
+    'maxspeed',
+    'highway',
+    'hierarchy',
+    'layer'
+]

@@ -156,7 +156,11 @@ overpass_settings = "[out:json][timeout:{timeout}]{maxsize}"
 requests_kwargs = dict()
 timeout = 180
 use_cache = True
-useful_tags_node = ["ref", "highway"]
+useful_tags_node = [
+    "ref",
+    "highway",
+    "traffic_signals:direction"
+]
 useful_tags_way = [
     "bridge",
     "tunnel",

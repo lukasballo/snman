@@ -21,13 +21,14 @@ print('Load perimeters')
 perimeters = snman.load_perimeters(inputs_path + 'perimeters/perimeters.shp')
 
 print('Get data from OSM server')
+# At this step, simplification means only removing degree=2 edges
 G = oxc.graph_from_polygon(
-    perimeters.loc['meister']['geometry'],
+    perimeters.loc['matsim_zrh5']['geometry'],
     custom_filter=snman.constants.OSM_FILTER,
     simplify=True,
     simplify_strict=False,
     retain_all=True,
-    one_edge_per_direction=False,
+    one_edge_per_direction=False
 )
 
 print('Prepare graph')
@@ -45,8 +46,6 @@ given_intersections_gdf = snman.load_intersections(
     inputs_path + 'intersection_polygons/intersection_polygons.shp',
     inputs_path + 'intersection_points/intersection_points.shp'
 )
-
-
 
 # =====================================================================================
 # CONSOLIDATE INTERSECTIONS
@@ -132,7 +131,7 @@ if 1:
 if 1:
     print('Simplify link geometries')
     for id, edge in G.edges.items():
-        edge['geometry'] = edge['geometry'].simplify(20, preserve_topology=False)
+        edge['geometry'] = edge['geometry'].simplify(25, preserve_topology=False)
 
 if 1:
     print('Add lane stats')
@@ -148,7 +147,7 @@ if 0:
     pt_network = snman.import_shp_to_gdf("C:/DATA/CLOUD STORAGE/polybox/Research/SNMan/SNMan Shared/stadt_zuerich_open_data/Linien_des_offentlichen_Verkehrs_-OGD/ZVV_LINIEN_GEN_L.shp")
     snman.match_pt(G, pt_network)
 
-if 0:
+if 1:
     print('Update OSM tags')
     snman.update_osm_tags(G)
 
@@ -178,8 +177,12 @@ if 0:
 if 1:
     print('Export network without lanes')
     snman.export_streetgraph(G, export_path + 'edges.gpkg', export_path + 'nodes.gpkg',
-        edge_columns=['grade', 'ln_desc', 'width_total_m', 'width_motorized_m', 'length', 'n_lanes_motorized', 'cycling_forward', 'cycling_backward']
+        edge_columns=snman.constants.EXPORT_EDGE_COLUMNS
     )
+
+if 1:
+    print('Export network without lanes')
+    snman.export_streetgraph(G, export_path + 'edges_all_attributes.gpkg', export_path + 'nodes_all_attributes.gpkg')
 
 if 1:
     print('Export network with lanes')
@@ -194,10 +197,10 @@ if 0:
     print('Export given lanes')
     snman.export_streetgraph(G_minimal_graph_input, export_path + 'given_lanes.gpkg', export_path + 'given_lanes_nodes.gpkg')
 
-if 0:
+if 1:
     print('Export OSM XML')
     snman.export_osm_xml(G, export_path + 'new_network.osm',{
-        'lanes', 'lanes:forward', 'lanes:backward', 'lanes:both_ways',
+        'highway', 'lanes', 'lanes:forward', 'lanes:backward', 'lanes:both_ways',
         'cycleway', 'cycleway:lane', 'cycleway:left', 'cycleway:left:lane', 'cycleway:right', 'cycleway:right:lane',
         'bus:lanes:backward', 'bus:lanes:forward', 'vehicle:lanes:backward', 'vehicle:lanes:forward',
         'maxspeed'

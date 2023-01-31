@@ -525,6 +525,9 @@ def _update_osm_tags_for_edge(edge, lanes_description_key):
         # only backward
         data['cycleway:left'] = 'track'
 
+    maxspeed = data.get('maxspeed', -1)
+    if maxspeed == -1:
+        del data['maxspeed']
 
 def _order_lanes(lanes):
 

@@ -120,7 +120,7 @@ def consolidate_intersections(G, intersections, reconnect_edges=True):
     # attach each node to its cluster of merged nodes. first get the original
     # graph's node points then spatial join to give each node the label of
     # cluster it's within
-    node_points = oxc.utils_graph.graph_to_gdfs(G, edges=False)[["geometry", "street_count"]]
+    node_points = oxc.utils_graph.graph_to_gdfs(G, edges=False)[["geometry", "street_count", "highway"]]
     gdf = gpd.sjoin(node_points, node_clusters, how="left", predicate="within")
     gdf = gdf.drop(columns="geometry").rename(columns={"index_right": "cluster"})
 
@@ -170,10 +170,16 @@ def consolidate_intersections(G, intersections, reconnect_edges=True):
     for cluster_label, nodes_subset in groups:
 
         osmids = nodes_subset.index.to_list()
+        highway_tags = set(nodes_subset['highway'].to_list())
+        traffic_signals = 1 * ('traffic_signals' in highway_tags)
         if len(osmids) == 1:
             # if cluster is a single node, add that node to new graph
             osmid = osmids[0]
-            H.add_node(cluster_label, osmid_original=osmid, **G.nodes[osmid])
+            H.add_node(cluster_label,
+                osmid_original=osmid,
+                traffic_signals = traffic_signals,
+                **G.nodes[osmid]
+            )
 
         else:
             # if cluster is multiple merged nodes, create one new node to
@@ -181,6 +187,8 @@ def consolidate_intersections(G, intersections, reconnect_edges=True):
             H.add_node(
                 cluster_label,
                 osmid_original=str(osmids),
+                highway=str(highway_tags),
+                traffic_signals=traffic_signals,
                 x=nodes_subset["x"].iloc[0],
                 y=nodes_subset["y"].iloc[0],
             )

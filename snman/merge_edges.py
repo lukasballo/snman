@@ -24,8 +24,8 @@ def merge_parallel_edges(street_graph):
     """
     uv_index = {}
     for edge in street_graph.edges(data=True, keys=True):
-        # Group edges by start/end nodes
-        uv_key = ','.join([str(min(edge[0:2])), str(max(edge[0:2]))])
+        # Group edges by start/end nodes and layer
+        uv_key = ','.join([str(min(edge[0:2])), str(max(edge[0:2])), str(edge[3].get('layer'))])
         if uv_key not in uv_index:
             uv_index[uv_key] = []
         uv_index[uv_key].append(edge)
