@@ -11,7 +11,7 @@ print('Starting...')
 INTERSECTION_TOLERANCE = 10
 inputs_path = 'C:/DATA/CLOUD STORAGE/polybox/Research/SNMan/SNMan Shared/inputs/'
 export_path = 'C:/DATA/CLOUD STORAGE/polybox/Research/SNMan/SNMan Shared/qgis_previews/'
-oxc.settings.useful_tags_way = snman.constants.OSM_TAGS
+oxc.utils.config(useful_tags_way=snman.constants.OSM_TAGS)
 
 # =====================================================================================
 # LOAD DATA
