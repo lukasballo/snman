@@ -80,11 +80,11 @@ if 1:
             regions=regions
         )
 
-        #print('Save intersection geometries into a file')
-        #snman.export_gdf(intersections_gdf, export_path + 'intersections_polygons.gpkg', columns=['geometry'])
-
         print('Add connections between components in intersections')
         snman.connect_components_in_intersections(G, intersections_gdf, separate_layers=True)
+
+    print('Save intersection geometries into a file')
+    snman.export_gdf(intersections_gdf, export_path + 'intersections_polygons.gpkg', columns=['geometry'])
 
 if 1:
     print('Save raw street graph')
@@ -171,6 +171,12 @@ if 0:
     G_minimal_graph_input = snman.create_given_lanes_graph(G)
 
 # =====================================================================================
+# VARIA
+# =====================================================================================
+
+snman.graph_tools.add_connected_component_ids(G)
+G = snman.graph_tools.keep_only_the_largest_connected_component(G)
+# =====================================================================================
 # EXPORT
 # =====================================================================================
 
@@ -203,8 +209,9 @@ if 1:
         'highway', 'lanes', 'lanes:forward', 'lanes:backward', 'lanes:both_ways',
         'cycleway', 'cycleway:lane', 'cycleway:left', 'cycleway:left:lane', 'cycleway:right', 'cycleway:right:lane',
         'bus:lanes:backward', 'bus:lanes:forward', 'vehicle:lanes:backward', 'vehicle:lanes:forward',
-        'maxspeed'
-    })
+        'maxspeed', 'oneway',
+        '_connected_component'
+    }, uv_tags=True, tag_all_nodes=True)
 
 # =====================================================================================
 # REBUILD AND EXPORT

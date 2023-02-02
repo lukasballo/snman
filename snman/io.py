@@ -10,6 +10,7 @@ import xml.etree.ElementTree as ET
 import numpy as np
 import copy
 import itertools
+import networkx as nx
 
 def export_streetgraph(street_graph, file_name_edges, file_name_nodes, edge_columns=None, node_columns=None):
     """
@@ -134,31 +135,38 @@ def convert_crs_of_street_graph(street_graph, to_crs):
         data['y'] = geom.y
 
 
-def export_osm_xml(street_graph, file_name, tags):
+def export_osm_xml(G:nx.MultiGraph, file_name:str, tags:set, uv_tags:bool=False, tag_all_nodes:bool=False) -> None:
+    """
+    Generates an OSM file from the street graph
+        :param G: street graph
+        :param file_name: where to save
+        :param tags: which tags should be included
+        :param uv_tags: include tags indicating the origin (_u) and destination (_v) nodes, as well as the key (_key),
+            for debugging purposes
+        :tag_all_nodes: give every node a tag '_node' so that it is visible in qgis import, for debugging purposes
+    """
 
-    # Initial ID value for new OSM objects
-    osm_id = itertools.count(10**12)
+    # initial ID value for new OSM objects, avoid duplicity with graph node ids
+    max_node_id = max(list(G.nodes))
+    osm_id = itertools.count(max_node_id*100)
 
-    street_graph = copy.copy(street_graph)
-    convert_crs_of_street_graph(street_graph, 'epsg:4326')
+    # make a copy of the original graph and concert it to pseudo mercator which is the official OSM crs
+    G = copy.copy(G)
+    convert_crs_of_street_graph(G, 'epsg:4326')
 
-    # Create the overall structure
+    # here, we build the XML tree...
+    # create the overall structure of the XML
     tree = ET.ElementTree('tree')
 
-    # OSM Metadata
+    # add OSM metadata
     osm = ET.Element('osm', attrib={
         'version': '0.6',
         'generator': 'osmium/1.14.0'
     })
 
-    # Bounds
-    lats = []
-    lons = []
-
-    for id, data in street_graph.nodes.items():
-        lats.append(data.get('y'))
-        lons.append(data.get('x'))
-
+    # bounds
+    lats = [data.get('y') for id, data in G.nodes.items()]
+    lons = [data.get('x') for id, data in G.nodes.items()]
     ET.SubElement(osm, 'bounds', attrib={
         'minlat': str(min(lats)),
         'minlon': str(min(lons)),
@@ -166,40 +174,42 @@ def export_osm_xml(street_graph, file_name, tags):
         'maxlon': str(max(lons))
     })
 
-    # Nodes dictionary
+    # nodes dictionary, will be filled while creating ways
     nodes = {}
 
-    # Ways
-    for id, data in street_graph.edges.items():
-        first_osmid = np.array([data.get('osmid', 'osm_id_undefined')]).flatten()[0]
+    # ways
+    for id, data in G.edges.items():
+
         way = ET.SubElement(osm, 'way', attrib={
-            'id': str(first_osmid),
+            'id': str(next(osm_id)),    # assign a new unique osm id to each way
             'version': '1',
             'timestamp': '2000-01-01T00:00:00Z'
         })
 
-        # Way nodes
+        # way nodes
         for i in [0, 0.5, 1]:
 
-            # First and last node
+            # first and last node
             if i in [0,1]:
                 this_id = id[i]
-                this_graph_node = street_graph.nodes[this_id]
-                nodes[str(this_id)] = shapely.geometry.Point(this_graph_node['x'], this_graph_node['y'])
+                this_graph_node = G.nodes[this_id]
+                nodes[this_id] = shapely.geometry.Point(this_graph_node['x'], this_graph_node['y'])
+                # add node along the way, use the existing node id
                 ET.SubElement(way, 'nd', attrib={'ref': str(this_id)})
 
-            # Intermediary nodes
+            # intermediary nodes
             elif i == 0.5:
                 linestring = data.get('geometry')
-                for point in linestring.coords:
-                    this_osm_id = str(next(osm_id))
-                    # Add to the list of nodes
-                    nodes[this_osm_id] = shapely.geometry.Point(point)
-                    ET.SubElement(way, 'nd', attrib={'ref': this_osm_id})
+                # iterate over all points along the linestring geometry but exclude the first ans last one
+                for point in linestring.coords[1:-1]:
+                    this_new_osm_id = next(osm_id)
+                    nodes[this_new_osm_id] = shapely.geometry.Point(point)
+                    # add node along the way, assign a new unique id
+                    ET.SubElement(way, 'nd', attrib={'ref': str(this_new_osm_id)})
 
-
-        # Way Tags
+        # way tags
         for tag in tags:
+            # skip if the tag is note defined for this way
             if data.get(tag, None) is None:
                 continue
             ET.SubElement(way, 'tag', attrib={
@@ -207,15 +217,25 @@ def export_osm_xml(street_graph, file_name, tags):
                 'v': str(data.get(tag, ''))
             })
 
-    # Nodes
+        if uv_tags:
+            ET.SubElement(way, 'tag', attrib={'k': '_u',   'v': str(id[0])})
+            ET.SubElement(way, 'tag', attrib={'k': '_v',   'v': str(id[1])})
+            ET.SubElement(way, 'tag', attrib={'k': '_key', 'v': str(id[2])})
+
+    # nodes
     for id, point in nodes.items():
-        ET.SubElement(osm, 'node', attrib={
-            'id': id,
+        node = ET.SubElement(osm, 'node', attrib={
+            'id': str(id),
             'version': '1',
             'timestamp': '2000-01-01T00:00:00Z',
             'lat': str(point.y),
             'lon': str(point.x)
         })
+
+        if tag_all_nodes:
+            ET.SubElement(node, 'tag', attrib={'k': '_node', 'v': 'true'})
+
+        #TODO: add other tags
 
     # Save into xml file
     tree._setroot(osm)

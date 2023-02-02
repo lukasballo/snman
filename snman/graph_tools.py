@@ -11,6 +11,64 @@ import itertools
 from . import osmnx_customized as oxc
 
 
+def create_OSM_graph(G):
+    pass
+
+
+def create_directed_graph(G):
+    pass
+
+
+def add_connected_component_ids(G):
+    """
+    For directed graphs: Adds IDs of weakly and strongly connected components to all edges
+    For undirected graphs: Adds IDs of connected components to all edges
+
+    Parameters
+    ----------
+    G : nx.MultiDiGraph
+    """
+
+
+    if G.is_directed():
+
+        wccs = nx.weakly_connected_components(G)
+        for wcc, nodes in enumerate(wccs):
+            subgraph = nx.subgraph(G, nodes)
+            nx.set_edge_attributes(subgraph, wcc, '_weakly_connected_component')
+
+        sccs = nx.strongly_connected_components(G)
+        for scc, nodes in enumerate(sccs):
+            subgraph = nx.subgraph(G, nodes)
+            nx.set_edge_attributes(subgraph, wcc, '_strongly_connected_component')
+
+    else:
+
+        ccs = nx.connected_components(G)
+        for wcc, nodes in enumerate(ccs):
+            subgraph = nx.subgraph(G, nodes)
+            nx.set_edge_attributes(subgraph, wcc, '_connected_component')
+
+
+def keep_only_the_largest_connected_component(G, weak:bool=False) -> nx.MultiGraph:
+    """
+    Remove all nodes and edges that are disconnected from the largest connected component.
+    For directed graphs, strong connectedness will be considered, unless weak=True
+        :param weak: use weakly connected component in case of a directed graph
+        :returns: copy of subgraph representing the largest connected component
+    """
+
+    if G.is_directed():
+        if weak:
+            nodes = max(nx.weakly_connected_components(G), key=len)
+        else:
+            nodes = max(nx.strongly_connected_components(G), key=len)
+    else:
+        nodes = max(nx.connected_components(G), key=len)
+
+    return G.subgraph(nodes).copy()
+
+
 def _edge_hash(edge):
     return '-'.join(map(str, edge[0:3]))
 
