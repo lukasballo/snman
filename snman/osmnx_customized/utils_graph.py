@@ -63,7 +63,10 @@ def graph_to_gdfs(G, nodes=True, edges=True, node_geometry=True, fill_edge_geome
         if not G.edges:  # pragma: no cover
             raise ValueError("graph contains no edges")
 
-        u, v, k, data = zip(*G.edges(keys=True, data=True))
+        if G.is_multigraph():
+            u, v, k, data = zip(*G.edges(keys=True, data=True))
+        else:
+            u, v, data = zip(*G.edges(data=True))
 
         if fill_edge_geometry:
 
@@ -92,8 +95,11 @@ def graph_to_gdfs(G, nodes=True, edges=True, node_geometry=True, fill_edge_geome
         # add u, v, key attributes as index
         gdf_edges["u"] = u
         gdf_edges["v"] = v
-        gdf_edges["key"] = k
-        gdf_edges.set_index(["u", "v", "key"], inplace=True)
+        if G.is_multigraph():
+            gdf_edges["key"] = k
+            gdf_edges.set_index(["u", "v", "key"], inplace=True)
+        else:
+            gdf_edges.set_index(["u", "v"], inplace=True)
 
         utils.log("Created edges GeoDataFrame from graph")
 

@@ -14,18 +14,13 @@ def set_given_lanes(street_graph):
     for id, data in street_graph.edges.items():
         data[constants.KEY_GIVEN_LANES_DESCRIPTION] = []
 
-        """
-        # In case of highways keep all lanes as they are
-        if data.get('hierarchy') == hierarchy.HIGHWAY:
-            data[constants.KEY_GIVEN_LANES_DESCRIPTION] = data.get(lanes.KEY_LANES_DESCRIPTION)
-        """
-
         # For roads with public transport, keep both directions
         if data.get('pt_tram') or data.get('pt_bus'):
             data[constants.KEY_GIVEN_LANES_DESCRIPTION] += [
                 lanes.LANETYPE_MOTORIZED + lanes.DIRECTION_BACKWARD,
                 lanes.LANETYPE_MOTORIZED + lanes.DIRECTION_FORWARD
             ]
+
         # For normal roads, keep one single-direction lane
         elif data.get('hierarchy') in [hierarchy.MAIN_ROAD, hierarchy.LOCAL_ROAD, hierarchy.HIGHWAY]:
             data[constants.KEY_GIVEN_LANES_DESCRIPTION] += [lanes.LANETYPE_MOTORIZED + lanes.DIRECTION_TBD]
@@ -36,7 +31,8 @@ def set_given_lanes(street_graph):
 
 
 
-def create_given_lanes_graph(G):
+
+def create_given_lanes_graph(G, hierarchies_to_remove=[]):
     """
     Returns a directed graph of given (mandatory) lanes. Lanes with changeable direction are marked with an attribute
     """
@@ -51,6 +47,9 @@ def create_given_lanes_graph(G):
 
         for lane in given_lanes:
             lane_properties = lanes._lane_properties(lane)
+
+            if data.get('hierarchy') in hierarchies_to_remove:
+                continue
 
             if lane_properties.direction in [lanes.DIRECTION_FORWARD, lanes.DIRECTION_BOTH]:
                 H.add_edge(u, v, fixed=True)

@@ -32,11 +32,15 @@ def export_streetgraph(street_graph, file_name_edges, file_name_nodes, edge_colu
     if file_name_edges.split()[-1] == 'shp':
         edges.columns = [column[0:10] for column in edges.columns]
 
+    #TODO: Detect lists and convert them to strings automatically
+
     # Convert list attributes to strings
     if 'ln_desc' in edges:
         edges['ln_desc'] = edges['ln_desc'].apply(lambda ln_desc: ' | '.join(ln_desc))
     if 'given_lanes' in edges:
         edges['given_lanes'] = edges['given_lanes'].apply(lambda ln_desc: ' | '.join(ln_desc))
+    if 'ln_desc_after' in edges:
+            edges['ln_desc_after'] = edges['ln_desc_after'].apply(lambda ln_desc: ' | '.join(ln_desc))
     if 'layers' in nodes:
         nodes['layers'] = nodes['layers'].apply(lambda layers: str(layers))
 

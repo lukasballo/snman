@@ -23,7 +23,7 @@ perimeters = snman.load_perimeters(inputs_path + 'perimeters/perimeters.shp')
 print('Get data from OSM server')
 # At this step, simplification means only removing degree=2 edges
 G = oxc.graph_from_polygon(
-    perimeters.loc['matsim_zrh5']['geometry'],
+    perimeters.loc['waltikon']['geometry'],
     custom_filter=snman.constants.OSM_FILTER,
     simplify=True,
     simplify_strict=False,
@@ -162,23 +162,63 @@ if 1:
 # GIVEN LANES
 # =====================================================================================
 
-if 0:
+if 1:
     print('Set given lanes')
     snman.set_given_lanes(G)
 
-if 0:
+if 1:
     print('Create directed graph of given lanes')
-    G_minimal_graph_input = snman.create_given_lanes_graph(G)
+    G_minimal_graph_input = snman.create_given_lanes_graph(G, hierarchies_to_remove={snman.hierarchy.HIGHWAY})
 
 # =====================================================================================
 # VARIA
 # =====================================================================================
 
-snman.graph_tools.add_connected_component_ids(G)
-G = snman.graph_tools.keep_only_the_largest_connected_component(G)
+if 1:
+    print('Keep only the largest connected component')
+    snman.graph_tools.add_connected_component_ids(G)
+    G = snman.graph_tools.keep_only_the_largest_connected_component(G)
+
+# =====================================================================================
+# REBUILD AND EXPORT
+# =====================================================================================
+
+if 1:
+    print('Link elimination')
+    G_minimal_graph_output = snman.link_elimination(G_minimal_graph_input)
+
+    print('Export minimal graph - output')
+    snman.export_streetgraph(G_minimal_graph_output, export_path + 'minimal_graph_out_edges.gpkg', export_path + 'minimal_graph_out_nodes.gpkg')
+
+    print('Rebuild lanes according to the OWTOP graph')
+    snman.owtop.rebuild_lanes_from_owtop_graph(G, G_minimal_graph_output, hierarchies_to_protect={snman.hierarchy.HIGHWAY})
+
+    print('Export rebuilt network with lanes')
+    snman.export_streetgraph_with_lanes(G, 'ln_desc_after', export_path + 'edges_lanes_after.shp')
+
+
 # =====================================================================================
 # EXPORT
 # =====================================================================================
+
+if 1:
+    print('Export network with given lanes')
+    snman.export_streetgraph_with_lanes(G, 'given_lanes', export_path + 'edges_given_lanes.gpkg')
+
+if 1:
+    print('Export given lanes')
+    snman.export_streetgraph(G_minimal_graph_input, export_path + 'given_lanes.gpkg', export_path + 'given_lanes_nodes.gpkg')
+
+#TODO-FAILURE: Remove inplace CRS conversion of G
+if 0:
+    print('Export OSM XML')
+    snman.export_osm_xml(G, export_path + 'new_network.osm',{
+        'highway', 'lanes', 'lanes:forward', 'lanes:backward', 'lanes:both_ways',
+        'cycleway', 'cycleway:lane', 'cycleway:left', 'cycleway:left:lane', 'cycleway:right', 'cycleway:right:lane',
+        'bus:lanes:backward', 'bus:lanes:forward', 'vehicle:lanes:backward', 'vehicle:lanes:forward',
+        'maxspeed', 'oneway',
+        '_connected_component'
+    }, uv_tags=True, tag_all_nodes=True)
 
 if 1:
     print('Export network without lanes')
@@ -195,34 +235,6 @@ if 1:
     #TODO: Fix problems with saving lanes as a GeoPackage
     snman.export_streetgraph_with_lanes(G, 'ln_desc', export_path + 'edges_lanes.shp')
 
-if 0:
-    print('Export network with given lanes')
-    snman.export_streetgraph_with_lanes(G, 'given_lanes', export_path + 'edges_given_lanes.shp')
-
-if 0:
-    print('Export given lanes')
-    snman.export_streetgraph(G_minimal_graph_input, export_path + 'given_lanes.gpkg', export_path + 'given_lanes_nodes.gpkg')
-
-if 1:
-    print('Export OSM XML')
-    snman.export_osm_xml(G, export_path + 'new_network.osm',{
-        'highway', 'lanes', 'lanes:forward', 'lanes:backward', 'lanes:both_ways',
-        'cycleway', 'cycleway:lane', 'cycleway:left', 'cycleway:left:lane', 'cycleway:right', 'cycleway:right:lane',
-        'bus:lanes:backward', 'bus:lanes:forward', 'vehicle:lanes:backward', 'vehicle:lanes:forward',
-        'maxspeed', 'oneway',
-        '_connected_component'
-    }, uv_tags=True, tag_all_nodes=True)
-
-# =====================================================================================
-# REBUILD AND EXPORT
-# =====================================================================================
-
-if 0:
-    print('Link elimination')
-    G_minimal_graph_output = snman.link_elimination(G_minimal_graph_input)
-
-    print('Export minimal graph - output')
-    snman.export_streetgraph(G_minimal_graph_output, export_path + 'minimal_graph_out_edges.gpkg', export_path + 'minimal_graph_out_nodes.gpkg')
 
 
 print('Done!')
