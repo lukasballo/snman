@@ -23,10 +23,10 @@ def export_streetgraph(street_graph, file_name_edges, file_name_nodes, edge_colu
     nodes, edges = oxc.graph_to_gdfs(street_graph)
 
     if edge_columns:
-        edges = edges[edge_columns + ['geometry']]
+        edges = edges[list(set(set(edges.columns) & set(edge_columns)).union({'geometry'}))]
 
     if node_columns:
-        nodes = nodes[node_columns + ['geometry']]
+        nodes = edges[list(set(set(nodes.columns) & set(node_columns)).union({'geometry'}))]
 
     # Limit every attribute to 10 characters to match the SHP format restrictions
     if file_name_edges.split()[-1] == 'shp':
@@ -47,13 +47,14 @@ def export_streetgraph(street_graph, file_name_edges, file_name_nodes, edge_colu
     export_gdf(edges, file_name_edges)
     export_gdf(nodes, file_name_nodes)
 
-def export_streetgraph_with_lanes(street_graph, lanes_attribute, file_name):
+def export_streetgraph_with_lanes(street_graph, lanes_attribute, file_name, scaling=1):
     """
     Exports street graph as a shape file with a polyline for each lane
 
     Params
     ------
     street_graph : nx.MultiGraph
+    scaling : a scaling factor for the width, for visualization purposes
     """
 
     # Create empty list for the lanes
@@ -76,7 +77,7 @@ def export_streetgraph_with_lanes(street_graph, lanes_attribute, file_name):
             geom = data.get('geometry')
 
             if geom and round(centerline_offset,1) != 0:
-                geom = geom.parallel_offset(centerline_offset, 'right')
+                geom = geom.parallel_offset(centerline_offset * scaling, 'right')
                 # the above function reverses direction when the offset is positive, this steps reverses it back
                 if centerline_offset > 0 and not geom.is_empty:
                     #geom.coords = list(geom.coords)[::-1]
@@ -87,7 +88,7 @@ def export_streetgraph_with_lanes(street_graph, lanes_attribute, file_name):
                 'type': lane_properties.lanetype,
                 'direction': lane_properties.direction,
                 'descr': lane,
-                'width_m': lane_properties.width,
+                'width_m': lane_properties.width * scaling,
                 'layer': data.get('layer'),
                 'geometry': geom
             })

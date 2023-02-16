@@ -140,5 +140,7 @@ EXPORT_EDGE_COLUMNS = [
     'maxspeed',
     'highway',
     'hierarchy',
-    'layer'
+    'layer',
+    'adt_forward',
+    'adt_backward'
 ]
