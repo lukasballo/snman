@@ -14,7 +14,7 @@ SNMnan is being developed as part of the [E-Bike City](https://ebikecity.baug.et
   * Install Python 3.9
   * Pull the *main* branch of this repository
   * Obtain the GeoData starter kit from [Lukas Ballo](https://www.ivt.ethz.ch/personen/profil.lukas-ballo.html) (it will be published here later)
-  * Run *main_pipeline.py*
+  * Run *main_pipeline.ipynb*
 
 ## Features
 
