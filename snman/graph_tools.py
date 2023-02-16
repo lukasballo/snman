@@ -263,6 +263,10 @@ def split_through_edges_in_intersections(G, intersections):
     # filter for only those intersection/edge pairs where the edge does not start/end in the intersection
     a = a[a['edge_endpoint_in_intersection'] == False]
 
+    # stop here if there are no instances to process
+    if len(a) == 0:
+        return
+
     # find out where should the edge be split
     a['split_point'] = a.apply(
         lambda x: shapely.ops.nearest_points(x['ix_centroid'], x['e_geometry'])[1],

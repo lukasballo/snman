@@ -23,7 +23,7 @@ perimeters = snman.load_perimeters(inputs_path + 'perimeters/perimeters.shp')
 print('Get data from OSM server')
 # At this step, simplification means only removing degree=2 edges
 G = oxc.graph_from_polygon(
-    perimeters.loc['waltikon']['geometry'],
+    perimeters.loc['zollikerberg']['geometry'],
     custom_filter=snman.constants.OSM_FILTER,
     simplify=True,
     simplify_strict=False,
@@ -164,7 +164,7 @@ if 1:
 
 if 1:
     print('Set given lanes')
-    snman.set_given_lanes(G)
+    snman.set_given_lanes(G, bidirectional_for_dead_ends=False)
 
 if 1:
     print('Create directed graph of given lanes')
@@ -178,6 +178,18 @@ if 1:
     print('Keep only the largest connected component')
     snman.graph_tools.add_connected_component_ids(G)
     G = snman.graph_tools.keep_only_the_largest_connected_component(G)
+
+# =====================================================================================
+# EXPORT
+# =====================================================================================
+
+if 1:
+    print('Export network with given lanes')
+    snman.export_streetgraph_with_lanes(G, 'given_lanes', export_path + 'edges_given_lanes.gpkg')
+
+if 1:
+    print('Export given lanes')
+    snman.export_streetgraph(G_minimal_graph_input, export_path + 'given_lanes.gpkg', export_path + 'given_lanes_nodes.gpkg')
 
 # =====================================================================================
 # REBUILD AND EXPORT
@@ -201,13 +213,7 @@ if 1:
 # EXPORT
 # =====================================================================================
 
-if 1:
-    print('Export network with given lanes')
-    snman.export_streetgraph_with_lanes(G, 'given_lanes', export_path + 'edges_given_lanes.gpkg')
 
-if 1:
-    print('Export given lanes')
-    snman.export_streetgraph(G_minimal_graph_input, export_path + 'given_lanes.gpkg', export_path + 'given_lanes_nodes.gpkg')
 
 #TODO-FAILURE: Remove inplace CRS conversion of G
 if 0:

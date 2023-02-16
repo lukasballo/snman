@@ -45,6 +45,7 @@ def _add_edge_hierarchy(street_graph, edge):
 def _identify_dead_ends(graph, iterations):
 
     # TODO: Auto detect how many iterations are necessary to get through the entire graph
+    # TODO: Change the algorithm, it seems to be inefficient and delivers wring results in some cases
     for i in range(iterations):
 
         for node in graph.nodes():

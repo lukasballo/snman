@@ -3,7 +3,7 @@ import networkx as nx
 from . import constants, lanes, hierarchy
 
 
-def set_given_lanes(street_graph):
+def set_given_lanes(street_graph, bidirectional_for_dead_ends=True):
     """
     Sets which lanes are given due to external policy definitions
     e.g. dedicated lanes for public transport, bidirectional lanes for cars, etc.
@@ -27,7 +27,10 @@ def set_given_lanes(street_graph):
 
         # For dead ends, create a single bi-directional lane
         elif data.get('hierarchy') == hierarchy.DEAD_END:
-            data[constants.KEY_GIVEN_LANES_DESCRIPTION] += [lanes.LANETYPE_MOTORIZED + lanes.DIRECTION_BOTH]
+            if bidirectional_for_dead_ends:
+                data[constants.KEY_GIVEN_LANES_DESCRIPTION] += [lanes.LANETYPE_MOTORIZED + lanes.DIRECTION_BOTH]
+            else:
+                data[constants.KEY_GIVEN_LANES_DESCRIPTION] += [lanes.LANETYPE_MOTORIZED + lanes.DIRECTION_TBD]
 
 
 
