@@ -1,4 +1,4 @@
-from archive import osmnx as ox
+import osmnx as ox
 
 ox.config(log_console=False, use_cache=True)
 

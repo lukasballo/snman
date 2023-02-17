@@ -12,8 +12,11 @@ SNMnan is being developed as part of the [E-Bike City](https://ebikecity.baug.et
 ## Getting Started
 
   * Install Python 3.9
+  * Make sure you have installed the following dependencies: geopandas, osmnx, shapely, statistics, itertools, gdal, rasterio
   * Pull the *main* branch of this repository
-  * Obtain the GeoData starter kit from [Lukas Ballo](https://www.ivt.ethz.ch/personen/profil.lukas-ballo.html) (it will be published here later)
+  * [Download](https://polybox.ethz.ch/index.php/s/2yjdcNX1kJmgw8W) the *data_directory* starter kit
+  and save it on your local machine
+  * Change the *data_directory* variable in *main_pipeline.ipynb* to match the path your *data_directory*
   * Run *main_pipeline.ipynb*
 
 ## Features
