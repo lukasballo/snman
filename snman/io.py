@@ -318,12 +318,10 @@ def load_regions(path, default_tolerance=None, street_graph=None):
     return regions
 
 
-def load_intersections(path_polygons, path_points):
+def load_intersections(path_polygons):
     polygons = import_shp_to_gdf(path_polygons)
-    points = import_shp_to_gdf(path_points)
     # Duplicate the point geometries so that they get taken along after the spatial join
-    points['point_geometry'] = points['geometry']
-    intersections = gpd.sjoin(points, polygons, how="right", predicate="within")[['geometry','point_geometry']]
+    intersections = polygons
     return intersections
 
 

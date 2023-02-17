@@ -14,7 +14,7 @@ import warnings
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-from shapely.errors import TopologicalError
+#from shapely.errors import TopologicalError
 from shapely.geometry import LineString
 from shapely.geometry import MultiPolygon
 from shapely.geometry import Point
