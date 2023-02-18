@@ -20,6 +20,7 @@ SNMnan is being developed as part of the [E-Bike City](https://ebikecity.baug.et
     and rebuilding into a system of one-way streets
   * Change the *data_directory* variable in *example_zollikerberg.ipynb* to match the path your *data_directory*
   * Run *example_zollikerberg.ipynb*
+  * Use [QGIS](https://qgis.org/) to view the resulting datasets
 
 ## Features
 
