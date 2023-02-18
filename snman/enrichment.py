@@ -1,24 +1,28 @@
 from leuvenmapmatching.matcher.distance import DistanceMatcher
 from leuvenmapmatching.map.inmem import InMemMap
+from leuvenmapmatching import visualization as mmviz
 import shapely as shp
 from statistics import mean
 
-def match_linestrings(G, source, source_to_target_columns):
+def match_linestrings(G, source, column_configs, show_test_plot=None):
 
     map_con = InMemMap("source", use_latlon=False, use_rtree=True, index_edges=True, crs_xy=2056)
 
     # please note that lv works with lat, lon (reverse order)
     for id, data in G.nodes.items():
         map_con.add_node(id, (data['y'], data['x']))
+        #print((data['y'], data['x']))
 
     for id, data in G.edges.items():
         u = int(id[0])
         v = int(id[1])
-        # the graph is directed so we need to add an edge in each direction
-        map_con.add_edge(u,v)
-        map_con.add_edge(v,u)
+        # only include the edges that are accessible for cars, incl. the correct direction
+        if 'M>' in data['ln_desc'] or 'M-' in data['ln_desc']:
+            map_con.add_edge(u,v)
+        if 'M<' in data['ln_desc'] or 'M-' in data['ln_desc']:
+            map_con.add_edge(v,u)
 
-    matcher = DistanceMatcher(map_con, max_dist=20, max_dist_init=20, max_lattice_width=5, non_emitting_states=True, only_edges=True)
+    matcher = DistanceMatcher(map_con, max_dist=30, max_dist_init=30, max_lattice_width=5, non_emitting_states=True, only_edges=True)
 
     def _get_nodes_of_linestring(geom):
         if isinstance(geom, shp.geometry.MultiLineString):
@@ -32,11 +36,11 @@ def match_linestrings(G, source, source_to_target_columns):
 
     source['nodes'] = source.apply(lambda x: _get_nodes_of_linestring(x['geometry']), axis=1)
 
-    for source_column, target_column in source_to_target_columns.items():
+    for config in column_configs:
 
         edge_values = {}
         for index, edge in source.iterrows():
-            value = edge[source_column]
+            value = edge[config['source_column']]
             nodes = edge['nodes']
             if len(nodes) < 2:
                 continue
@@ -49,5 +53,19 @@ def match_linestrings(G, source, source_to_target_columns):
                 edge_values[(u,v)].append(value)
 
         for id, data in G.edges.items():
-            data[target_column + '_forward'] = mean(edge_values.get(id[:2], [0]))
-            data[target_column + '_backward'] = mean(edge_values.get(id[:2][::-1], [0]))
+            if config['agg'] == 'avg':
+                data[config['target_column'] + '_forward']  = mean(edge_values.get(id[:2], [0]))
+                data[config['target_column'] + '_backward'] = mean(edge_values.get(id[:2][::-1], [0]))
+            if config['agg'] == 'max':
+                data[config['target_column'] + '_forward']  = max(edge_values.get(id[:2], [0]))
+                data[config['target_column'] + '_backward'] = max(edge_values.get(id[:2][::-1], [0]))
+            elif config['agg'] == 'list':
+                data[config['target_column'] + '_forward']  = str(edge_values.get(id[:2]))
+                data[config['target_column'] + '_backward'] = str(edge_values.get(id[:2][::-1]))
+
+    if show_test_plot is not None:
+        source_test_path = source.query(show_test_plot).reset_index().iloc[0]['geometry']
+        path = [coords[::-1] for coords in list(source_test_path.coords)]
+        matcher.match(path)
+        print(matcher.path_pred_onlynodes)
+        mmviz.plot_map(map_con, matcher=matcher,show_labels=False, show_matching=True, show_graph=True)

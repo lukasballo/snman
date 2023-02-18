@@ -16,8 +16,10 @@ SNMnan is being developed as part of the [E-Bike City](https://ebikecity.baug.et
   * Pull the *main* branch of this repository
   * [Download](https://polybox.ethz.ch/index.php/s/2yjdcNX1kJmgw8W) the *data_directory* starter kit
   and save it on your local machine
-  * Change the *data_directory* variable in *main_pipeline.ipynb* to match the path your *data_directory*
-  * Run *main_pipeline.ipynb*
+  * Start with *example_zollikerberg.ipynb* for a complete process of network simplification
+    and rebuilding into a system of one-way streets
+  * Change the *data_directory* variable in *example_zollikerberg.ipynb* to match the path your *data_directory*
+  * Run *example_zollikerberg.ipynb*
 
 ## Features
 
@@ -25,18 +27,15 @@ OSMnx is built on top of [OSMNx](https://osmnx.readthedocs.io/en/stable/), [GeoP
 
   * Download street networks
   * Simplify street graphs to obtain exactly one edge per street and one node per intersection (using a process that was further developed from OSMNx)
+  * Match traffic volumes onto the network
   * Reallocate street space using customizable heuristics
   * Automatically arrange a system one-way streets
   * Export as GeoPackage and OSM
 
 Planned:
 
-  * Matching traffic volumes on the street network
+  * More comprehensive documentation
   * Export as [GMNS](https://github.com/zephyr-data-specs/GMNS) format
-
-## Roadmap
-
-For the feature roadmap, see here: https://trello.com/b/XfO5BLRg/snman
 
 ## Contact
 

@@ -141,6 +141,8 @@ EXPORT_EDGE_COLUMNS = [
     'highway',
     'hierarchy',
     'layer',
-    'adt_forward',
-    'adt_backward'
+    'adt_max_forward',
+    'adt_max_backward',
+    'adt_avg_forward',
+    'adt_avg_backward'
 ]
