@@ -1,0 +1,12 @@
+osmnx
+geopandas
+leuvenmapmatching
+NetworkX
+shapely
+statistics
+gdal
+rasterio
+smopy
+
+
+
