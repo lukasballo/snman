@@ -1,9 +1,41 @@
 import networkx as nx
 import matplotlib.pyplot as plt
-from . import constants, hierarchy, utils
+from . import constants, hierarchy, utils, distribution
+from . import osmnx_customized as oxc
 
 
-def link_elimination(O, keep_all_streets=True):
+def rebuild_regions(G, rebuilding_regions_gdf, initialize_ln_desc_after=True):
+
+    if initialize_ln_desc_after:
+        nx.set_edge_attributes(G, nx.get_edge_attributes(G, 'ln_desc'), 'ln_desc_after')
+
+    for idx, data in rebuilding_regions_gdf.iterrows():
+        _rebuild_region(G, data['geometry'], data['hierarchies'])
+
+
+def _rebuild_region(G, polygon, hierarchies):
+
+    # create a subgraph with only those edges that should be reorganized
+    H = oxc.truncate.truncate_graph_polygon(G, polygon, quadrat_width=100, retain_all=True)
+    if hierarchies is not None:
+        filtered_edges = dict(filter(lambda key_value: key_value[1]['hierarchy'] not in hierarchies, H.edges.items()))
+        H.remove_edges_from(filtered_edges.keys())
+
+    # initialize the input for link elimination
+    H_minimal_graph_input = distribution.create_given_lanes_graph(H, hierarchies_to_remove={hierarchy.HIGHWAY})
+    #snman.export_streetgraph(H_minimal_graph_input, export_path + 'given_lanes.gpkg', export_path + 'given_lanes_nodes.gpkg')
+
+    # run the link elimination
+    H_minimal_graph_output = link_elimination(H_minimal_graph_input)
+    #snman.export_streetgraph(H_minimal_graph_output, export_path + 'minimal_graph_out_edges.gpkg', export_path + 'minimal_graph_out_nodes.gpkg')
+
+    # apply the link elimination output to the subgraph graph
+    rebuild_lanes_from_owtop_graph(H, H_minimal_graph_output, hierarchies_to_protect={hierarchy.HIGHWAY})
+
+    # write the reorganized lanes from subgraph H into the main graph G
+    nx.set_edge_attributes(G, nx.get_edge_attributes(H,'ln_desc_after'), 'ln_desc_after')
+
+def link_elimination(O, keep_all_streets=True, verbose=False):
 
     # Get the giant weakly connected component (remove any unconnected parts)
     gcc = sorted(nx.weakly_connected_components(O), key=len, reverse=True)[0]
@@ -27,7 +59,8 @@ def link_elimination(O, keep_all_streets=True):
     i = 0
     while True:
         i+=1
-        print('Iteration ', i)
+        if verbose:
+            print('Iteration ', i)
         # Calculate betweenness centrality
         bc = nx.edge_betweenness_centrality(O)
         nx.set_edge_attributes(O, bc, 'bc')
