@@ -204,11 +204,12 @@ def _generate_lanes_for_edge(edge):
     # apply bus lanes
     # first, try to use the "bus:lanes:*" tag. if not possible, use the "vehicle:lanes:*" tag
     # but never use both as this could lead to conflicts
-    if edge.get('bus:lanes:forward'):
-        osm_bus_lanes_forward = edge.get('bus:lanes:forward', '').split('|')
+    if edge.get('bus:lanes', edge.get('bus:lanes:forward')):
+        osm_bus_lanes_forward = edge.get('bus:lanes', edge.get('bus:lanes:forward', '')).split('|')
         for i, lane in enumerate(osm_bus_lanes_forward):
             if lane == 'designated' and i < len(forward_lanes_list):
                 forward_lanes_list[i] = LANETYPE_DEDICATED_PT + _DIRECTION_FORWARD
+
     else:
         osm_vehicle_lanes_forward = edge.get('vehicle:lanes:forward', '').split('|')
         for i, lane in enumerate(osm_vehicle_lanes_forward):

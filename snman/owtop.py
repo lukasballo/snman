@@ -4,16 +4,16 @@ from . import constants, hierarchy, utils, distribution
 from . import osmnx_customized as oxc
 
 
-def rebuild_regions(G, rebuilding_regions_gdf, initialize_ln_desc_after=True):
+def rebuild_regions(G, rebuilding_regions_gdf, initialize_ln_desc_after=True, **kwargs):
 
     if initialize_ln_desc_after:
         nx.set_edge_attributes(G, nx.get_edge_attributes(G, 'ln_desc'), 'ln_desc_after')
 
-    for idx, data in rebuilding_regions_gdf.iterrows():
-        _rebuild_region(G, data['geometry'], data['hierarchies_to_include'], data['hierarchies_to_fix'])
+    for idx, data in rebuilding_regions_gdf[rebuilding_regions_gdf['active'] == True].iterrows():
+        _rebuild_region(G, data['geometry'], data['hierarchies_to_include'], data['hierarchies_to_fix'], **kwargs)
 
 
-def _rebuild_region(G, polygon, hierarchies_to_include, hierarchies_to_fix):
+def _rebuild_region(G, polygon, hierarchies_to_include, hierarchies_to_fix, **kwargs):
 
     # create a subgraph with only those edges that should be reorganized
     H = oxc.truncate.truncate_graph_polygon(G, polygon, quadrat_width=100, retain_all=True)
@@ -27,7 +27,7 @@ def _rebuild_region(G, polygon, hierarchies_to_include, hierarchies_to_fix):
     #snman.export_streetgraph(H_minimal_graph_input, export_path + 'given_lanes.gpkg', export_path + 'given_lanes_nodes.gpkg')
 
     # run the link elimination
-    H_minimal_graph_output = link_elimination(H_minimal_graph_input)
+    H_minimal_graph_output = link_elimination(H_minimal_graph_input, **kwargs)
     #snman.export_streetgraph(H_minimal_graph_output, export_path + 'minimal_graph_out_edges.gpkg', export_path + 'minimal_graph_out_nodes.gpkg')
 
     # apply the link elimination output to the subgraph graph

@@ -85,7 +85,7 @@ OSM_TAGS = {
     'cycleway', 'cycleway:both', 'cycleway:left', 'cycleway:right',
     'bicycle', 'bicycle:conditional',
     'sidewalk', 'sidewalk:left', 'sidewalk:right', 'foot',
-    'psv', 'bus', 'bus:lanes:forward', 'bus:lanes:backward',
+    'psv', 'bus', 'bus:lanes', 'bus:lanes:forward', 'bus:lanes:backward',
     'vehicle:lanes:backward', 'vehicle:lanes:forward',
     'footway'
 }
