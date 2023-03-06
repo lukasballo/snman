@@ -4,7 +4,7 @@ from . import lanes
 HIGHWAY = '0_highway'
 MAIN_ROAD = '1_main_road'
 LOCAL_ROAD = '2_local_road'
-DEAD_END = '3_ded_end'
+DEAD_END = '3_dead_end'
 PATHWAY = '4_path'
 OTHER_HIERARCHY = '9_other'
 

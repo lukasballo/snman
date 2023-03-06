@@ -35,7 +35,7 @@ def set_given_lanes(street_graph, bidirectional_for_dead_ends=True):
 
 
 
-def create_given_lanes_graph(G, hierarchies_to_remove=[]):
+def create_given_lanes_graph(G, hierarchies_to_remove=[], hierarchies_to_fix=[]):
     """
     Returns a directed graph of given (mandatory) lanes. Lanes with changeable direction are marked with an attribute
     """
@@ -46,9 +46,15 @@ def create_given_lanes_graph(G, hierarchies_to_remove=[]):
     for id, data in G.edges.items():
         u = id[0]
         v = id[1]
-        given_lanes = data.get(constants.KEY_GIVEN_LANES_DESCRIPTION,[])
 
-        for lane in given_lanes:
+        if data.get('hierarchy') in hierarchies_to_fix:
+            # use the existing lanes
+            lanes_list = data.get(constants.KEY_LANES_DESCRIPTION, [])
+        else:
+            # use the "given" necessary lanes
+            lanes_list = data.get(constants.KEY_GIVEN_LANES_DESCRIPTION, [])
+
+        for lane in lanes_list:
             lane_properties = lanes._lane_properties(lane)
 
             if data.get('hierarchy') in hierarchies_to_remove:

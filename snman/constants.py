@@ -45,14 +45,14 @@ DEFAULT_LANE_WIDTHS = {
     LANETYPE_DEDICATED_PT + DIRECTION_TBD: 3,
     LANETYPE_DEDICATED_PT + DIRECTION_BOTH: 4.5,
 
-    LANETYPE_CYCLING_LANE + DIRECTION_FORWARD: 1.3,
-    LANETYPE_CYCLING_LANE + DIRECTION_BACKWARD: 1.3,
-    LANETYPE_CYCLING_LANE + DIRECTION_TBD: 1.3,
-    LANETYPE_CYCLING_LANE + DIRECTION_BOTH: 2.6,
+    LANETYPE_CYCLING_LANE + DIRECTION_FORWARD: 1.5,
+    LANETYPE_CYCLING_LANE + DIRECTION_BACKWARD: 1.5,
+    LANETYPE_CYCLING_LANE + DIRECTION_TBD: 1.5,
+    LANETYPE_CYCLING_LANE + DIRECTION_BOTH: 2,
 
-    LANETYPE_CYCLING_TRACK + DIRECTION_FORWARD: 1.8,
-    LANETYPE_CYCLING_TRACK + DIRECTION_BACKWARD: 1.8,
-    LANETYPE_CYCLING_TRACK + DIRECTION_TBD: 1.8,
+    LANETYPE_CYCLING_TRACK + DIRECTION_FORWARD: 1.5,
+    LANETYPE_CYCLING_TRACK + DIRECTION_BACKWARD: 1.5,
+    LANETYPE_CYCLING_TRACK + DIRECTION_TBD: 1.5,
     LANETYPE_CYCLING_TRACK + DIRECTION_BOTH: 2,
 
     LANETYPE_CYCLING_PSEUDO + DIRECTION_FORWARD: 0,
@@ -85,7 +85,7 @@ OSM_TAGS = {
     'cycleway', 'cycleway:both', 'cycleway:left', 'cycleway:right',
     'bicycle', 'bicycle:conditional',
     'sidewalk', 'sidewalk:left', 'sidewalk:right', 'foot',
-    'psv', 'bus', 'bus:lanes:forward', 'bus:lanes:backward',
+    'psv', 'bus', 'bus:lanes', 'bus:lanes:forward', 'bus:lanes:backward',
     'vehicle:lanes:backward', 'vehicle:lanes:forward',
     'footway'
 }
