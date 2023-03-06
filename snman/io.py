@@ -64,10 +64,15 @@ def load_intersections(path_polygons):
 def load_rebuilding_regions(path):
     rebuilding_regions = import_geofile_to_gdf(path)
     # convert strings into lists
-    rebuilding_regions['hierarchies'] = \
-        rebuilding_regions['hierarchies'].apply(
-            lambda x: set(x.split(',')) if isinstance(x, str) else None
+    rebuilding_regions['hierarchies_to_include'] = \
+        rebuilding_regions['hierarchies_to_include'].apply(
+            lambda x: set(x.split(',')) if isinstance(x, str) else []
         )
+    rebuilding_regions['hierarchies_to_fix'] = \
+        rebuilding_regions['hierarchies_to_fix'].apply(
+            lambda x: set(x.split(',')) if isinstance(x, str) else []
+        )
+    rebuilding_regions = rebuilding_regions.sort_values(['order'])
     return rebuilding_regions
 
 
