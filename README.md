@@ -23,6 +23,7 @@ ETH Zurich, Department of Civil and Environmental Engineering.
   * Change the *data_directory* variable in both files to match the path of your *data_directory*
   * Use open *ebc_preview.qgz* in [QGIS](https://qgis.org/) to view the resulting datasets on a map
 
+
 ## Features
 
 OSMnx is built on top of [OSMNx](https://osmnx.readthedocs.io/en/stable/), [GeoPandas](https://geopandas.org/), [NetworkX](https://networkx.org/), and [matplotlib](https://matplotlib.org/) and interacts with [OpenStreetMap](https://www.openstreetmap.org/) APIs to:
@@ -37,13 +38,15 @@ OSMnx is built on top of [OSMNx](https://osmnx.readthedocs.io/en/stable/), [GeoP
 
 Planned:
 
-  * More comprehensive documentation
   * Export as [GMNS](https://github.com/zephyr-data-specs/GMNS) format
+  * Accessibility analyses and data export for time cartograms
+
 
 ## Contact
 
 For questions or contributions, please contact
 [Lukas Ballo](https://www.ivt.ethz.ch/personen/profil.lukas-ballo.html).
+
 
 ## License
 

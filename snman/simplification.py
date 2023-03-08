@@ -6,7 +6,31 @@ from . import io, geometry_tools
 import networkx as nx
 import itertools as it
 
-def merge_nodes_geometric(G, tolerance, given_intersections_gdf=None, regions=None):
+
+def merge_nodes_geometric(G, tolerance, given_intersections_gdf=None, regions_gdf=None):
+    """
+    Create intersection geometries.
+    Optionally use given intersection geometries to locally override the auto-detected results
+
+    Parameters
+    ----------
+    G : nx.MultiGraph or nx.MultiDiGraph
+        street graph
+    tolerance : int
+        radius of circles around the nodes
+    given_intersections_gdf : gpd.GeoDataFrame
+        explicitly defined intersection geometries,
+        created by .io.load_intersections()
+    regions_gdf : gpd.GeoDataFrame
+        simplification regions,
+        created by .io.load_regions()
+
+    Returns
+    -------
+    intersections_gdf : gpd.GeoDataFrame
+        updated intersection geometries,
+        including a mixture of the auto-detected and explicitly defined intersections
+    """
 
     G_gdf = oxc.utils_graph.graph_to_gdfs(G, edges=False)
 
@@ -15,7 +39,7 @@ def merge_nodes_geometric(G, tolerance, given_intersections_gdf=None, regions=No
     if given_intersections_gdf is not None:
         G_gdf = G_gdf[~G_gdf.within(given_intersections_gdf.unary_union)]
 
-    if regions is None:
+    if regions_gdf is None:
         # buffer nodes GeoSeries then get unary union to merge overlaps
         auto_intersections = (
             G_gdf["geometry"]
@@ -24,7 +48,7 @@ def merge_nodes_geometric(G, tolerance, given_intersections_gdf=None, regions=No
         )
     else:
         # for every region, create buffers and clip them with the region polygon
-        auto_intersections = regions.apply(
+        auto_intersections = regions_gdf.apply(
             lambda region: shp.geometry.MultiPolygon(
                 G_gdf["geometry"]
                     # use a small buffer for those nodes that have less than 3 streets
@@ -48,7 +72,6 @@ def merge_nodes_geometric(G, tolerance, given_intersections_gdf=None, regions=No
         auto_intersections = list(it.chain.from_iterable(auto_intersections))
         # convert into a single multipolygon (across all regions)
         auto_intersections = shp.geometry.MultiPolygon(auto_intersections)
-
 
 
     if given_intersections_gdf is not None:
@@ -75,27 +98,21 @@ def merge_nodes_geometric(G, tolerance, given_intersections_gdf=None, regions=No
 
     return intersections_gdf
 
-def consolidate_intersections(G, intersections, reconnect_edges=True):
+
+def consolidate_intersections(G, intersections_gdf, reconnect_edges=True):
     """
-    Consolidate intersections comprising clusters of nearby nodes.
-    Merge nodes and return a rebuilt graph with consolidated intersections and
-    reconnected edge geometries.
-    The tolerance argument should be adjusted to approximately match street
-    design standards in the specific street network, and you should always use
-    a projected graph to work in meaningful and consistent units like meters.
-    Returned graph's node IDs represent clusters rather than osmids. Refer to
-    nodes' osmid_original attributes for original osmids. If multiple nodes
-    were merged together, the osmid_original attribute is a list of merged
-    nodes' osmids.
+    Merge nodes into larger intersections using intersection geometries.
+
+    This function is a further development of osmnx.consolidate_intersections.
+
     Parameters
     ----------
-    G : networkx.MultiDiGraph
-        a projected graph
-    tolerance : float
-        nodes are buffered to this distance (in graph's geometry's units) and
-        subsequent overlaps are dissolved into a single node
+    G : nx.MultiDiGraph
+        street graph
+    intersections_gdf : gpd.GeoSeries
+        intersection geometries
     reconnect_edges : bool
-        ignored if rebuild_graph is not True. if True, reconnect edges and
+        if True, reconnect edges and
         their geometries in rebuilt graph to the consolidated nodes and update
         edge length attributes; if False, returned graph has no edges (which
         is faster if you just need topologically consolidated intersection
@@ -110,7 +127,7 @@ def consolidate_intersections(G, intersections, reconnect_edges=True):
     # STEP 1
     # buffer nodes to passed-in distance and merge overlaps. turn merged nodes
     # into gdf and get centroids of each cluster as x, y
-    node_clusters = intersections
+    node_clusters = intersections_gdf
     centroids = node_clusters.centroid
     node_clusters["x"] = centroids.x
     node_clusters["y"] = centroids.y

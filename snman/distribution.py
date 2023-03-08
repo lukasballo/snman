@@ -1,17 +1,28 @@
-import math
 import networkx as nx
 from . import constants, lanes, hierarchy
 
 
-def set_given_lanes(street_graph, bidirectional_for_dead_ends=True):
+def set_given_lanes(G, bidirectional_for_dead_ends=True):
     """
     Sets which lanes are given due to external policy definitions
     e.g. dedicated lanes for public transport, bidirectional lanes for cars, etc.
+
+    Parameters
+    ----------
+    G : nx.MultiGraph
+        street graph
+    bidirectional_for_dead_ends : bool
+        automatically enforce bidirectional streets for all dead ends (speeds up the link elimination process but
+        can lead to errors if the dead end detection is buggy)
+
+    Returns
+    -------
+    None
     """
 
-    #TODO: Add support for dedicated transit lanes
+    # TODO: Add support for dedicated transit lanes
 
-    for id, data in street_graph.edges.items():
+    for id, data in G.edges.items():
         data[constants.KEY_GIVEN_LANES_DESCRIPTION] = []
 
         # For roads with public transport, keep both directions
@@ -33,11 +44,24 @@ def set_given_lanes(street_graph, bidirectional_for_dead_ends=True):
                 data[constants.KEY_GIVEN_LANES_DESCRIPTION] += [lanes.LANETYPE_MOTORIZED + lanes.DIRECTION_TBD]
 
 
-
-
 def create_given_lanes_graph(G, hierarchies_to_remove=[], hierarchies_to_fix=[]):
     """
     Returns a directed graph of given (mandatory) lanes. Lanes with changeable direction are marked with an attribute
+
+    Parameters
+    ----------
+    G : nx.MultiGraph
+        street graph
+    hierarchies_to_remove : list
+        streets of which hierarchies should be removed from the graph (i.e. not considered in the further process)
+    hierarchies_to_fix : list
+        streets of which hierarchies should be automatically converted into fixed edges (i.e. considered but not
+        changed in the further process)
+
+    Returns
+    -------
+    H : nx.DiGraph
+        a graph of given lanes to be used in the rebuilding process
     """
     H = nx.DiGraph()
     H.graph['crs'] = G.graph['crs']

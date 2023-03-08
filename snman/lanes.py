@@ -3,43 +3,45 @@ import math
 import networkx as nx
 
 
-def generate_lanes(street_graph):
+def generate_lanes(G, attr=KEY_LANES_DESCRIPTION):
     """
-    Reverse-engineer the lanes of each street edge and store them as a list in the attribute 'ln_desc'
-    Naming convention:
-    c = cycling,
-    m = motorized traffic,
-    > = forward,
-    < = backward,
-    - = both directions
+    Reverse-engineer the lanes of each street edge and store them as a list in an attribute
 
     Parameters
     ----------
-    street_graph : nx.MultiGraph
-        contains the street network
+    G : nx.MultiGraph
+        street graph
+    attr : str
+        in which attribute should the lanes be stored
 
     Returns
     -------
     None
     """
-    for edge in street_graph.edges(data=True, keys=True):
+
+    for edge in G.edges(data=True, keys=True):
         edge_data = edge[3]
-        edge_data['ln_desc'] = _generate_lanes_for_edge(edge_data)
+        edge_data[attr] = _generate_lanes_for_edge(edge_data)
 
 
 def _generate_lanes_for_edge(edge):
     """
     Reverse-engineer the lanes for one edge
 
+    Resulting format: {lane type} + {lane direction}
+        * lane type: see LANETYPE_* under .constants
+        * lane direction: see DIRECTION_* under .constants
+        * example: M> (lane for motorized traffic, forward)
+
     Parameters
     ----------
     edge : dict
-        only edge data
+        the data dictionary of an edge
 
     Returns
     -------
     lane_list : list
-        a list of lanes, following the convention described under generate_lanes
+        a list of lanes, following the format described above
     """
 
     # PART 1: INITIALIZE VARIABLES
@@ -241,12 +243,12 @@ def _generate_lanes_for_edge(edge):
 
 def _reverse_lanes(lanes):
     """
-    Reverse the order and direction of all lanes
+    Reverse the order and direction of all lanes of an edge
 
     Parameters
     ----------
     lanes : list
-        a list of lanes, following the convention described under generate_lanes
+        a list of lanes, following the format described under _generate_lanes_for_edge
 
     Returns
     -------
@@ -263,24 +265,43 @@ def _reverse_lanes(lanes):
     return reversed_lanes
 
 
-def generate_lane_stats(street_graph):
+def generate_lane_stats(G):
     """
     Add lane statistics to all edges for the street graph
 
-    Params
+    Parameters
     ------
-    street_graph : nx.MultiGraph
+    G : nx.MultiGraph
+        street graph
 
     Returns
     -------
     None
     """
-    for edge in street_graph.edges(data=True, keys=True):
+
+    for edge in G.edges(data=True, keys=True):
         edge_data = edge[3]
         _generate_lane_stats_for_edge(edge_data)
 
 
 def _generate_lane_stats_for_edge(edge):
+    """
+    Add lane statistics to one edge. Following attributes are added:
+        * width_cycling_m -> total width for cycling in meters
+        * width_motorized_m -> total width for motorized traffic in meters
+        * width_total_m -> total width of all lanes
+        * n_lanes_motorized -> number of lanes for motorized traffic
+
+    Parameters
+    ----------
+    edge : dict
+        the data dictionary of an edge
+
+    Returns
+    -------
+    None
+    """
+
     lanes = edge.get(KEY_LANES_DESCRIPTION, [])
     lane_stats = _lane_stats(lanes)
 
@@ -314,7 +335,11 @@ def _generate_lane_stats_for_edge(edge):
                     edge['cycling_' + user_dir_name] = lane_description
                     break
 
+
 class _lane_properties:
+    """
+    A class for a standardized set of properties of a lane
+    """
 
     width = None
     lanetype = None
@@ -327,6 +352,14 @@ class _lane_properties:
     dedicated_cycling_track = None
 
     def __init__(self, lane_description):
+        """
+        Decodes a lane into a set of standardized properties
+
+        Parameters
+        ----------
+        lane_description : str
+            description of a lane following the format described in _generate_lanes_for_edge
+        """
 
         self.width = DEFAULT_LANE_WIDTHS.get(lane_description, 0)
         self.lanetype = lane_description[0:-1]
@@ -339,6 +372,9 @@ class _lane_properties:
         self.dedicated_cycling_track = lane_description[0:-1] == LANETYPE_CYCLING_TRACK
 
 class _lane_stats:
+    """
+    A class for a standardized set of statistics over all lanes
+    """
 
     n_lanes_motorized_forward = 0
     n_lanes_motorized_backward = 0
@@ -366,6 +402,15 @@ class _lane_stats:
     n_lanes_dedicated_cycling_tracks_direction_tbd = 0
 
     def __init__(self,lanes_description):
+        """
+        Decodes a list of lanes into a set of statistics
+
+        Parameters
+        ----------
+        lanes_description : list
+            a list of lanes following the format described in _generate_lanes_for_edge
+        """
+
         for lane in lanes_description:
             lane_properties = _lane_properties(lane)
             direction = lane_properties.direction
@@ -431,11 +476,38 @@ class _lane_stats:
             + self.n_lanes_motorized_both_ways + self.n_lanes_motorized_direction_tbd
 
 
-def update_osm_tags(street_graph, lanes_description_key=KEY_LANES_DESCRIPTION):
-    for edge in street_graph.edges(data=True, keys=True):
+def update_osm_tags(G, lanes_description_key=KEY_LANES_DESCRIPTION):
+    """
+    Update the osm tags of all edges to match their current lanes. This is necessary after the simplification when
+    multiple edges are merged into single edge
+
+    Parameters
+    ----------
+    G : nx.MultiGraph
+        street graph
+    lanes_description_key : str
+        which attribute should be used as a source of lane data
+
+    Returns
+    -------
+    None
+    """
+    for edge in G.edges(data=True, keys=True):
         _update_osm_tags_for_edge(edge, lanes_description_key)
 
 def _update_osm_tags_for_edge(edge, lanes_description_key):
+    """
+    Update OSM tags of one edge to match its current lanes
+
+    Parameters
+    ----------
+    edge
+    lanes_description_key
+
+    Returns
+    -------
+    None
+    """
 
     data = edge[3]
     lane_stats = _lane_stats(data.get(lanes_description_key, []))
@@ -530,6 +602,18 @@ def _update_osm_tags_for_edge(edge, lanes_description_key):
     if maxspeed == -1 and 'maxspeed' in data:
         del data['maxspeed']
 
+
 def _order_lanes(lanes):
+    """
+    Reorder the lane list of an edge (not implemented yet)
+
+    Parameters
+    ----------
+    lanes : list
+
+    Returns
+    -------
+    None
+    """
 
     pass

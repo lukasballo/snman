@@ -1,14 +1,12 @@
 import networkx as nx
-from . import lanes
 from . import graph_tools
 from shapely import geometry, ops
 from . import geometry_tools
-import math
 import numpy as np
 import itertools as it
 
 
-def merge_parallel_edges(street_graph):
+def merge_parallel_edges(G):
     """
     Detect and merge all sets of edges sharing the same start/end nodes, incl. their attributes
     TODO: Merge this function with osmnx.utils_graph_get_digraph (including the merge of attributes)
@@ -16,14 +14,16 @@ def merge_parallel_edges(street_graph):
 
     Parameters
     ----------
-    street_graph : nx.MultiGraph
+    G : nx.MultiGraph
+        street graph
 
     Returns
     -------
     None
     """
+
     uv_index = {}
-    for edge in street_graph.edges(data=True, keys=True):
+    for edge in G.edges(data=True, keys=True):
         # Group edges by start/end nodes and layer
         uv_key = ','.join([str(min(edge[0:2])), str(max(edge[0:2])), str(edge[3].get('layer'))])
         if uv_key not in uv_index:
@@ -33,11 +33,25 @@ def merge_parallel_edges(street_graph):
     # Merge each set of grouped edges
     for uv_key, edge_list in uv_index.items():
         if len(edge_list) > 1:
-            _merge_given_parallel_edges(street_graph, edge_list)
+            _merge_given_parallel_edges(G, edge_list)
             pass
 
 
-def _merge_given_parallel_edges(street_graph, edges):
+def _merge_given_parallel_edges(G, edges):
+    """
+    Merge the prallel edges given in a list
+
+    Parameters
+    ----------
+    G : nx.MultiGraph
+        street graph
+    edges : list
+        list of edges to be merged
+
+    Returns
+    -------
+    None
+    """
 
     geometries = [edge[3].get('geometry') for edge in edges]
     offsets = np.array(geometry_tools._offset_distance(geometries))
@@ -68,19 +82,20 @@ def _merge_given_parallel_edges(street_graph, edges):
     for index, edge in enumerate(edges_sorted_by_hierarchy):
         # remove edge, except if it's the parent edge
         if index != i_parent_edge:
-            street_graph.remove_edges_from([edge])
+            G.remove_edges_from([edge])
 
     # Take the highest hierarchy level from all source edges
     parent_edge[3]['hierarchy'] = min([edge[3].get('hierarchy') for edge in edges])
 
 
-def merge_consecutive_edges(street_graph):
+def merge_consecutive_edges(G):
     """
-    Remove all intermediary nodes
+    Merge edges such that the graph contains no unnecessary nodes with degree=2
     
     Parameters
     ----------
-    street_graph : ox.MultiGraph
+    G : ox.MultiGraph
+        street graph
     
     Returns
     -------
@@ -88,24 +103,24 @@ def merge_consecutive_edges(street_graph):
     """
 
     # Initialize 'consec_id' edge labels
-    for edge in street_graph.edges(data=True, keys=True):
+    for edge in G.edges(data=True, keys=True):
         edge[3]['consec_id'] = None
 
     # Label edges by consecutive clusters
-    for node in street_graph.nodes:
+    for node in G.nodes:
         # Find all nodes having only two adjacent edges
-        if street_graph.degree(node) == 2:
-            edges = list(street_graph.edges(node, data=True, keys=True))
+        if G.degree(node) == 2:
+            edges = list(G.edges(node, data=True, keys=True))
             # Start with the first adjacent edge and identify next edges to work on
             edge = edges[0]
-            next_edges = _label_edge(street_graph, edge)
+            next_edges = _label_edge(G, edge)
             # Repeat for each next_edge multiple times until entire clusters of consecutive edges are processed
             for i in range(3):
-                next_edges = _label_edges(street_graph, next_edges)
+                next_edges = _label_edges(G, next_edges)
 
     # Group edges by clusters
     edge_clusters = {}
-    for edge in street_graph.edges(data=True, keys=True):
+    for edge in G.edges(data=True, keys=True):
         consec_id = edge[3].get('consec_id')
         # Ignore edges that are in no cluster
         if consec_id is None:
@@ -116,11 +131,25 @@ def merge_consecutive_edges(street_graph):
 
     # Merge edges within each cluster
     for key, edge_cluster in edge_clusters.items():
-        _merge_given_consecutive_edges(street_graph, edge_cluster)
+        _merge_given_consecutive_edges(G, edge_cluster)
         pass
 
 
-def _merge_given_consecutive_edges(street_graph, edges):
+def _merge_given_consecutive_edges(G, edges):
+    """
+    Merge the consecutive edges in a given list
+
+    Parameters
+    ----------
+    G : nx.MultiGraph
+        street graph
+    edges : list
+        list of edges to be merged
+
+    Returns
+    -------
+    None
+    """
 
     nodes = []
     for edge in edges:
@@ -197,7 +226,7 @@ def _merge_given_consecutive_edges(street_graph, edges):
             if node == edge[0]:
                 node = edge[1]
             elif node == edge[1]:
-                graph_tools._reverse_edge(street_graph, edge, reverse_topology=False)
+                graph_tools._reverse_edge(G, edge, reverse_topology=False)
                 node = edge[0]
             edge[3]['__next_node'] = node
 
@@ -227,20 +256,35 @@ def _merge_given_consecutive_edges(street_graph, edges):
 
         # Delete the old edges
         for edge in edge_subchain:
-            street_graph.remove_edge(edge[0], edge[1], edge[2])
+            G.remove_edge(edge[0], edge[1], edge[2])
             pass
 
         # Delete the intermediary nodes
         for node in subchain_middle_nodes:
-            street_graph.remove_node(node)
+            G.remove_node(node)
 
         # Create a new merged edge
-        street_graph.add_edge(subchain_outer_nodes[0], subchain_outer_nodes[1], **merged_data)
+        G.add_edge(subchain_outer_nodes[0], subchain_outer_nodes[1], **merged_data)
 
 
-def _label_edge(graph, edge):
-    edge_data = edge[3]
-    neighbors_groups = graph_tools._get_neighbors(graph, edge)
+def _label_edge(G, edge):
+    """
+    Assign the edge to a bunch of consecutive edges (that can be merged)
+
+    Parameters
+    ----------
+    G : nx.MultiGraph
+        street graph
+    edge : tuple
+        full edge tuple
+
+    Returns
+    -------
+    next_edges : list
+        a list of edges to be labeled next
+    """
+
+    neighbors_groups = graph_tools._get_neighbors(G, edge)
     edge[3]['neighbors'] = str([len(group) for group in neighbors_groups])
     neighbors_groups.append([edge])
     next_edges = []
@@ -269,20 +313,27 @@ def _label_edge(graph, edge):
     return next_edges
 
 
-def _label_edges(graph, edges):
+def _label_edges(G, edges):
+    """
+    Assign all edges in a list to bunches of consecutive edges
+
+    Parameters
+    ----------
+    G : nx.MultiGraph
+        street graph
+    edges : list
+        list of full edge tuples
+
+    Returns
+    -------
+    next_edges : list
+        a list of edges to be labeled next
+    """
+
     next_edges = []
     for edge in edges:
-        result = _label_edge(graph, edge)
+        result = _label_edge(G, edge)
         if (len(result) > 0):
             next_edges += result
 
     return next_edges
-
-
-def resolve_one_sided_intersections(graph):
-    """
-    Connect one-sided intersections on roads with multiple separate edges to all edges
-    """
-
-    for node in graph.nodes(data=True, keys=True):
-        pass
