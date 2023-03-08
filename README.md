@@ -17,11 +17,27 @@ ETH Zurich, Department of Civil and Environmental Engineering.
   * Make sure you have installed the following dependencies: geopandas, osmnx, shapely, statistics, itertools, gdal, rasterio
   * Pull the *main* branch of this repository
   * [Download](https://polybox.ethz.ch/index.php/s/2yjdcNX1kJmgw8W) the *data_directory* starter kit
-  and save it on your local machine
+    and save it on your local machine
   * Start with *prepare_simplified_street_graph.ipynb* and *rebuild_street_graph.ipynb* for a complete process
-    of network simplification and rebuilding into a system of one-way streets
-  * Change the *data_directory* variable in both files to match the path of your *data_directory*
-  * Use open *ebc_preview.qgz* in [QGIS](https://qgis.org/) to view the resulting datasets on a map
+    of network simplification, enrichment, and rebuilding into a system of one-way streets. 
+    Change the *data_directory* variable in both files to match the path of your *data_directory*
+  * A simplified and enriched network of Zurich is provided in the starter kit. 
+    Open *cached_network.qgz* in [QGIS](https://qgis.org/) to view it on a map.
+  * Run *rebuild_street_graph.ipynb*
+    to generate a network with rebuilt road space.
+  * Open *ebc_preview.qgz* in QGIS to view the resulting network
+
+
+## Changing the process inputs
+
+Input geofiles (under *INPUTS* in *cached_network.qgz* and *ebc_preview.qgz*).
+For an explanation of the columns in each file see
+the documentation of each corresponding load function under snman.io, e.g., `snman.io.load_rebuilding_regions()`
+  * **rebuilding_regions**: Areas where the streets should be rebuilt
+  * **perimeters**: Perimeters for loading OSM data and generating the simplified street network
+    (set the active perimeter in *prepare_simplified_street_graph.ipynb* in section *LOAD DATA*)
+  * **intersection_polygons**: Manual override of the automatically detected intersection geometries in the simplification
+  * **regions**: Local override of the network simplification settings
 
 
 ## Features

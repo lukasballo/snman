@@ -43,7 +43,7 @@ def match_pt(G, pt_network):
             # see here: https://github.com/shapely/shapely/issues/1345
             warnings.simplefilter("ignore")
             pt_routes['intersection_length_prop'] = [
-                edge_geometry.intersection(pt_route).length / edge_geometry.length
+                edge_geometry.intersection(pt_route).length / edge_geometry.length if edge_geometry.length != 0 else 0
                 for pt_route in pt_routes.geometry
             ]
 

@@ -54,7 +54,10 @@ def _rebuild_region(G, polygon, hierarchies_to_include, hierarchies_to_fix, **kw
 
     # create a subgraph with only those edges that should be reorganized
     H = oxc.truncate.truncate_graph_polygon(G, polygon, quadrat_width=100, retain_all=True)
-    print(len(hierarchies_to_include), hierarchies_to_include)
+
+    if len(H.edges) == 0:
+        return
+
     if len(hierarchies_to_include) > 0:
         filtered_edges = dict(filter(lambda key_value: key_value[1]['hierarchy']
             not in hierarchies_to_include, H.edges.items()))
