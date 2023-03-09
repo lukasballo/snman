@@ -1,18 +1,30 @@
-from . import lanes
 import networkx as nx
 import shapely as shp
 import numpy as np
 import math
 
 
-def remove_multipart_geometries(street_graph):
+def remove_multipart_geometries(G):
+    """
+    Replace all multiline geometries in a street graph by simple start-end lines based in the node coordinates.
+    Normally, this should not be necessary but there are rare cases when some edges have multipart geometries,
+    leading to errors in geometry operations.
 
-    for id, data in street_graph.edges.items():
+    Parameters
+    ----------
+    G : nx.MultiGraph
+        street graph
+
+    Returns
+    -------
+    None
+    """
+
+    for id, data in G.edges.items():
         geom = data.get('geometry', None)
         if not isinstance(geom, shp.geometry.linestring.LineString):
-            print(type(geom))
-            start_node = street_graph.nodes.items()[id[0]]
-            end_node = street_graph.nodes.items()[id[1]]
+            start_node = G.nodes.items()[id[0]]
+            end_node = G.nodes.items()[id[1]]
             simple_line = shp.geometry.LineString(
                 shp.geometry.Point(
                     start_node.get('x',0),
@@ -27,6 +39,21 @@ def remove_multipart_geometries(street_graph):
 
 
 def _offset_distance(linestrings):
+    """
+    Takes a set of linestrings and calculates the average offset for each of them.
+    This is useful for detecting the order of approximately parallel edges geometries that should be merged into
+    a single street.
+
+    Parameters
+    ----------
+    linestrings : list
+        a list of approximately parallel linestrings
+
+    Returns
+    -------
+    offsets : list
+        a list of the calculated offsets
+    """
 
     # Start and end point of axis based on the first geometry
     u = shp.ops.Point(linestrings[0].coords[0])
@@ -62,7 +89,20 @@ def _offset_distance(linestrings):
 
     return offsets
 
+
 def ensure_multipolygon(geometry):
+    """
+    Converts polygons into multipolygons if necessary
+
+    Parameters
+    ----------
+    geometry : shp.geometry.Polygon or shp.geometry.MultiPolygon
+
+    Returns
+    -------
+    geometry : shp.geometry.MultiPolygon
+    """
+
     if isinstance(geometry, shp.geometry.MultiPolygon):
         return geometry
     else:

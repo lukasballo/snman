@@ -1,34 +1,29 @@
 from .constants import *
-from . import lanes, io, constants
+from . import lanes, constants
 from shapely.ops import substring
 import shapely
+import shapely.geometry
 import networkx as nx
 import copy
 import osmnx
 import geopandas as gpd
-import pandas as pd
 import itertools
 from . import osmnx_customized as oxc
 
 
-def create_OSM_graph(G):
-    pass
-
-
-def create_directed_graph(G):
-    pass
-
-
 def add_connected_component_ids(G):
     """
-    For directed graphs: Adds IDs of weakly and strongly connected components to all edges
-    For undirected graphs: Adds IDs of connected components to all edges
+    For directed graphs: Adds IDs of weakly ('_weakly_connected_component')
+    and strongly ('_strongly_connected_component') connected components to all edges
+    For undirected graphs: Adds IDs of connected components ('_connected_component') to all edges
 
     Parameters
     ----------
-    G : nx.MultiDiGraph
+    G : nx.MultiDiGraph or nx.MultiGraph
+    Returns
+    -------
+    None
     """
-
 
     if G.is_directed():
 
@@ -50,12 +45,21 @@ def add_connected_component_ids(G):
             nx.set_edge_attributes(subgraph, wcc, '_connected_component')
 
 
-def keep_only_the_largest_connected_component(G, weak:bool=False) -> nx.MultiGraph:
+def keep_only_the_largest_connected_component(G, weak=False):
     """
     Remove all nodes and edges that are disconnected from the largest connected component.
     For directed graphs, strong connectedness will be considered, unless weak=True
-        :param weak: use weakly connected component in case of a directed graph
-        :returns: copy of subgraph representing the largest connected component
+
+    Parameters
+    ----------
+    G : nx.MultiGraph or nx.MultiDiGraph
+        street graph
+    weak : bool
+        use weakly connected component in case of a directed graph
+
+    Returns
+    -------
+    H : copy of subgraph representing the largest connected component
     """
 
     if G.is_directed():
@@ -70,10 +74,39 @@ def keep_only_the_largest_connected_component(G, weak:bool=False) -> nx.MultiGra
 
 
 def _edge_hash(edge):
+    """
+    Generate a unique string id for an edge
+    TODO: Use the tuple instead
+
+    Parameters
+    ----------
+    edge : tuple
+        the complete tuple of an edge
+
+    Returns
+    -------
+    str
+    """
+
     return '-'.join(map(str, edge[0:3]))
 
 
 def _remove_edge_from_list(edges, edge_to_remove, dead_ends=True):
+    """
+    Remove edge from a list using its unique string id
+
+    Parameters
+    ----------
+    edges : list
+    edge_to_remove : tuple
+    dead_ends : bool
+        include dead ends in the resulting list
+
+    Returns
+    -------
+    list
+    """
+
     edges_cleaned = []
     for idx, candidate in enumerate(edges):
         if (_edge_hash(candidate) != _edge_hash(edge_to_remove)
@@ -82,10 +115,31 @@ def _remove_edge_from_list(edges, edge_to_remove, dead_ends=True):
     return edges_cleaned
 
 
-def _get_neighbors(graph, edge, dead_ends=True):
+def _get_neighbors(G, edge, dead_ends=True):
+    """
+    Return the neighbor edges of a given edge. The result is a list of three lists:
+        * neighbors at the side of u node
+        * neighbors at the side of v node
+        * neighbors from both sides
+
+    Parameters
+    ----------
+    G : nx.MultiGraph
+        street graph
+    edge : tuple
+        the complete tuple of an edge
+    dead_ends : bool
+        include dead ends int the results
+
+    Returns
+    -------
+    list
+        a list of edges
+    """
+
     adjacent_nodes = edge[0:2]
-    u_neighbors = list(graph.edges(nbunch=adjacent_nodes[0], data=True, keys=True))
-    v_neighbors = list(graph.edges(nbunch=adjacent_nodes[1], data=True, keys=True))
+    u_neighbors = list(G.edges(nbunch=adjacent_nodes[0], data=True, keys=True))
+    v_neighbors = list(G.edges(nbunch=adjacent_nodes[1], data=True, keys=True))
     # Remove this edge from the neighbors
     u_neighbors = _remove_edge_from_list(u_neighbors, edge, dead_ends=dead_ends)
     v_neighbors = _remove_edge_from_list(v_neighbors, edge, dead_ends=dead_ends)
@@ -97,6 +151,18 @@ def _get_neighbors(graph, edge, dead_ends=True):
 
 
 def _unique_edges(edges):
+    """
+    Remove duplicates from a list of edges
+
+    Parameters
+    ----------
+    edges : list
+
+    Returns
+    -------
+    list
+    """
+
     unique_edges = []
     hashes = set()
     for edge in edges:
@@ -107,6 +173,20 @@ def _unique_edges(edges):
 
 
 def normalize_edge_directions(G):
+    """
+    Ensure that all edges in a street graph have the direction from teh lower to the higher node id.
+    Edges with a different direction will be reversed, including the lanes and their geometry.
+
+    Parameters
+    ----------
+    G : nx.MultiDiGraph
+        street graph
+
+    Returns
+    -------
+    None
+    """
+
     edges = list(G.edges(data=True, keys=True))
     for edge in edges:
         if edge[0] > edge[1]:
@@ -115,19 +195,18 @@ def normalize_edge_directions(G):
 
 
 def _reverse_edge(G, edge, reverse_topology=True):
-
     """
-    Flip the edge direction
+    Flip the edge direction, including lanes and geometry
 
     Parameters
     ----------
     G : nx.MultiDiGraph
-
-    edge : Tuple
-
-    reverse_topology : Boolean
-        Also flip the start and end node. Automatically false if the G is undirected
-
+        street graph
+    edge : tuple
+        the edge to be reversed
+    reverse_topology : boolean
+        flip the start and end node, automatically false if the G is undirected, be careful when using this
+        as is may corrupt the graph by creating inconsistencies between the topological direction and the geometry
     """
 
     u = edge[0]
@@ -172,13 +251,32 @@ def _reverse_edge(G, edge, reverse_topology=True):
 
 
 def _split_edge(G, u, v, key, split_point):
+    """
+    Split the edge at a given point and create two child edges, together with a new node in between
+
+    Parameters
+    ----------
+    G : nx.MultiGraph
+        street graph
+    u : int
+        edge to be split - u node
+    v : int
+        edge to be split - v node
+    key : int
+        edge to be split - key
+    split_point : shapely.geometry.Point
+
+    Returns
+    -------
+    None
+    """
 
     # Don't continue if the edge does not exist
     if not G.has_edge(u,v,key):
         #print('edge does not exist:', u, v, key)
         return False
 
-    edge_data = G.get_edge_data(u,v,key)
+    edge_data = G.get_edge_data(u, v, key)
 
     # Assign a new node id
     split_node_id = max(G.nodes) + 1
@@ -213,7 +311,7 @@ def _split_edge(G, u, v, key, split_point):
         edge2_data['_split'] = 2
 
     # Split topology
-    G.add_node(split_node_id, x=split_point.x, y=split_point.y, _split_node = True)
+    G.add_node(split_node_id, x=split_point.x, y=split_point.y, _split_node=True)
     G.remove_edge(u, v, key)
     key1 = G.add_edge(u, split_node_id, **edge1_data)
     key2 = G.add_edge(split_node_id, v, **edge2_data)
@@ -226,11 +324,26 @@ def _split_edge(G, u, v, key, split_point):
             _reverse_edge(G, (v, split_node_id, key2, edge2_data))
 
 
-def split_through_edges_in_intersections(G, intersections):
+def split_through_edges_in_intersections(G, intersections_gdf):
+    """
+    Within each intersection polygon, split edges that are passing through it without having a node there.
+    This is helpful for a proper simplification of complex intersections
 
-    intersections = intersections.copy()
-    intersections['ix_geometry'] = intersections['geometry']
-    intersections['ix_centroid'] = intersections.centroid
+    Parameters
+    ----------
+    G : nx.MultiDiGraph or nx.MultiGraph
+        street graph
+    intersections_gdf : gpd.GeoDataFrame
+        intersection geometries
+
+    Returns
+    -------
+    None
+    """
+
+    intersections_gdf = intersections_gdf.copy()
+    intersections_gdf['ix_geometry'] = intersections_gdf['geometry']
+    intersections_gdf['ix_centroid'] = intersections_gdf.centroid
 
     edges = oxc.graph_to_gdfs(G, nodes=False)
     edges['e_geometry'] = edges['geometry']
@@ -251,7 +364,7 @@ def split_through_edges_in_intersections(G, intersections):
     )
 
     # build pairs of intersections and intersecting edges, keep index from edges
-    a = gpd.sjoin(edges, intersections, how="inner", predicate="intersects", lsuffix='e', rsuffix='i')
+    a = gpd.sjoin(edges, intersections_gdf, how="inner", predicate="intersects", lsuffix='e', rsuffix='i')
     # stop here if there are no edge/intersection pairs
     if len(a) == 0:
         return
@@ -280,10 +393,41 @@ def split_through_edges_in_intersections(G, intersections):
 
 
 def _is_motorized(edge):
+    """
+    Checks if an edge is open for motorized traffic
+    TODO: use the actual lanes and distinguish by direction
+
+    Parameters
+    ----------
+    edge : dict
+        the data dictionary of the edge
+
+    Returns
+    -------
+        bool
+    """
+
     return edge.get('highway') not in ACTIVE_HIGHWAY_VALUES
 
 
 def _add_layers_to_nodes(G):
+    """
+    Add a dictionary to each node representing the layers to which is belongs.
+    The dictionary has the following form: {'motorized': set(), 'active': set()}
+
+    Differences between layers under 'motorized' and 'active' represent different modes of the
+    source edges. In some cases, a node can be part of a highway on layer 1, but also connected to a pedestrian
+    path on layer 0.
+
+    Parameters
+    ----------
+    G : nx.MultiGraph or nx.MultiDiGraph
+        street graph
+
+    Returns
+    -------
+    None
+    """
     node_layers = {id: {'motorized': set(), 'active': set()} for id, node in G.nodes.items()}
     for edge_id, edge in G.edges.items():
         node_ids = [edge_id[0], edge_id[1]]
@@ -294,6 +438,18 @@ def _add_layers_to_nodes(G):
 
 
 def _are_node_layers_compatible(layers1, layers2):
+    """
+    Check if two nodes' layers overlap. The layer dictionaries must follow the format under _add_layers_to_nodes
+
+    Parameters
+    ----------
+    layers1 : dict
+    layers2 : dict
+
+    Returns
+    -------
+        bool
+    """
 
     if None in [layers1, layers2]:
         return False
@@ -318,7 +474,7 @@ def _are_node_layers_compatible(layers1, layers2):
     return not nodes[0].isdisjoint(nodes[1])
 
 
-def connect_components_in_intersections(G, intersections, separate_layers=True):
+def connect_components_in_intersections(G, intersections_gdf, separate_layers=True):
     """
     Creates connections between weakly connected components so that they can be merged into a single intersection
     In this process, we use the following restrictions:
@@ -327,10 +483,16 @@ def connect_components_in_intersections(G, intersections, separate_layers=True):
 
     Parameters
     ----------
-    G : nx.MultiDiGraph
+    G : nx.MultiDiGraph or nx.MultiGraph
+        street graph
+    intersections_gdf : gpd.GeoDataFrame
+        intersection geometries
+    separate_layers : bool
+        avoid connecting components that are on different layers (e.g., intersections above each other)
 
-    intersections : gpd.GeoDataFrame
-        Output from the function split_through_edges_in_intersections()
+    Returns
+    -------
+    None
     """
 
     # get the nodes as a geodataframe
@@ -338,7 +500,7 @@ def connect_components_in_intersections(G, intersections, separate_layers=True):
     # eliminate dead ends from the process to keep them as they are
     node_points = node_points.query('street_count != 1')
     # assign each node to an intersection (polygon)
-    gdf = gpd.sjoin(node_points, intersections, how="left", predicate="within")
+    gdf = gpd.sjoin(node_points, intersections_gdf, how="left", predicate="within")
     # clean up the columns of the resulting geodataframe (cluster=id of the intersection geometry)
     gdf = gdf.drop(columns="geometry").rename(columns={"index_right": "cluster"})
 
@@ -393,6 +555,20 @@ def connect_components_in_intersections(G, intersections, separate_layers=True):
                     _components_connector=True
                 )
 
+
 def update_precalculated_attributes(G):
+    """
+    Update edge attributes in a street graph that have been pre-calculated by osmnx
+    when the graph was created
+
+    Parameters
+    ----------
+    G : nx.MultiGraph or nx.MultiDiGraph
+        street graph
+
+    Returns
+    -------
+    None
+    """
     street_count = osmnx.stats.count_streets_per_node(G)
     nx.set_node_attributes(G, street_count, name="street_count")
