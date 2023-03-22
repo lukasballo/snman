@@ -24,7 +24,7 @@ def load_street_graph(edges_path, nodes_path, crs=2056):
     nodes_path : string
         path to the file containing the nodes
     crs : int
-        number of the coordinate reference system
+        target coordinate reference system of the imported street graph
 
     Returns
     -------
@@ -51,6 +51,7 @@ def import_geofile_to_gdf(file_path, crs=2056, index=None):
     ----------
     file_path : string
     crs : int
+        target coordinate reference system of the imported geodataframe
     index : str or list
         which column(s) should be used as index
 
