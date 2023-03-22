@@ -33,6 +33,7 @@ KEY_GIVEN_LANES_DESCRIPTION = 'given_lanes'
 KEY_REVERSED = '_reversed'          # which key tells if the edge has been reversed
 
 # in meters
+# deprecated and will be removed later, use LANE_TYPES instead
 DEFAULT_LANE_WIDTHS = {
 
     LANETYPE_MOTORIZED + DIRECTION_FORWARD: 3,
@@ -70,6 +71,43 @@ DEFAULT_LANE_WIDTHS = {
     LANETYPE_FOOT + DIRECTION_TBD: 1.8,
     LANETYPE_FOOT + DIRECTION_BOTH: 1.8,
 
+}
+
+LANE_TYPES = {
+    LANETYPE_MOTORIZED + DIRECTION_FORWARD:                 {'width': 3.0, 'cycling_cost_factor': 1.0},
+    LANETYPE_MOTORIZED + DIRECTION_BACKWARD:                {'width': 3.0, 'cycling_cost_factor': 1.0},
+    LANETYPE_MOTORIZED + DIRECTION_TBD:                     {'width': 3.0, 'cycling_cost_factor': 1.0},
+    LANETYPE_MOTORIZED + DIRECTION_BOTH:                    {'width': 4.5, 'cycling_cost_factor': 1.0},
+
+    LANETYPE_DEDICATED_PT + DIRECTION_FORWARD:              {'width': 3.0, 'cycling_cost_factor': 1.0},
+    LANETYPE_DEDICATED_PT + DIRECTION_BACKWARD:             {'width': 3.0, 'cycling_cost_factor': 1.0},
+    LANETYPE_DEDICATED_PT + DIRECTION_TBD:                  {'width': 3.0, 'cycling_cost_factor': 1.0},
+    LANETYPE_DEDICATED_PT + DIRECTION_BOTH:                 {'width': 4.5, 'cycling_cost_factor': 1.0},
+
+    LANETYPE_CYCLING_LANE + DIRECTION_FORWARD:              {'width': 1.5, 'cycling_cost_factor': 1.0},
+    LANETYPE_CYCLING_LANE + DIRECTION_BACKWARD:             {'width': 1.5, 'cycling_cost_factor': 1.0},
+    LANETYPE_CYCLING_LANE + DIRECTION_TBD:                  {'width': 1.5, 'cycling_cost_factor': 1.0},
+    LANETYPE_CYCLING_LANE + DIRECTION_BOTH:                 {'width': 2.0, 'cycling_cost_factor': 1.0},
+
+    LANETYPE_CYCLING_TRACK + DIRECTION_FORWARD:             {'width': 1.5, 'cycling_cost_factor': 1.0},
+    LANETYPE_CYCLING_TRACK + DIRECTION_BACKWARD:            {'width': 1.5, 'cycling_cost_factor': 1.0},
+    LANETYPE_CYCLING_TRACK + DIRECTION_TBD:                 {'width': 1.5, 'cycling_cost_factor': 1.0},
+    LANETYPE_CYCLING_TRACK + DIRECTION_BOTH:                {'width': 2.5, 'cycling_cost_factor': 1.0},
+
+    LANETYPE_CYCLING_PSEUDO + DIRECTION_FORWARD:            {'width': 0.0, 'cycling_cost_factor': 1.0},
+    LANETYPE_CYCLING_PSEUDO + DIRECTION_BACKWARD:           {'width': 0.0, 'cycling_cost_factor': 1.0},
+    LANETYPE_CYCLING_PSEUDO + DIRECTION_TBD:                {'width': 0.0, 'cycling_cost_factor': 1.0},
+    LANETYPE_CYCLING_PSEUDO + DIRECTION_BOTH:               {'width': 0.0, 'cycling_cost_factor': 1.0},
+
+    LANETYPE_FOOT_CYCLING_MIXED + DIRECTION_FORWARD:        {'width': 2.5, 'cycling_cost_factor': 1.0},
+    LANETYPE_FOOT_CYCLING_MIXED + DIRECTION_BACKWARD:       {'width': 2.5, 'cycling_cost_factor': 1.0},
+    LANETYPE_FOOT_CYCLING_MIXED + DIRECTION_TBD:            {'width': 2.5, 'cycling_cost_factor': 1.0},
+    LANETYPE_FOOT_CYCLING_MIXED + DIRECTION_BOTH:           {'width': 2.5, 'cycling_cost_factor': 1.0},
+
+    LANETYPE_FOOT + DIRECTION_FORWARD:                      {'width': 1.8, 'cycling_cost_factor': 1.0},
+    LANETYPE_FOOT + DIRECTION_BACKWARD:                     {'width': 1.8, 'cycling_cost_factor': 1.0},
+    LANETYPE_FOOT + DIRECTION_TBD:                          {'width': 1.8, 'cycling_cost_factor': 1.0},
+    LANETYPE_FOOT + DIRECTION_BOTH:                         {'width': 1.8, 'cycling_cost_factor': 1.0},
 }
 
 # Which highway=* values represent different infrastructures (primarily) for pedestrians and cyclists

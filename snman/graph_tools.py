@@ -172,7 +172,7 @@ def _unique_edges(edges):
     return unique_edges
 
 
-def normalize_edge_directions(G):
+def organize_edge_directions(G, method='lower_to_higher_node_id'):
     """
     Ensure that all edges in a street graph have the direction from teh lower to the higher node id.
     Edges with a different direction will be reversed, including the lanes and their geometry.
@@ -181,6 +181,9 @@ def normalize_edge_directions(G):
     ----------
     G : nx.MultiDiGraph
         street graph
+    method : str
+        - lower_to_higher_node_id: each edge will be digitized from the lower to the higher node id
+        - by_osm_convention: one-way nodes will be digitized according to their lane direction
 
     Returns
     -------
@@ -189,9 +192,14 @@ def normalize_edge_directions(G):
 
     edges = list(G.edges(data=True, keys=True))
     for edge in edges:
-        if edge[0] > edge[1]:
-            _reverse_edge(G, edge)
-            pass
+        if method == 'lower_to_higher_node_id':
+            if edge[0] > edge[1]:
+                _reverse_edge(G, edge)
+        elif method == 'by_osm_convention':
+            if lanes._is_backward_oneway_street(edge[3].get('ln_desc')):
+                _reverse_edge(G, edge)
+        else:
+            raise 'Reorganization method not implemented: ' + str(method)
 
 
 def _reverse_edge(G, edge, reverse_topology=True):

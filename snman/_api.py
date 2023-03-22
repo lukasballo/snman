@@ -19,7 +19,7 @@ from .io import load_intersections
 
 from .hierarchy import add_hierarchy
 
-from .graph_tools import normalize_edge_directions
+from .graph_tools import organize_edge_directions
 from .graph_tools import update_precalculated_attributes
 from .graph_tools import split_through_edges_in_intersections
 from .graph_tools import connect_components_in_intersections

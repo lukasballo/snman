@@ -9,6 +9,8 @@ import shapely
 import xml.etree.ElementTree as ET
 import itertools
 import networkx as nx
+import copy
+import numpy as np
 
 
 def load_street_graph(edges_path, nodes_path, crs=2056):
@@ -30,8 +32,8 @@ def load_street_graph(edges_path, nodes_path, crs=2056):
         street graph
     """
 
-    edges_gdf = import_geofile_to_gdf(edges_path, index=['u', 'v', 'key'], crs=crs)
-    nodes_gdf = import_geofile_to_gdf(nodes_path, index='osmid', crs=crs)
+    edges_gdf = import_geofile_to_gdf(edges_path, index=['u', 'v', 'key'], crs=crs).replace(np.nan, None)
+    nodes_gdf = import_geofile_to_gdf(nodes_path, index='osmid', crs=crs).replace(np.nan, None)
     _iterable_columns_from_strings(edges_gdf, {'ln_desc', 'ln_desc_after', 'given_lanes'}, separator=' | ')
 
     G = nx.MultiGraph(crs=crs)
@@ -184,6 +186,12 @@ def load_rebuilding_regions(path):
         )
     rebuilding_regions = rebuilding_regions.sort_values(['order'])
     return rebuilding_regions
+
+
+def load_poi(path):
+
+    poi = import_geofile_to_gdf(path)
+    return poi
 
 
 def _get_nodes_within_polygon(G, polygon):
@@ -405,7 +413,7 @@ def export_osm_xml(G, path, tags, uv_tags=False, tag_all_nodes=False):
     osm_id = itertools.count(max_node_id * 100)
 
     # make a copy of the original graph and convert it to pseudo mercator which is the official OSM crs
-    G = G.copy(G)
+    G = copy.deepcopy(G)
     convert_crs_of_street_graph(G, 'epsg:4326')
 
     # here, we build the XML tree...
