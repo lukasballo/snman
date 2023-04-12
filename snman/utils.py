@@ -25,7 +25,7 @@ def prepare_graph(G):
         edge['layer'] = int(layer) if layer.isdigit() else 0
 
 
-def flatten(items):
+def flatten_list(items):
     """
     A simple function for flattening nested lists, from this post:
     https://stackoverflow.com/questions/952914/how-do-i-make-a-flat-list-out-of-a-list-of-lists/40857703?r=Saves_UserSavesList#40857703
@@ -42,7 +42,7 @@ def flatten(items):
     """
     for x in items:
         if isinstance(x, Iterable) and not isinstance(x, (str, bytes)):
-            for sub_x in flatten(x):
+            for sub_x in flatten_list(x):
                 yield sub_x
         else:
             yield x

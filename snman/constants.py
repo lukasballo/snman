@@ -132,7 +132,7 @@ OSM_FILTER = [
     (
         f'["highway"]["area"!~"yes"]["access"!~"private"]'
         f'["highway"!~"abandoned|bridleway|bus_guideway|corridor|elevator|'
-        f'escalator|planned|platform|proposed|raceway|construction"]'
+        f'escalator|planned|platform|proposed|raceway|construction|footway|pedestrian|steps"]'
         f'["service"!~"alley|driveway|emergency_access|parking|parking_aisle|private"]'
         f'["access"!~"no"]'
     ),
@@ -157,11 +157,11 @@ OSM_FILTER = [
         f'escalator|planned|platform|proposed|raceway|construction"]'
     ),
     # pedestrian paths incl. those mapped as area
-    (
-        f'["highway"="footway|pedestrian"]'
-        f'["highway"!~"abandoned|bridleway|bus_guideway|corridor|elevator|'
-        f'escalator|planned|platform|proposed|raceway|construction"]'
-    )
+    #(
+    #    f'["highway"="footway|pedestrian"]'
+    #    f'["highway"!~"abandoned|bridleway|bus_guideway|corridor|elevator|'
+    #    f'escalator|planned|platform|proposed|raceway|construction"]'
+    #)
 ]
 
 CRS = 'epsg:2056'

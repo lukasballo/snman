@@ -3,6 +3,7 @@ from leuvenmapmatching.map.inmem import InMemMap
 from leuvenmapmatching import visualization as mmviz
 import shapely as shp
 from statistics import mean
+import pandas as pd
 
 
 def match_linestrings(G, source, column_configs, show_test_plot=None):
@@ -99,3 +100,35 @@ def match_linestrings(G, source, column_configs, show_test_plot=None):
         matcher.match(path)
         print(matcher.path_pred_onlynodes)
         mmviz.plot_map(map_con, matcher=matcher,show_labels=False, show_matching=True, show_graph=True)
+
+
+def match_sensors(G, sensors_df):
+    """
+    Assign traffic sensors to edges in the street graph. Typically used with the raw MultiDiGraph from osmnx.
+
+    Parameters
+    ----------
+    G : nx.MultiDiGraph
+    sensors_df : pd.DataFrame
+
+    Returns
+    -------
+    None
+    """
+
+    s = sensors_df.copy()
+    s['id'] = s.index
+    s = s.set_index(['link_osm_id', 'node_from_osm_id', 'node_to_osm_id']).sort_index()
+
+    for id, data in G.edges.items():
+        u, v, key = id
+
+        i_forward = (data['osmid'],u,v)
+        if i_forward in s.index:
+            sensors = list(s.loc[i_forward]['id'])
+            data['sensors_forward'] = sensors
+
+        i_backward = (data['osmid'],v,u)
+        if i_backward in s.index:
+            sensors = list(s.loc[i_backward]['id'])
+            data['sensors_backward'] = sensors

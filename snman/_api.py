@@ -7,8 +7,8 @@ from .lanes import update_osm_tags
 from .merge_edges import merge_parallel_edges
 from .merge_edges import merge_consecutive_edges
 
-from .io import export_streetgraph
-from .io import export_streetgraph_with_lanes
+from .io import export_street_graph
+from .io import export_street_graph_with_lanes
 from .io import export_gdf
 from .io import import_geofile_to_gdf
 from .io import convert_crs_of_street_graph
