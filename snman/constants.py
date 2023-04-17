@@ -133,7 +133,7 @@ OSM_FILTER = [
     (
         f'["highway"]["area"!~"yes"]["access"!~"private"]'
         f'["highway"!~"abandoned|bridleway|bus_guideway|corridor|elevator|'
-        f'escalator|planned|platform|proposed|raceway|construction|footway|pedestrian|steps"]'
+        f'escalator|planned|platform|proposed|raceway|construction|footway|pedestrian|steps|path"]'
         f'["service"!~"alley|driveway|emergency_access|parking|parking_aisle|private"]'
         f'["access"!~"no"]'
     ),

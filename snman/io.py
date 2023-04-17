@@ -179,6 +179,8 @@ def load_rebuilding_regions(path):
           in the rebuilding process, example: '1_main_road,2_local_road')
         * hierarchies_to_fix: str, separated by comma (which street hierarchies should not be changed,
           example: '1_main_road,2_local_road')
+        * keep_all_streets: bool
+            (True: enforce that all streets are passable for cars, False: only all nodes will be accessible for cars)
         * order: int (in which order should the rebuilding steps be applied)
         * active: bool (whether each step should be executed or ignored)
 

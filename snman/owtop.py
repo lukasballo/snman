@@ -3,7 +3,14 @@ from . import constants, utils, distribution
 from . import osmnx_customized as oxc
 
 
-def rebuild_regions(G, rebuilding_regions_gdf, initialize_ln_desc_after=True, **kwargs):
+def rebuild_regions(
+        G,
+        rebuilding_regions_gdf,
+        source_lanes_attribute=constants.KEY_LANES_DESCRIPTION,
+        target_lanes_attribute=constants.KEY_LANES_DESCRIPTION_AFTER,
+        initialize_target_lanes_attribute=True,
+        **kwargs
+):
     """
     Rebuild parts of the street graph in all "rebuilding regions"
 
@@ -13,7 +20,11 @@ def rebuild_regions(G, rebuilding_regions_gdf, initialize_ln_desc_after=True, **
         street graph
     rebuilding_regions_gdf : gpd.GeoDataFrame
         see .io.load_rebuilding_regions
-    initialize_ln_desc_after : bool
+    source_lanes_attribute : str
+        attribute holding the lanes that should be used as input
+    target_lanes_attribute : str
+        attribute holding the lanes that should be used as output
+    initialize_target_lanes_attribute : bool
         reset the rebuilt lane configurations before starting
     kwargs
         see link_elimination
@@ -23,14 +34,35 @@ def rebuild_regions(G, rebuilding_regions_gdf, initialize_ln_desc_after=True, **
     None
     """
 
-    if initialize_ln_desc_after:
-        nx.set_edge_attributes(G, nx.get_edge_attributes(G, 'ln_desc'), 'ln_desc_after')
+    if initialize_target_lanes_attribute:
+        nx.set_edge_attributes(
+            G,
+            nx.get_edge_attributes(G, source_lanes_attribute),
+            target_lanes_attribute
+        )
 
     for idx, data in rebuilding_regions_gdf[rebuilding_regions_gdf['active'] == True].iterrows():
-        _rebuild_region(G, data['geometry'], data['hierarchies_to_include'], data['hierarchies_to_fix'], **kwargs)
+        _rebuild_region(
+            G,
+            data['geometry'],
+            data['hierarchies_to_include'],
+            data['hierarchies_to_fix'],
+            source_lanes_attribute=target_lanes_attribute,  # chaining by taking target attribute as a source
+            target_lanes_attribute=target_lanes_attribute,
+            keep_all_streets=data['keep_all_streets'],
+            **kwargs
+        )
 
 
-def _rebuild_region(G, polygon, hierarchies_to_include, hierarchies_to_fix, **kwargs):
+def _rebuild_region(
+        G,
+        polygon,
+        hierarchies_to_include,
+        hierarchies_to_fix,
+        source_lanes_attribute=constants.KEY_LANES_DESCRIPTION,
+        target_lanes_attribute=constants.KEY_LANES_DESCRIPTION_AFTER,
+        **kwargs
+):
     """
     Rebuild part of the street graph within a polygon
 
@@ -44,6 +76,10 @@ def _rebuild_region(G, polygon, hierarchies_to_include, hierarchies_to_fix, **kw
         which hierarchies of streets should be considered in the process, include all streets if empty
     hierarchies_to_fix : list
         which hierarchies of streets should be left unchanged
+    source_lanes_attribute : str
+        attribute holding the lanes that should be used as input
+    target_lanes_attribute : str
+        attribute holding the lanes that should be used as output
     kwargs
         see link_elimination
 
@@ -64,7 +100,11 @@ def _rebuild_region(G, polygon, hierarchies_to_include, hierarchies_to_fix, **kw
         H.remove_edges_from(filtered_edges.keys())
 
     # initialize the input for link elimination
-    H_minimal_graph_input = distribution.create_given_lanes_graph(H, hierarchies_to_fix=hierarchies_to_fix)
+    H_minimal_graph_input = distribution.create_given_lanes_graph(
+        H,
+        hierarchies_to_fix=hierarchies_to_fix,
+        source_lanes_attribute=source_lanes_attribute
+    )
     #snman.export_streetgraph(H_minimal_graph_input, export_path + 'given_lanes.gpkg', export_path + 'given_lanes_nodes.gpkg')
 
     # run the link elimination
@@ -72,10 +112,16 @@ def _rebuild_region(G, polygon, hierarchies_to_include, hierarchies_to_fix, **kw
     #snman.export_streetgraph(H_minimal_graph_output, export_path + 'minimal_graph_out_edges.gpkg', export_path + 'minimal_graph_out_nodes.gpkg')
 
     # apply the link elimination output to the subgraph graph
-    rebuild_lanes_from_owtop_graph(H, H_minimal_graph_output, hierarchies_to_protect=hierarchies_to_fix)
+    rebuild_lanes_from_owtop_graph(
+        H,
+        H_minimal_graph_output,
+        hierarchies_to_protect=hierarchies_to_fix,
+        source_lanes_attribute=source_lanes_attribute,
+        target_lanes_attribute=target_lanes_attribute
+    )
 
     # write the reorganized lanes from subgraph H into the main graph G
-    nx.set_edge_attributes(G, nx.get_edge_attributes(H, 'ln_desc_after'), 'ln_desc_after')
+    nx.set_edge_attributes(G, nx.get_edge_attributes(H, target_lanes_attribute), target_lanes_attribute)
 
 
 def link_elimination(O, keep_all_streets=True, verbose=False):
@@ -148,7 +194,13 @@ def link_elimination(O, keep_all_streets=True, verbose=False):
     return O
 
 
-def rebuild_lanes_from_owtop_graph(G, O, hierarchies_to_protect=[]):
+def rebuild_lanes_from_owtop_graph(
+        G,
+        O,
+        hierarchies_to_protect=[],
+        source_lanes_attribute=constants.KEY_LANES_DESCRIPTION,
+        target_lanes_attribute=constants.KEY_LANES_DESCRIPTION_AFTER
+):
     """
     Update lanes in the street graph to match the topology in the owtop graph
 
@@ -160,6 +212,10 @@ def rebuild_lanes_from_owtop_graph(G, O, hierarchies_to_protect=[]):
         owtop graph
     hierarchies_to_protect : list
         which street hierarchies should not be changed
+    source_lanes_attribute : str
+        attribute holding the lanes that should be used as input
+    target_lanes_attribute : str
+        attribute holding the lanes that should be used as output
 
     Returns
     -------
@@ -174,7 +230,7 @@ def rebuild_lanes_from_owtop_graph(G, O, hierarchies_to_protect=[]):
 
     for id, data in G.edges.items():
         u, v, k = id
-        lanes_before = data['ln_desc']
+        lanes_before = data[source_lanes_attribute]
         lanes_after = lanes_before.copy()
 
         if data['hierarchy'] not in hierarchies_to_protect:
@@ -235,6 +291,4 @@ def rebuild_lanes_from_owtop_graph(G, O, hierarchies_to_protect=[]):
                             constants.LANETYPE_CYCLING_TRACK + constants.DIRECTION_FORWARD,
                         ]
 
-        data['ln_desc_after'] = list(utils.flatten_list(lanes_after))
-
-
+        data[target_lanes_attribute] = list(utils.flatten_list(lanes_after))

@@ -44,7 +44,12 @@ def set_given_lanes(G, bidirectional_for_dead_ends=True):
                 data[constants.KEY_GIVEN_LANES_DESCRIPTION] += [lanes.LANETYPE_MOTORIZED + lanes.DIRECTION_TBD]
 
 
-def create_given_lanes_graph(G, hierarchies_to_remove=[], hierarchies_to_fix=[]):
+def create_given_lanes_graph(
+        G,
+        hierarchies_to_remove=[],
+        hierarchies_to_fix=[],
+        source_lanes_attribute=constants.KEY_LANES_DESCRIPTION
+    ):
     """
     Returns a directed graph of given (mandatory) lanes. Lanes with changeable direction are marked with an attribute
 
@@ -57,6 +62,8 @@ def create_given_lanes_graph(G, hierarchies_to_remove=[], hierarchies_to_fix=[])
     hierarchies_to_fix : list
         streets of which hierarchies should be automatically converted into fixed edges (i.e. considered but not
         changed in the further process)
+    source_lanes_attribute : str
+        attribute holding the lanes that should be used as a starting point for edges from the hierarchies to fix
 
     Returns
     -------
@@ -73,7 +80,7 @@ def create_given_lanes_graph(G, hierarchies_to_remove=[], hierarchies_to_fix=[])
 
         if data.get('hierarchy') in hierarchies_to_fix:
             # use the existing lanes
-            lanes_list = data.get(constants.KEY_LANES_DESCRIPTION, [])
+            lanes_list = data.get(source_lanes_attribute, [])
         else:
             # use the "given" necessary lanes
             lanes_list = data.get(constants.KEY_GIVEN_LANES_DESCRIPTION, [])
