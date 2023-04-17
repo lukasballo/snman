@@ -235,6 +235,6 @@ def rebuild_lanes_from_owtop_graph(G, O, hierarchies_to_protect=[]):
                             constants.LANETYPE_CYCLING_TRACK + constants.DIRECTION_FORWARD,
                         ]
 
-        data['ln_desc_after'] = list(utils.flatten(lanes_after))
+        data['ln_desc_after'] = list(utils.flatten_list(lanes_after))
 
 

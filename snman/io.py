@@ -9,6 +9,9 @@ import shapely
 import xml.etree.ElementTree as ET
 import itertools
 import networkx as nx
+import copy
+import numpy as np
+import json
 
 
 def load_street_graph(edges_path, nodes_path, crs=2056):
@@ -22,7 +25,7 @@ def load_street_graph(edges_path, nodes_path, crs=2056):
     nodes_path : string
         path to the file containing the nodes
     crs : int
-        number of the coordinate reference system
+        target coordinate reference system of the imported street graph
 
     Returns
     -------
@@ -30,9 +33,11 @@ def load_street_graph(edges_path, nodes_path, crs=2056):
         street graph
     """
 
-    edges_gdf = import_geofile_to_gdf(edges_path, index=['u', 'v', 'key'], crs=crs)
-    nodes_gdf = import_geofile_to_gdf(nodes_path, index='osmid', crs=crs)
+    edges_gdf = import_geofile_to_gdf(edges_path, index=['u', 'v', 'key'], crs=crs).replace(np.nan, None)
+    nodes_gdf = import_geofile_to_gdf(nodes_path, index='osmid', crs=crs).replace(np.nan, None)
     _iterable_columns_from_strings(edges_gdf, {'ln_desc', 'ln_desc_after', 'given_lanes'}, separator=' | ')
+    _iterable_columns_from_strings(edges_gdf, {'sensors_forward', 'sensors_backward'}, method='str')
+    _iterable_columns_from_strings(nodes_gdf, {'layers'}, method='str')
 
     G = nx.MultiGraph(crs=crs)
     nodes_gdf.apply(lambda n: G.add_node(n.name, **n), axis=1)
@@ -41,7 +46,7 @@ def load_street_graph(edges_path, nodes_path, crs=2056):
     return G
 
 
-def import_geofile_to_gdf(file_path, crs=2056, index=None):
+def import_geofile_to_gdf(file_path, crs=2056, index=None, filter_index=None, perimeter=None):
     """
     Import a geofile (shp, gpkg, etc.) as a GeoDataFrame
 
@@ -49,8 +54,13 @@ def import_geofile_to_gdf(file_path, crs=2056, index=None):
     ----------
     file_path : string
     crs : int
+        target coordinate reference system of the imported geodataframe
     index : str or list
         which column(s) should be used as index
+    filter_index : list
+        which rows should be included, by index values
+    perimeter : gpd.GeoDataFrame
+        a geodataframe containing polygons that should be used to crop the imported geometries
 
     Returns
     -------
@@ -59,12 +69,19 @@ def import_geofile_to_gdf(file_path, crs=2056, index=None):
     """
 
     gdf = gpd.read_file(file_path).to_crs(crs)
-    if index:
+    if index is not None:
         gdf = gdf.set_index(index)
+
+    if filter_index is not None:
+        gdf = gdf.filter(items=filter_index, axis=0)
+
+    if perimeter is not None:
+        gdf = gdf.overlay(perimeter, how='intersection')
+
     return gdf
 
 
-def load_perimeters(path):
+def load_perimeters(path, filter=None):
     """
     Load a geofile (shp, gpkg, etc.) with network perimeters. These will be used to download the data from OSM
     and prepare the simplified street graph
@@ -76,13 +93,15 @@ def load_perimeters(path):
     Parameters
     ----------
     path : str
+    filter : list
+        which perimeters should be loaded, e.g. ['zollikerberg']
 
     Returns
     -------
     perimeters : gpd.GeoDataFrame
     """
 
-    perimeters = import_geofile_to_gdf(path, crs=4326, index='id')
+    perimeters = import_geofile_to_gdf(path, index='id', filter_index=filter)
     return perimeters
 
 
@@ -186,6 +205,18 @@ def load_rebuilding_regions(path):
     return rebuilding_regions
 
 
+def load_poi(path, perimeter=None):
+
+    poi = import_geofile_to_gdf(path, perimeter=perimeter)
+    return poi
+
+
+def load_sensors(path):
+
+    sensors = pd.read_csv(path).set_index('id')
+    return sensors
+
+
 def _get_nodes_within_polygon(G, polygon):
     """
     Return nodes of a graph that fit into a polygon
@@ -207,7 +238,7 @@ def _get_nodes_within_polygon(G, polygon):
     return set(nodes_gdf.index.values)
 
 
-def export_streetgraph(G, path_edges, path_nodes, edge_columns=None, node_columns=None):
+def export_street_graph(G, path_edges, path_nodes, edge_columns=None, node_columns=None):
     """
     Export street graph as a geofile (shp, gpkg, etc.)
 
@@ -243,6 +274,7 @@ def export_streetgraph(G, path_edges, path_nodes, edge_columns=None, node_column
 
     # stringify iterable columns
     _stringify_iterable_columns(edges, {'ln_desc', 'ln_desc_after', 'given_lanes'}, separator=' | ')
+    _stringify_iterable_columns(edges, {'sensors_forward', 'sensors_backward'}, method='str')
     _stringify_iterable_columns(nodes, {'layers'}, method='str')
 
     # write files
@@ -250,7 +282,7 @@ def export_streetgraph(G, path_edges, path_nodes, edge_columns=None, node_column
     export_gdf(nodes, path_nodes)
 
 
-def export_streetgraph_with_lanes(G, lanes_attribute, path, scaling=1):
+def export_street_graph_with_lanes(G, lanes_attribute, path, scaling=1):
     """
     Export a geofile with individual lane geometries. This is helpful for visualization purposes.
 
@@ -405,7 +437,7 @@ def export_osm_xml(G, path, tags, uv_tags=False, tag_all_nodes=False):
     osm_id = itertools.count(max_node_id * 100)
 
     # make a copy of the original graph and convert it to pseudo mercator which is the official OSM crs
-    G = G.copy(G)
+    G = copy.deepcopy(G)
     convert_crs_of_street_graph(G, 'epsg:4326')
 
     # here, we build the XML tree...
@@ -522,8 +554,7 @@ def _iterable_columns_from_strings(df, columns, method='separator', separator=',
             if method == 'separator':
                 df[column] = df[column].apply(lambda x: x.split(separator))
             elif method == 'str':
-                # TODO: to be implemented
-                pass
+                df[column] = df[column].apply(lambda x: json.loads(x) if x != 'nan' else [])
 
 
 def _stringify_iterable_columns(df, columns, method='separator', separator=','):
@@ -552,4 +583,4 @@ def _stringify_iterable_columns(df, columns, method='separator', separator=','):
             if method == 'separator':
                 df[column] = df[column].apply(lambda x: separator.join(x))
             elif method == 'str':
-                df[column] = df[column].apply(lambda x: str(x))
+                df[column] = df[column].apply(lambda x: json.dumps(x))

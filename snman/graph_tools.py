@@ -172,7 +172,7 @@ def _unique_edges(edges):
     return unique_edges
 
 
-def normalize_edge_directions(G):
+def organize_edge_directions(G, method='lower_to_higher_node_id'):
     """
     Ensure that all edges in a street graph have the direction from teh lower to the higher node id.
     Edges with a different direction will be reversed, including the lanes and their geometry.
@@ -181,6 +181,9 @@ def normalize_edge_directions(G):
     ----------
     G : nx.MultiDiGraph
         street graph
+    method : str
+        - lower_to_higher_node_id: each edge will be digitized from the lower to the higher node id
+        - by_osm_convention: one-way nodes will be digitized according to their lane direction
 
     Returns
     -------
@@ -189,9 +192,14 @@ def normalize_edge_directions(G):
 
     edges = list(G.edges(data=True, keys=True))
     for edge in edges:
-        if edge[0] > edge[1]:
-            _reverse_edge(G, edge)
-            pass
+        if method == 'lower_to_higher_node_id':
+            if edge[0] > edge[1]:
+                _reverse_edge(G, edge)
+        elif method == 'by_osm_convention':
+            if lanes._is_backward_oneway_street(edge[3].get('ln_desc')):
+                _reverse_edge(G, edge)
+        else:
+            raise 'Reorganization method not implemented: ' + str(method)
 
 
 def _reverse_edge(G, edge, reverse_topology=True):
@@ -217,33 +225,39 @@ def _reverse_edge(G, edge, reverse_topology=True):
     if not G.has_edge(u, v, key):
         return edge
 
-    # Don't reverse topology if the graph is not directed
+    # don't reverse topology if the graph is not directed
     reverse_topology = reverse_topology and nx.is_directed(G)
 
-    # Remove the old edge
+    # remove the old edge
     if reverse_topology:
         G.remove_edge(u, v, key)
 
-    # Reverse the lanes
+    # reverse lanes
     if data.get('ln_desc') is not None:
         data['ln_desc'] = lanes._reverse_lanes(data['ln_desc'])
 
-    # Reverse the geometry
+    # reverse sensors
+    sensors_forward = data.get('sensors_forward', [])
+    sensors_backward = data.get('sensors_backward', [])
+    data['sensors_forward'] = sensors_backward
+    data['sensors_backward'] = sensors_forward
+
+    # reverse geometry
     if data.get('geometry') and data.get('geometry') != shapely.ops.LineString():
         #print(data)
         #print(data['geometry'].wkt)
         data['geometry'] = substring(data['geometry'], 1, 0, normalized=True)
 
-    # Flip the reversed flag
+    # flip the reversed flag
     data[constants.KEY_REVERSED] = not data.get(constants.KEY_REVERSED, False)
 
-    # Add the new edge
+    # add the new edge
     if reverse_topology:
         key = G.add_edge(v, u, **data)
     else:
         nx.set_edge_attributes(G, {(u, v, key): data})
 
-    # Return the resulting edge
+    # return the resulting edge
     if reverse_topology:
         return v, u, key, data
     else:
@@ -434,7 +448,14 @@ def _add_layers_to_nodes(G):
         mode = 'motorized' if _is_motorized(edge) else 'active'
         for node_id in node_ids:
             node_layers[node_id][mode].add(edge.get('layer',0))
+
+    for node, layers_dict in node_layers.items():
+        for mode in ['motorized', 'active']:
+            layers_dict[mode] = list(layers_dict[mode])
+            #print(layers_dict)
+
     nx.set_node_attributes(G, node_layers, 'layers')
+
 
 
 def _are_node_layers_compatible(layers1, layers2):
@@ -471,7 +492,7 @@ def _are_node_layers_compatible(layers1, layers2):
     nodes = [node[0] for node in nodes]
 
     # check if the layers for the highest mode of each node overlap
-    return not nodes[0].isdisjoint(nodes[1])
+    return not set(nodes[0]).isdisjoint(set(nodes[1]))
 
 
 def connect_components_in_intersections(G, intersections_gdf, separate_layers=True):

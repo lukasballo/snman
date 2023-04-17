@@ -85,9 +85,9 @@ def _generate_lanes_for_edge(edge):
     # if forward/backward lanes are defined
     if n_lanes_forward or n_lanes_backward:
         # increase the total number of lanes if forward + backward lanes give a higher number
-        n_lanes = max([n_lanes_forward+n_lanes_backward, n_lanes])
+        n_lanes = max([n_lanes_forward + n_lanes_backward, n_lanes])
     # if more than 1 lane exists but no explicit lane counts forward/backward are defined
-    elif n_lanes>1 and edge.get('oneway', False) == False:
+    elif n_lanes > 1 and edge.get('oneway', False) == False:
         n_lanes_forward = math.floor(n_lanes / 2)
         n_lanes_backward = math.ceil(n_lanes / 2)
 
@@ -96,14 +96,15 @@ def _generate_lanes_for_edge(edge):
         n_lanes_both = 1
 
     # n lanes with oneway tag
-    if n_lanes>0 and edge.get('oneway'):
+    if n_lanes > 0 and edge.get('oneway'):
         n_lanes_forward = n_lanes
 
     # If the edge is dedicated for public transport
-    if (edge.get('highway') == 'service' or edge.get('access') == 'no') and (edge.get('psv') == 'yes' or edge.get('bus') == 'yes'):
-        n_lanes_dedicated_pt = max([n_lanes,2])
-        n_lanes_dedicated_pt_forward = max([n_lanes_forward,1])
-        n_lanes_dedicated_pt_backward = max([n_lanes_backward,1])
+    if (edge.get('highway') == 'service' or edge.get('access') == 'no') and (
+            edge.get('psv') == 'yes' or edge.get('bus') == 'yes'):
+        n_lanes_dedicated_pt = max([n_lanes, 2])
+        n_lanes_dedicated_pt_forward = max([n_lanes_forward, 1])
+        n_lanes_dedicated_pt_backward = max([n_lanes_backward, 1])
         n_lanes_dedicated_pt_both = 0
     else:
         n_lanes_motorized = n_lanes
@@ -145,7 +146,7 @@ def _generate_lanes_for_edge(edge):
     # Walkway [with cycling]
     elif edge.get('highway') in PEDESTRIAN_HIGHWAY_VALUES:
         # cycling allowed without segregation
-        if (edge.get('bicycle') in {'yes', 'designated'} or edge.get('bicycle:conditional'))\
+        if (edge.get('bicycle') in {'yes', 'designated'} or edge.get('bicycle:conditional')) \
                 and edge.get('segregated') != 'yes':
             # oneway for cyclists
             if edge.get('oneway') in {'yes', 1} or edge.get('oneway:bicycle') in {'yes', 1}:
@@ -154,7 +155,7 @@ def _generate_lanes_for_edge(edge):
             else:
                 both_dir_lanes_list.extend([LANETYPE_FOOT_CYCLING_MIXED + DIRECTION_BOTH])
         # cycling allowed with segregation
-        elif (edge.get('bicycle') in {'yes', 'designated'} or edge.get('bicycle:conditional'))\
+        elif (edge.get('bicycle') in {'yes', 'designated'} or edge.get('bicycle:conditional')) \
                 and edge.get('segregated') == 'yes':
             # oneway for cyclists
             if edge.get('oneway') in {'yes', 1} or edge.get('oneway:bicycle') in {'yes', 1}:
@@ -171,21 +172,21 @@ def _generate_lanes_for_edge(edge):
     # Normal road
     elif edge.get('highway') not in {'platform'}:
         # Add sidewalk left (inactive to prevent double sidewalks)
-        #if edge.get('sidewalk') in {'left', 'both'}:
+        # if edge.get('sidewalk') in {'left', 'both'}:
         #    left_lanes_list.extend([LANETYPE_FOOT + DIRECTION_BOTH])
         # Add cycling lane left
-        if edge.get('cycleway:left') == 'lane'\
-                or edge.get('cycleway:both') == 'lane'\
+        if edge.get('cycleway:left') == 'lane' \
+                or edge.get('cycleway:both') == 'lane' \
                 or edge.get('cycleway') == 'lane':
             left_lanes_list.extend([LANETYPE_CYCLING_LANE + _DIRECTION_BACKWARD])
 
         # Add cycling lane right
-        if edge.get('cycleway:right') == 'lane'\
-                or edge.get('cycleway:both') == 'lane'\
+        if edge.get('cycleway:right') == 'lane' \
+                or edge.get('cycleway:both') == 'lane' \
                 or edge.get('cycleway') == 'lane':
             right_lanes_list.extend([LANETYPE_CYCLING_LANE + _DIRECTION_FORWARD])
         # Add sidewalk right
-        #if edge.get('sidewalk') in {'right', 'both'}:
+        # if edge.get('sidewalk') in {'right', 'both'}:
         #    right_lanes_list.extend([LANETYPE_FOOT + DIRECTION_BOTH])
 
         backward_lanes_list.extend([LANETYPE_MOTORIZED + _DIRECTION_BACKWARD] * n_lanes_motorized_backward)
@@ -285,6 +286,7 @@ def generate_lane_stats(G):
 
 
 def _generate_lane_stats_for_edge(edge):
+    # TODO: Generate stats for both status quo and after rebuilding
     """
     Add lane statistics to one edge. Following attributes are added:
         * width_cycling_m -> total width for cycling in meters
@@ -341,6 +343,7 @@ class _lane_properties:
     A class for a standardized set of properties of a lane
     """
 
+    valid = None
     width = None
     lanetype = None
     direction = None
@@ -350,6 +353,7 @@ class _lane_properties:
     dedicated_cycling = None
     dedicated_cycling_lane = None
     dedicated_cycling_track = None
+    cycling_cost_factor = None
 
     def __init__(self, lane_description):
         """
@@ -361,15 +365,22 @@ class _lane_properties:
             description of a lane following the format described in _generate_lanes_for_edge
         """
 
-        self.width = DEFAULT_LANE_WIDTHS.get(lane_description, 0)
-        self.lanetype = lane_description[0:-1]
-        self.direction = lane_description[-1]
-        self.motorized = lane_description[0:-1] in [LANETYPE_MOTORIZED, LANETYPE_DEDICATED_PT]
-        self.private_cars = lane_description[0:-1] == LANETYPE_MOTORIZED
-        self.dedicated_pt = lane_description[0:-1] == LANETYPE_DEDICATED_PT
-        self.dedicated_cycling = lane_description[0:-1] in [LANETYPE_CYCLING_TRACK, LANETYPE_CYCLING_LANE]
-        self.dedicated_cycling_lane = lane_description[0:-1] == LANETYPE_CYCLING_LANE
-        self.dedicated_cycling_track = lane_description[0:-1] == LANETYPE_CYCLING_TRACK
+        if lane_description not in LANE_TYPES:
+            self.valid = False
+
+        else:
+            self.valid = True
+            self.width = LANE_TYPES[lane_description]['width']
+            self.lanetype = lane_description[0:-1]
+            self.direction = lane_description[-1]
+            self.motorized = lane_description[0:-1] in [LANETYPE_MOTORIZED, LANETYPE_DEDICATED_PT]
+            self.private_cars = lane_description[0:-1] == LANETYPE_MOTORIZED
+            self.dedicated_pt = lane_description[0:-1] == LANETYPE_DEDICATED_PT
+            self.dedicated_cycling = lane_description[0:-1] in [LANETYPE_CYCLING_TRACK, LANETYPE_CYCLING_LANE]
+            self.dedicated_cycling_lane = lane_description[0:-1] == LANETYPE_CYCLING_LANE
+            self.dedicated_cycling_track = lane_description[0:-1] == LANETYPE_CYCLING_TRACK
+            self.cycling_cost_factor = LANE_TYPES[lane_description]['cycling_cost_factor']
+
 
 class _lane_stats:
     """
@@ -401,7 +412,7 @@ class _lane_stats:
     n_lanes_dedicated_cycling_tracks_both_ways = 0
     n_lanes_dedicated_cycling_tracks_direction_tbd = 0
 
-    def __init__(self,lanes_description):
+    def __init__(self, lanes_description):
         """
         Decodes a list of lanes into a set of statistics
 
@@ -470,9 +481,8 @@ class _lane_stats:
                 elif direction == DIRECTION_TBD:
                     self.n_lanes_dedicated_cycling_tracks_direction_tbd += 1
 
-
         self.n_lanes_motorized = \
-            self.n_lanes_motorized_forward + self.n_lanes_motorized_backward\
+            self.n_lanes_motorized_forward + self.n_lanes_motorized_backward \
             + self.n_lanes_motorized_both_ways + self.n_lanes_motorized_direction_tbd
 
 
@@ -494,6 +504,7 @@ def update_osm_tags(G, lanes_description_key=KEY_LANES_DESCRIPTION):
     """
     for edge in G.edges(data=True, keys=True):
         _update_osm_tags_for_edge(edge, lanes_description_key)
+
 
 def _update_osm_tags_for_edge(edge, lanes_description_key):
     """
@@ -517,6 +528,7 @@ def _update_osm_tags_for_edge(edge, lanes_description_key):
     data['lanes:forward'] = None
     data['lanes:backward'] = None
     data['lanes:both_ways'] = None
+    data['oneway'] = None
 
     # Motorized lanes
     if lane_stats.n_lanes_motorized:
@@ -527,6 +539,19 @@ def _update_osm_tags_for_edge(edge, lanes_description_key):
         data['lanes:backward'] = lane_stats.n_lanes_motorized_backward
     if lane_stats.n_lanes_motorized_both_ways > 0:
         data['lanes:both_ways'] = lane_stats.n_lanes_motorized_both_ways
+
+    if (
+        lane_stats.n_lanes_motorized_forward > 0
+        and lane_stats.n_lanes_motorized_backward + lane_stats.n_lanes_motorized_both_ways == 0
+    ):
+        data['oneway'] = 'yes'
+    elif (
+        lane_stats.n_lanes_motorized_backward > 0
+        and lane_stats.n_lanes_motorized_forward + lane_stats.n_lanes_motorized_both_ways == 0
+    ):
+        data['oneway'] = '-1'
+    else:
+        data['oneway'] = 'no'
 
     # Clean the tags before updating
     data['bus:lanes:backward'] = None
@@ -573,7 +598,8 @@ def _update_osm_tags_for_edge(edge, lanes_description_key):
 
     # Cycling lanes
     if lane_stats.n_lanes_dedicated_cycling_lanes_both_ways > 0 \
-        or (lane_stats.n_lanes_dedicated_cycling_lanes_forward > 0 and lane_stats.n_lanes_dedicated_cycling_lanes_backward > 0):
+            or (
+            lane_stats.n_lanes_dedicated_cycling_lanes_forward > 0 and lane_stats.n_lanes_dedicated_cycling_lanes_backward > 0):
         # both directions
         data['cycleway'] = 'lane'
         data['cycleway:lane'] = 'advisory'
@@ -588,7 +614,8 @@ def _update_osm_tags_for_edge(edge, lanes_description_key):
 
     # Cycling tracks
     if lane_stats.n_lanes_dedicated_cycling_tracks_both_ways > 0 \
-        or (lane_stats.n_lanes_dedicated_cycling_tracks_forward > 0 and lane_stats.n_lanes_dedicated_cycling_tracks_backward > 0):
+            or (
+            lane_stats.n_lanes_dedicated_cycling_tracks_forward > 0 and lane_stats.n_lanes_dedicated_cycling_tracks_backward > 0):
         # both directions
         data['cycleway'] = 'track'
     elif lane_stats.n_lanes_dedicated_cycling_tracks_forward > 0:
@@ -601,6 +628,36 @@ def _update_osm_tags_for_edge(edge, lanes_description_key):
     maxspeed = data.get('maxspeed', -1)
     if maxspeed == -1 and 'maxspeed' in data:
         del data['maxspeed']
+
+
+def _is_backward_oneway_street(lanes):
+    """
+    Returns true if the given lane configuration represents a one-way street that is digitized in opposite direction.
+    This is needed for preparing the graph for osm export where one-way streets are typically digitized
+    in the forward direction.
+
+    Parameters
+    ----------
+    lanes: list
+        a list of lanes following the format described in _generate_lanes_for_edge
+
+    Returns
+    -------
+    bool
+    """
+
+    ls = _lane_stats(lanes)
+
+    # only motorized lanes backward
+    if (
+            ls.n_lanes_motorized_forward == 0
+            and ls.n_lanes_motorized_both_ways == 0
+            and ls.n_lanes_motorized_direction_tbd == 0
+            and ls.n_lanes_motorized_backward > 0
+    ):
+        return True
+    else:
+        return False
 
 
 def _order_lanes(lanes):

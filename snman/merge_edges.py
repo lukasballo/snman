@@ -1,7 +1,6 @@
 import networkx as nx
-from . import graph_tools
+from . import graph_tools, geometry_tools, utils
 from shapely import geometry, ops
-from . import geometry_tools
 import numpy as np
 import itertools as it
 
@@ -9,7 +8,6 @@ import itertools as it
 def merge_parallel_edges(G):
     """
     Detect and merge all sets of edges sharing the same start/end nodes, incl. their attributes
-    TODO: Merge this function with osmnx.utils_graph_get_digraph (including the merge of attributes)
     TODO: Avoid merging edges that are too far apart, e.g. parallel streets
 
     Parameters
@@ -72,6 +70,18 @@ def _merge_given_parallel_edges(G, edges):
     # merge the lanes from all
     parent_edge[3]['_merge_parallel_src_ln_desc'] = str([edge[3].get('ln_desc') for edge in edges_sorted_by_go])
     parent_edge[3]['ln_desc'] = list(it.chain(*[edge[3].get('ln_desc') for edge in edges_sorted_by_go]))
+
+    # merge sensors
+    parent_edge[3]['sensors_forward'] = list(set(
+        utils.flatten_list(
+            [edge[3].get('sensors_forward', []) for edge in edges_sorted_by_go]
+        )
+    ))
+    parent_edge[3]['sensors_backward'] = list(set(
+        utils.flatten_list(
+            [edge[3].get('sensors_backward', []) for edge in edges_sorted_by_go]
+        )
+    ))
 
     # set the maximum maxspeed
     maxspeeds = [edge[3].get('maxspeed') for edge in edges]
@@ -241,7 +251,7 @@ def _merge_given_consecutive_edges(G, edges):
         geometries = [edge[3]['geometry'] for edge in edge_subchain]
         for i in range(2):
             geometries = [
-                (lambda geom: (ops.linemerge(geom) if geom.geom_type=='MultiLineString' else geom))(geom)
+                (lambda geom: (ops.linemerge(geom) if geom.geom_type == 'MultiLineString' else geom))(geom)
                 for geom in geometries
             ]
         multi_line = geometry.MultiLineString(geometries)
@@ -253,6 +263,18 @@ def _merge_given_consecutive_edges(G, edges):
         merged_data['__middle_nodes'] = str(subchain_middle_nodes)
         merged_data['__nodes'] = str(subchain_nodes)
         merged_data['__n_edges'] = str(len(edge_subchain))
+
+        # Merge other attributes
+        merged_data['sensors_forward'] = list(set(
+            utils.flatten_list(
+                [edge[3].get('sensors_forward', []) for edge in edge_subchain]
+            )
+        ))
+        merged_data['sensors_backward'] = list(set(
+            utils.flatten_list(
+                [edge[3].get('sensors_backward', []) for edge in edge_subchain]
+            )
+        ))
 
         # Delete the old edges
         for edge in edge_subchain:
