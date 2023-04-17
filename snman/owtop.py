@@ -75,7 +75,7 @@ def _rebuild_region(G, polygon, hierarchies_to_include, hierarchies_to_fix, **kw
     rebuild_lanes_from_owtop_graph(H, H_minimal_graph_output, hierarchies_to_protect=hierarchies_to_fix)
 
     # write the reorganized lanes from subgraph H into the main graph G
-    nx.set_edge_attributes(G, nx.get_edge_attributes(H,'ln_desc_after'), 'ln_desc_after')
+    nx.set_edge_attributes(G, nx.get_edge_attributes(H, 'ln_desc_after'), 'ln_desc_after')
 
 
 def link_elimination(O, keep_all_streets=True, verbose=False):

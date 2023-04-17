@@ -28,7 +28,8 @@ CYCLING_QUALITY_HIERARCHY = [
 LANETYPE_ORDER = ['T', 'M', 'L', 'P', 'S', 'F']
 DIRECTION_ORDER = ['<', '-', '>']
 
-KEY_LANES_DESCRIPTION = 'ln_desc'   # under which key of each edge is the existing lane configuration
+KEY_LANES_DESCRIPTION = 'ln_desc'               # under which key is the existing lane configuration
+KEY_LANES_DESCRIPTION_AFTER = 'ln_desc_after'   # under which key is the lane configuration after rebuilding
 KEY_GIVEN_LANES_DESCRIPTION = 'given_lanes'
 KEY_REVERSED = '_reversed'          # which key tells if the edge has been reversed
 

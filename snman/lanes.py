@@ -266,7 +266,7 @@ def _reverse_lanes(lanes):
     return reversed_lanes
 
 
-def generate_lane_stats(G):
+def generate_lane_stats(G, lanes_attribute=KEY_LANES_DESCRIPTION):
     """
     Add lane statistics to all edges for the street graph
 
@@ -274,6 +274,9 @@ def generate_lane_stats(G):
     ------
     G : nx.MultiGraph
         street graph
+    lanes_attribute : str
+        which attribute describing the lanes should be used
+        (e.g., lanes in status quo or lanes after rebuilding)
 
     Returns
     -------
@@ -282,10 +285,10 @@ def generate_lane_stats(G):
 
     for edge in G.edges(data=True, keys=True):
         edge_data = edge[3]
-        _generate_lane_stats_for_edge(edge_data)
+        _generate_lane_stats_for_edge(edge_data, lanes_attribute)
 
 
-def _generate_lane_stats_for_edge(edge):
+def _generate_lane_stats_for_edge(edge, lanes_attribute=KEY_LANES_DESCRIPTION):
     # TODO: Generate stats for both status quo and after rebuilding
     """
     Add lane statistics to one edge. Following attributes are added:
@@ -298,13 +301,16 @@ def _generate_lane_stats_for_edge(edge):
     ----------
     edge : dict
         the data dictionary of an edge
+    lanes_attribute : str
+        which attribute describing the lanes should be used
+        (e.g., lanes in status quo or lanes after rebuilding)
 
     Returns
     -------
     None
     """
 
-    lanes = edge.get(KEY_LANES_DESCRIPTION, [])
+    lanes = edge.get(lanes_attribute, [])
     lane_stats = _lane_stats(lanes)
 
     width_cycling = 0
@@ -324,17 +330,19 @@ def _generate_lane_stats_for_edge(edge):
     except ZeroDivisionError:
         proportion_cycling = None
 
-    edge['width_cycling_m'] = width_cycling
-    edge['width_motorized_m'] = width_motorized
-    edge['width_total_m'] = width_total
-    edge['n_lanes_motorized'] = lane_stats.n_lanes_motorized
+    # basic stats
+    edge[lanes_attribute + '_width_cycling_m'] = width_cycling
+    edge[lanes_attribute + '_width_motorized_m'] = width_motorized
+    edge[lanes_attribute + '_width_total_m'] = width_total
+    edge[lanes_attribute + '_n_lanes_motorized'] = lane_stats.n_lanes_motorized
 
+    # description of best cycling option in each direction
     for user_dir_name, user_dir_description in {'forward': DIRECTION_FORWARD, 'backward': DIRECTION_BACKWARD}.items():
         for lane_direction in [user_dir_description, DIRECTION_BOTH]:
             for lanetype in CYCLING_QUALITY_HIERARCHY:
                 lane_description = lanetype + lane_direction
                 if lane_description in lanes:
-                    edge['cycling_' + user_dir_name] = lane_description
+                    edge[lanes_attribute + '_cycling_' + user_dir_name] = lane_description
                     break
 
 

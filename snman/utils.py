@@ -22,7 +22,8 @@ def prepare_graph(G):
         edge['maxspeed'] = int(maxspeed) if maxspeed.isdigit() else -1
 
         layer = edge.get('layer', '')
-        edge['layer'] = int(layer) if layer.isdigit() else 0
+        # isdigit only supports positive numbers, so we need to remove any '-' first
+        edge['layer'] = int(layer) if layer.lstrip('-').isdigit() else 0
 
 
 def flatten_list(items):
