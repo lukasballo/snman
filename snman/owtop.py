@@ -1,5 +1,5 @@
 import networkx as nx
-from . import constants, utils, distribution
+from . import constants, utils, distribution, lanes
 from . import osmnx_customized as oxc
 
 
@@ -150,9 +150,9 @@ def link_elimination(O, keep_all_streets=True, verbose=False):
     gcc = sorted(nx.weakly_connected_components(O), key=len, reverse=True)[0]
     O = O.subgraph(gcc).copy()
 
-    # Add complementary edges
+    # Add complementary edges in cases where they don't already exist
     for i, data in O.edges.items():
-        if data.get('fixed', False) == False:
+        if not O.has_edge(i[1], i[0]):
             O.add_edge(i[1], i[0], fixed=False)
 
     if verbose:
@@ -228,67 +228,80 @@ def rebuild_lanes_from_owtop_graph(
         n_car_lanes[(u, v)] = O.has_edge(u, v) * 1
         n_car_lanes[(v, u)] = O.has_edge(v, u) * 1
 
+    # iterate over all streets
     for id, data in G.edges.items():
         u, v, k = id
         lanes_before = data[source_lanes_attribute]
         lanes_after = lanes_before.copy()
 
-        if data['hierarchy'] not in hierarchies_to_protect:
+        # don't touch this street if its hierarchy is protected
+        if data['hierarchy'] in hierarchies_to_protect:
+            continue
 
-            for i, l in enumerate(lanes_before):
+        # iterate over all lanes
+        for i, l in enumerate(lanes_before):
 
-                # M- lanes
-                if l == constants.LANETYPE_MOTORIZED + constants.DIRECTION_BOTH:
+            # M- lanes
+            if l == constants.LANETYPE_MOTORIZED + constants.DIRECTION_BOTH:
 
-                    if n_car_lanes[(u, v)] >= 1 and n_car_lanes[(v, u)] >= 1:
-                        # keep the lane as it is
-                        n_car_lanes[(u, v)] -= 1
-                        n_car_lanes[(v, u)] -= 1
+                # if there are connections in both directions
+                if n_car_lanes[(u, v)] >= 1 and n_car_lanes[(v, u)] >= 1:
+                    # keep the lane as it is
+                    n_car_lanes[(u, v)] -= 1
+                    n_car_lanes[(v, u)] -= 1
 
-                    elif n_car_lanes[(u, v)] >= 1 and n_car_lanes[(v, u)] == 0:
-                        # turn it into [L<,M>]
-                        lanes_after[i] = [
-                            constants.LANETYPE_CYCLING_LANE + constants.DIRECTION_BACKWARD,
-                            constants.LANETYPE_MOTORIZED + constants.DIRECTION_FORWARD,
-                        ]
-                        n_car_lanes[(u, v)] -= 1
+                # if there is only a forward connection
+                elif n_car_lanes[(u, v)] >= 1 and n_car_lanes[(v, u)] == 0:
+                    # turn it into [L<,M>]
+                    lanes_after[i] = [
+                        constants.LANETYPE_CYCLING_LANE + constants.DIRECTION_BACKWARD,
+                        constants.LANETYPE_MOTORIZED + constants.DIRECTION_FORWARD,
+                    ]
+                    n_car_lanes[(u, v)] -= 1
 
-                    elif n_car_lanes[(u, v)] == 0 and n_car_lanes[(v, u)] >= 1:
-                        # convert it into [M<,L>]
-                        lanes_after[i] = [
-                            constants.LANETYPE_MOTORIZED + constants.DIRECTION_BACKWARD,
-                            constants.LANETYPE_CYCLING_LANE + constants.DIRECTION_FORWARD,
-                        ]
-                        n_car_lanes[(v, u)] -= 1
+                # if there is only a backward connection
+                elif n_car_lanes[(u, v)] == 0 and n_car_lanes[(v, u)] >= 1:
+                    # convert it into [M<,L>]
+                    lanes_after[i] = [
+                        constants.LANETYPE_MOTORIZED + constants.DIRECTION_BACKWARD,
+                        constants.LANETYPE_CYCLING_LANE + constants.DIRECTION_FORWARD,
+                    ]
+                    n_car_lanes[(v, u)] -= 1
 
-                    else:
-                        # convert it into [P<,P>]
-                        lanes_after[i] = [
-                            constants.LANETYPE_CYCLING_TRACK + constants.DIRECTION_BACKWARD,
-                            constants.LANETYPE_CYCLING_TRACK + constants.DIRECTION_FORWARD,
-                        ]
+                # if there is no connection
+                else:
+                    # convert it into [P<,P>]
+                    # TODO: match the new and old width, curently 4.5 -> 3.0 m
+                    lanes_after[i] = [
+                        constants.LANETYPE_CYCLING_TRACK + constants.DIRECTION_BACKWARD,
+                        constants.LANETYPE_CYCLING_TRACK + constants.DIRECTION_FORWARD,
+                    ]
 
-                # M< and M> lanes
-                if l in [
-                    constants.LANETYPE_MOTORIZED + constants.DIRECTION_BACKWARD,
-                    constants.LANETYPE_MOTORIZED + constants.DIRECTION_FORWARD
-                ]:
+            # M< and M> lanes
+            if l in [
+                constants.LANETYPE_MOTORIZED + constants.DIRECTION_BACKWARD,
+                constants.LANETYPE_MOTORIZED + constants.DIRECTION_FORWARD
+            ]:
 
-                    if n_car_lanes[(v, u)] >= 1:
-                        # convert into M<
-                        lanes_after[i] = constants.LANETYPE_MOTORIZED + constants.DIRECTION_BACKWARD
-                        n_car_lanes[(v, u)] -= 1
+                # if forward connection exists (process forward first)
+                if n_car_lanes[(v, u)] >= 1:
+                    # convert into M<
+                    lanes_after[i] = constants.LANETYPE_MOTORIZED + constants.DIRECTION_BACKWARD
+                    n_car_lanes[(v, u)] -= 1
 
-                    elif n_car_lanes[(u, v)] >= 1:
-                        # convert into M>
-                        lanes_after[i] = constants.LANETYPE_MOTORIZED + constants.DIRECTION_FORWARD
-                        n_car_lanes[(u, v)] -= 1
+                # if backward connection exists
+                elif n_car_lanes[(u, v)] >= 1:
+                    # convert into M>
+                    lanes_after[i] = constants.LANETYPE_MOTORIZED + constants.DIRECTION_FORWARD
+                    n_car_lanes[(u, v)] -= 1
 
-                    else:
-                        # convert it into [P<,P>]
-                        lanes_after[i] = [
-                            constants.LANETYPE_CYCLING_TRACK + constants.DIRECTION_BACKWARD,
-                            constants.LANETYPE_CYCLING_TRACK + constants.DIRECTION_FORWARD,
-                        ]
+                else:
+                    # convert it into [P<,P>]
+                    lanes_after[i] = [
+                        constants.LANETYPE_CYCLING_TRACK + constants.DIRECTION_BACKWARD,
+                        constants.LANETYPE_CYCLING_TRACK + constants.DIRECTION_FORWARD,
+                    ]
 
-        data[target_lanes_attribute] = list(utils.flatten_list(lanes_after))
+        lanes_after = list(utils.flatten_list(lanes_after))
+        lanes_after = lanes._reorder_lanes_on_edge(lanes_after)
+        data[target_lanes_attribute] = lanes_after

@@ -59,8 +59,8 @@ def import_geofile_to_gdf(file_path, crs=2056, index=None, filter_index=None, pe
         which column(s) should be used as index
     filter_index : list
         which rows should be included, by index values
-    perimeter : gpd.GeoDataFrame
-        a geodataframe containing polygons that should be used to crop the imported geometries
+    perimeter : polygon
+        will be used to crop the imported geometries
 
     Returns
     -------
@@ -205,6 +205,14 @@ def load_rebuilding_regions(path):
         )
     rebuilding_regions = rebuilding_regions.sort_values(['order'])
     return rebuilding_regions
+
+
+def load_measurement_regions(path):
+
+    measurement_regions = import_geofile_to_gdf(path)
+    measurement_regions = measurement_regions[measurement_regions['active'] == True]
+    measurement_regions['area'] = measurement_regions.geometry.area
+    return measurement_regions
 
 
 def load_poi(path, perimeter=None):

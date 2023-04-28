@@ -2,7 +2,12 @@ import networkx as nx
 from . import constants, lanes, hierarchy
 
 
-def set_given_lanes(G, bidirectional_for_dead_ends=True):
+def set_given_lanes(
+        G,
+        source_lanes_attribute=constants.KEY_LANES_DESCRIPTION,
+        target_lanes_attribute=constants.KEY_GIVEN_LANES_DESCRIPTION,
+        bidirectional_for_dead_ends=True
+):
     """
     Sets which lanes are given due to external policy definitions
     e.g. dedicated lanes for public transport, bidirectional lanes for cars, etc.
@@ -23,26 +28,33 @@ def set_given_lanes(G, bidirectional_for_dead_ends=True):
     # TODO: Add support for dedicated transit lanes
 
     for id, data in G.edges.items():
-        data[constants.KEY_GIVEN_LANES_DESCRIPTION] = []
 
-        # For roads with public transport, keep both directions
+        source_lanes = data[source_lanes_attribute]
+        target_lanes = []
+
+        lane_stats = lanes._lane_stats(source_lanes)
+
+        # for roads with public transport...
         if data.get('pt_tram') or data.get('pt_bus'):
-            data[constants.KEY_GIVEN_LANES_DESCRIPTION] += [
-                lanes.LANETYPE_MOTORIZED + lanes.DIRECTION_BACKWARD,
-                lanes.LANETYPE_MOTORIZED + lanes.DIRECTION_FORWARD
-            ]
+            # ...keep forward lane if there is no dedicated forward/both ways lane
+            if lane_stats.n_lanes_dedicated_pt_forward + lane_stats.n_lanes_dedicated_pt_both_ways == 0:
+                target_lanes += [lanes.LANETYPE_MOTORIZED + lanes.DIRECTION_FORWARD]
+            # ...keep backward lane if there is no dedicated backward/both ways lane
+            if lane_stats.n_lanes_dedicated_pt_backward + lane_stats.n_lanes_dedicated_pt_both_ways == 0:
+                target_lanes += [lanes.LANETYPE_MOTORIZED + lanes.DIRECTION_BACKWARD]
 
-        # For normal roads, keep one single-direction lane
+        # for normal roads, keep one single-direction lane
         elif data.get('hierarchy') in [hierarchy.MAIN_ROAD, hierarchy.LOCAL_ROAD, hierarchy.HIGHWAY]:
-            data[constants.KEY_GIVEN_LANES_DESCRIPTION] += [lanes.LANETYPE_MOTORIZED + lanes.DIRECTION_TBD]
+            target_lanes += [lanes.LANETYPE_MOTORIZED + lanes.DIRECTION_TBD]
 
-        # For dead ends, create a single bi-directional lane
+        # for dead ends, create a single bi-directional lane
         elif data.get('hierarchy') == hierarchy.DEAD_END:
             if bidirectional_for_dead_ends:
-                data[constants.KEY_GIVEN_LANES_DESCRIPTION] += [lanes.LANETYPE_MOTORIZED + lanes.DIRECTION_BOTH]
+                target_lanes += [lanes.LANETYPE_MOTORIZED + lanes.DIRECTION_BOTH]
             else:
-                data[constants.KEY_GIVEN_LANES_DESCRIPTION] += [lanes.LANETYPE_MOTORIZED + lanes.DIRECTION_TBD]
+                target_lanes += [lanes.LANETYPE_MOTORIZED + lanes.DIRECTION_TBD]
 
+        data[target_lanes_attribute] = target_lanes
 
 def create_given_lanes_graph(
         G,
