@@ -1,5 +1,5 @@
 from . import osmnx_customized as oxc
-from . import geometry_tools, lanes
+from . import geometry_tools, lane_config, utils
 import geopandas as gpd
 import pandas as pd
 import pyproj
@@ -37,7 +37,7 @@ def load_street_graph(edges_path, nodes_path, crs=2056):
     nodes_gdf = import_geofile_to_gdf(nodes_path, index='osmid', crs=crs).replace(np.nan, None)
     _iterable_columns_from_strings(edges_gdf, {'ln_desc', 'ln_desc_after', 'given_lanes'}, separator=' | ')
     _iterable_columns_from_strings(edges_gdf, {'sensors_forward', 'sensors_backward'}, method='str')
-    _iterable_columns_from_strings(nodes_gdf, {'layers'}, method='str')
+    _iterable_columns_from_strings(nodes_gdf, {'layers'}, separator=',')
 
     G = nx.MultiGraph(crs=crs)
     nodes_gdf.apply(lambda n: G.add_node(n.name, **n), axis=1)
@@ -270,6 +270,8 @@ def export_street_graph(G, path_edges, path_nodes, edge_columns=None, node_colum
     None
     """
 
+    G = copy.deepcopy(G)
+
     nodes, edges = oxc.graph_to_gdfs(G)
 
     if edge_columns:
@@ -285,7 +287,7 @@ def export_street_graph(G, path_edges, path_nodes, edge_columns=None, node_colum
     # stringify iterable columns
     _stringify_iterable_columns(edges, {'ln_desc', 'ln_desc_after', 'given_lanes'}, separator=' | ')
     _stringify_iterable_columns(edges, {'sensors_forward', 'sensors_backward'}, method='str')
-    _stringify_iterable_columns(nodes, {'layers'}, method='str')
+    _stringify_iterable_columns(nodes, {'layers'}, separator=',')
 
     # write files
     export_gdf(edges, path_edges)
@@ -320,12 +322,12 @@ def export_street_graph_with_lanes(G, lanes_attribute, path, scaling=1):
 
         # Reconstruct total width of given lanes
         for lane in data.get(lanes_attribute, []):
-            lane_properties = lanes._lane_properties(lane)
+            lane_properties = lane_config._lane_properties(lane)
             given_total_width += lane_properties.width
 
         offset = -given_total_width / 2
         for lane in data.get(lanes_attribute, []):
-            lane_properties = lanes._lane_properties(lane)
+            lane_properties = lane_config._lane_properties(lane)
 
             centerline_offset = offset + lane_properties.width / 2
             offset += lane_properties.width
@@ -380,45 +382,7 @@ def export_gdf(gdf, path, columns=[]):
         gdf[columns].to_file(path)
 
 
-def convert_crs_of_street_graph(G, to_crs):
-    """
-    Convert the coordinate reference system of the geometries in a graph.
-    The graph must follow the convention of networkx:
-        * edges have a 'geometry' attribute with a shapely geometry
-        * nodes have 'x' and 'y' attributes holding the coordinates as floats
-        * the graph has a 'crs' attribute
 
-    Parameters
-    ----------
-    G : nx.MultiGraph or nx.MultiDiGraph
-        street graph
-    to_crs : int
-        target crs
-
-    Returns
-    -------
-    None
-    """
-
-    # Initialize the CRS transformer
-    from_crs = pyproj.CRS(G.graph['crs'])
-    to_crs = pyproj.CRS(to_crs)
-    project = pyproj.Transformer.from_crs(from_crs, to_crs, always_xy=True).transform
-
-    # Update the street_graph's metadata
-    G.graph["crs"] = to_crs
-
-    # Transform the geometry of all edges
-    for edge in G.edges(data=True, keys=True):
-        if "geometry" in edge[3]:
-            edge[3]["geometry"] = shapely.ops.transform(project, edge[3]["geometry"])
-
-    # Transform the geometry of all nodes
-    for id, data in G.nodes.items():
-        geom = shapely.geometry.Point(data.get('x'), data.get('y'))
-        geom = shapely.ops.transform(project, geom)
-        data['x'] = geom.x
-        data['y'] = geom.y
 
 
 def export_osm_xml(G, path, tags, uv_tags=False, tag_all_nodes=False):
@@ -591,6 +555,11 @@ def _stringify_iterable_columns(df, columns, method='separator', separator=','):
     for column in columns:
         if column in df:
             if method == 'separator':
-                df[column] = df[column].apply(lambda x: separator.join(x))
+                df[column] = df[column].apply(
+                    lambda x: separator.join(utils.convert_list_items_to_strings(x))
+                    if type(x) in {list, tuple, set}
+                    else ''
+                )
             elif method == 'str':
                 df[column] = df[column].apply(lambda x: json.dumps(x))
+

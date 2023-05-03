@@ -1,5 +1,6 @@
 import networkx as nx
-from . import constants, lanes, hierarchy
+from . import constants, lane_config, hierarchy
+from .constants import *
 
 
 def set_given_lanes(
@@ -32,29 +33,30 @@ def set_given_lanes(
         source_lanes = data[source_lanes_attribute]
         target_lanes = []
 
-        lane_stats = lanes._lane_stats(source_lanes)
+        lane_stats = lane_config._lane_stats(source_lanes)
 
         # for roads with public transport...
         if data.get('pt_tram') or data.get('pt_bus'):
             # ...keep forward lane if there is no dedicated forward/both ways lane
             if lane_stats.n_lanes_dedicated_pt_forward + lane_stats.n_lanes_dedicated_pt_both_ways == 0:
-                target_lanes += [lanes.LANETYPE_MOTORIZED + lanes.DIRECTION_FORWARD]
+                target_lanes += [LANETYPE_MOTORIZED + DIRECTION_FORWARD]
             # ...keep backward lane if there is no dedicated backward/both ways lane
             if lane_stats.n_lanes_dedicated_pt_backward + lane_stats.n_lanes_dedicated_pt_both_ways == 0:
-                target_lanes += [lanes.LANETYPE_MOTORIZED + lanes.DIRECTION_BACKWARD]
+                target_lanes += [LANETYPE_MOTORIZED + DIRECTION_BACKWARD]
 
         # for normal roads, keep one single-direction lane
         elif data.get('hierarchy') in [hierarchy.MAIN_ROAD, hierarchy.LOCAL_ROAD, hierarchy.HIGHWAY]:
-            target_lanes += [lanes.LANETYPE_MOTORIZED + lanes.DIRECTION_TBD]
+            target_lanes += [LANETYPE_MOTORIZED + DIRECTION_TBD]
 
         # for dead ends, create a single bi-directional lane
         elif data.get('hierarchy') == hierarchy.DEAD_END:
             if bidirectional_for_dead_ends:
-                target_lanes += [lanes.LANETYPE_MOTORIZED + lanes.DIRECTION_BOTH]
+                target_lanes += [LANETYPE_MOTORIZED + DIRECTION_BOTH]
             else:
-                target_lanes += [lanes.LANETYPE_MOTORIZED + lanes.DIRECTION_TBD]
+                target_lanes += [LANETYPE_MOTORIZED + DIRECTION_TBD]
 
         data[target_lanes_attribute] = target_lanes
+
 
 def create_given_lanes_graph(
         G,
@@ -98,18 +100,18 @@ def create_given_lanes_graph(
             lanes_list = data.get(constants.KEY_GIVEN_LANES_DESCRIPTION, [])
 
         for lane in lanes_list:
-            lane_properties = lanes._lane_properties(lane)
+            lane_properties = lane_config._lane_properties(lane)
 
             if data.get('hierarchy') in hierarchies_to_remove:
                 continue
 
-            if lane_properties.direction in [lanes.DIRECTION_FORWARD, lanes.DIRECTION_BOTH]:
+            if lane_properties.direction in [DIRECTION_FORWARD, DIRECTION_BOTH]:
                 H.add_edge(u, v, fixed=True)
 
-            if lane_properties.direction in [lanes.DIRECTION_BACKWARD, lanes.DIRECTION_BOTH]:
+            if lane_properties.direction in [DIRECTION_BACKWARD, DIRECTION_BOTH]:
                 H.add_edge(v, u, fixed=True)
 
-            if lane_properties.direction in [lanes.DIRECTION_TBD]:
+            if lane_properties.direction in [DIRECTION_TBD]:
                 H.add_edge(u, v, fixed=False)
 
     return H

@@ -1,31 +1,6 @@
 from typing import Iterable
 
 
-def prepare_graph(G):
-    """
-    A set of operations needed to make the street graph created by osmnx ready for snman operations
-
-    Parameters
-    ----------
-    G : nx.MultiDiGraph
-        street graph
-
-    Returns
-    -------
-    None
-    """
-
-    # ensure consistent data types
-    for id, edge in G.edges.items():
-
-        maxspeed = edge.get('maxspeed', '')
-        edge['maxspeed'] = int(maxspeed) if maxspeed.isdigit() else -1
-
-        layer = edge.get('layer', '')
-        # isdigit only supports positive numbers, so we need to remove any '-' first
-        edge['layer'] = int(layer) if layer.lstrip('-').isdigit() else 0
-
-
 def flatten_list(items):
     """
     A simple function for flattening nested lists, from this post:
@@ -47,3 +22,7 @@ def flatten_list(items):
                 yield sub_x
         else:
             yield x
+
+
+def convert_list_items_to_strings(items):
+    return [str(item) for item in items]

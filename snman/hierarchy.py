@@ -80,8 +80,9 @@ def _identify_dead_ends(G, iterations):
     None
     """
 
-    # TODO: Auto detect how many iterations are necessary to get through the entire graph
-    # TODO: Change the algorithm, it seems to be inefficient and delivers wring results in some cases
+    # TODO: does not work properly!
+    return
+
     for i in range(iterations):
 
         for node in G.nodes():
@@ -90,7 +91,7 @@ def _identify_dead_ends(G, iterations):
             # - not yet labeled as dead ends
             # - accessible for cars
             adjacent_non_dead_end_edges = []
-            for edge in list(G.edges(nbunch=node, data=True, keys=True)):
+            for edge in list(G.in_edges(nbunch=node, data=True, keys=True)) + list(G.out_edges(nbunch=node, data=True, keys=True)):
                 if (not edge[3].get('dead_end')) and edge[3].get('highway')\
                         not in ['path', 'footway', 'track']:
                     adjacent_non_dead_end_edges.append(edge)

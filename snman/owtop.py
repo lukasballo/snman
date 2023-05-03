@@ -1,5 +1,5 @@
 import networkx as nx
-from . import constants, utils, distribution, lanes
+from . import constants, utils, distribution, lane_config
 from . import osmnx_customized as oxc
 
 

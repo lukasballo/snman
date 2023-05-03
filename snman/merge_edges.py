@@ -1,5 +1,6 @@
 import networkx as nx
-from . import graph_tools, geometry_tools, utils
+from . import any_graph, geometry_tools, utils, centerline_graph, lane_config
+from. constants import *
 from shapely import geometry, ops
 import numpy as np
 import itertools as it
@@ -37,7 +38,7 @@ def merge_parallel_edges(G):
 
 def _merge_given_parallel_edges(G, edges):
     """
-    Merge the prallel edges given in a list
+    Merge the parallel edges given in a list
 
     Parameters
     ----------
@@ -99,53 +100,60 @@ def _merge_given_parallel_edges(G, edges):
 
 
 def merge_consecutive_edges(G):
-    """
-    Merge edges such that the graph contains no unnecessary nodes with degree=2
-    
-    Parameters
-    ----------
-    G : ox.MultiGraph
-        street graph
-    
-    Returns
-    -------
-    None
-    """
 
-    # Initialize 'consec_id' edge labels
-    for edge in G.edges(data=True, keys=True):
-        edge[3]['consec_id'] = None
+    # create a subgraph that only contains degree=2 nodes
+    H = G.copy()
+    degrees = dict(H.degree)
+    for node in list(H.nodes()):
+        if degrees[node] != 2:
+            H.remove_node(node)
 
-    # Label edges by consecutive clusters
-    for node in G.nodes:
-        # Find all nodes having only two adjacent edges
-        if G.degree(node) == 2:
-            edges = list(G.edges(node, data=True, keys=True))
-            # Start with the first adjacent edge and identify next edges to work on
-            edge = edges[0]
-            next_edges = _label_edge(G, edge)
-            # Repeat for each next_edge multiple times until entire clusters of consecutive edges are processed
-            for i in range(3):
-                next_edges = _label_edges(G, next_edges)
+    # identify weakly connected components as clusters to be merged
+    wccs = list(nx.weakly_connected_components(H))
+    clusters = {}
+    for i, wcc in enumerate(wccs):
+        for node in wcc:
+            H.nodes[node]['_cc_id'] = i
+            # initialize a list for edges
+            clusters[i] = set()
 
-    # Group edges by clusters
-    edge_clusters = {}
-    for edge in G.edges(data=True, keys=True):
-        consec_id = edge[3].get('consec_id')
-        # Ignore edges that are in no cluster
-        if consec_id is None:
+    # write the cluster ids to the main graph
+    for i, data in H.nodes.items():
+        cc_id = data['_cc_id']
+        edges = set(G.in_edges(i, keys=True)).union(set(G.out_edges(i, keys=True)))
+        clusters[cc_id].update(edges)
+        for edge in edges:
+            nx.set_edge_attributes(G, {edge: {'_cc_id': cc_id}})
+
+    # bring the edges in each cluster into a consistent direction
+    for i, edges in clusters.items():
+        # make a small graph for each cluster, it must be undirected so that there is a shortest path
+        H = nx.MultiGraph(edges)
+        outer_nodes = [node for node, degree in H.degree() if degree == 1]
+        if len(outer_nodes) != 2:
             continue
-        if consec_id not in edge_clusters:
-            edge_clusters[consec_id] = []
-        edge_clusters[consec_id].append(edge)
+        sp = nx.shortest_path(H, source=outer_nodes[0], target=outer_nodes[1])
+        # reconstruct the path edges from the shortest path nodes
+        path_pairs = list(zip(sp[:-1], sp[1:]))
+        path_keys = [list(H[pair[0]][pair[1]].keys())[0] for pair in path_pairs]
+        path_edges = list(zip(sp[:-1], sp[1:], path_keys))
+        # reverse those edges that point in one direction and leave the others as they are
+        edges_to_merge = []
+        for edge in path_edges:
+            if edge not in G.edges:
+                edges_to_merge.append(
+                    any_graph.reverse_edge(G, edge[1], edge[0], edge[2])
+                )
+            else:
+                edges_to_merge.append(
+                    (*edge, G.edges[edge[0:3]])
+                )
 
-    # Merge edges within each cluster
-    for key, edge_cluster in edge_clusters.items():
-        _merge_given_consecutive_edges(G, edge_cluster)
-        pass
+        # merge the edges
+        _merge_given_consecutive_edges(G, edges_to_merge)
 
 
-def _merge_given_consecutive_edges(G, edges):
+def _merge_given_consecutive_edges(G, edge_chain):
     """
     Merge the consecutive edges in a given list
 
@@ -162,86 +170,34 @@ def _merge_given_consecutive_edges(G, edges):
     """
 
     nodes = []
-    for edge in edges:
+    for edge in edge_chain:
         nodes += edge[0:2]
 
-    # Nodes that are adjacent to one edge -> outer nodes
-    outer_nodes = [node for node in nodes if nodes.count(node) == 1]
-    outer_nodes.sort()
-
-    # Nodes that are adjacent to two edges -> middle nodes
-    middle_nodes = [node for node in nodes if nodes.count(node) == 2]
-    middle_nodes.sort()
-
-    edge_chain = []
-
-    # Stop here if the edge chain is corrupted
-    # TODO: Why is this happening?
-    if len(outer_nodes) != 2:
-        #print('edge chain corrupted')
-        return
-
-    # Start with the first outer node
-    node = outer_nodes[0]
-    previous_edge = None
-
-    # Do until reaching the other outer node
-    while node != outer_nodes[1]:
-        for edge in edges:
-
-            # Ignore the previous edge
-            if edge is previous_edge:
-                continue
-
-            # Append edge in ordinary direction
-            elif edge[0] == node:
-                edge_chain.append(edge)
-                node = edge[1]
-
-            # Append edge in reversed direction
-            elif edge[1] == node:
-                edge_chain.append(edge)
-                node = edge[0]
-
-    # Split the edge chain into subchains based on permitted modes
+    # split the edge chain into subchains based on permitted modes
     edge_subchains = []
     motorized_access = None
     for edge in edge_chain:
-        motorized_access_here = 'm>' in edge[3].get('ln_desc') or 'm<' in edge[3].get('ln_desc')\
-                           or 'm-' in edge[3].get('ln_desc')
+        ls = lane_config._lane_stats(KEY_LANES_DESCRIPTION)
+        motorized_access_here = 0 < (
+            ls.n_lanes_motorized_forward
+            + ls.n_lanes_motorized_backward
+            + ls.n_lanes_motorized_both_ways
+            + ls.n_lanes_motorized_direction_tbd
+        )
         if motorized_access != motorized_access_here:
             edge_subchains.append([])
+        edge[3]['_subchain'] = len(edge_subchains)
         edge_subchains[-1].append(edge)
         motorized_access = motorized_access_here
 
-    # Merge all edges within each subchain
+    # merge all edges within each subchain
     for edge_subchain in edge_subchains:
 
         if len(edge_subchain) < 2:
             continue
 
-        # Find subchain outer nodes
-        subchain_nodes = []
-        for edge in edge_subchain:
-            subchain_nodes += edge[0:2]
-        subchain_outer_nodes = list(set([node for node in subchain_nodes if subchain_nodes.count(node) == 1]))
-        subchain_outer_nodes.sort()
-        subchain_middle_nodes = list(set([node for node in subchain_nodes if subchain_nodes.count(node) > 1]))
-        subchain_middle_nodes.sort()
-
-        # Reverse edge geometries if necessary
-        node = subchain_outer_nodes[0]
-        for edge in edge_subchain:
-            edge[3]['__previous_node'] = node
-            if node == edge[0]:
-                node = edge[1]
-            elif node == edge[1]:
-                graph_tools._reverse_edge(G, edge, reverse_topology=False)
-                node = edge[0]
-            edge[3]['__next_node'] = node
-
         # Find the longest edge
-        sorted_edges = sorted(edge_subchain, key=lambda x: x[3].get('length'))
+        sorted_edges = sorted(edge_subchain, key=lambda x: x[3].get('length', 0))
         longest_edge = sorted_edges[-1]
 
         # Initialize the merged edge based on the longest edge
@@ -259,10 +215,6 @@ def _merge_given_consecutive_edges(G, edges):
         merged_data['geometry'] = merged_line
         # Update length
         merged_data['length'] = merged_line.length
-        merged_data['__outer_nodes'] = str(subchain_outer_nodes)
-        merged_data['__middle_nodes'] = str(subchain_middle_nodes)
-        merged_data['__nodes'] = str(subchain_nodes)
-        merged_data['__n_edges'] = str(len(edge_subchain))
 
         # Merge other attributes
         merged_data['sensors_forward'] = list(set(
@@ -278,84 +230,9 @@ def _merge_given_consecutive_edges(G, edges):
 
         # Delete the old edges
         for edge in edge_subchain:
-            G.remove_edge(edge[0], edge[1], edge[2])
-            pass
-
-        # Delete the intermediary nodes
-        for node in subchain_middle_nodes:
-            G.remove_node(node)
+            G.remove_edge(*edge[0:3])
 
         # Create a new merged edge
-        G.add_edge(subchain_outer_nodes[0], subchain_outer_nodes[1], **merged_data)
-
-
-def _label_edge(G, edge):
-    """
-    Assign the edge to a bunch of consecutive edges (that can be merged)
-
-    Parameters
-    ----------
-    G : nx.MultiGraph
-        street graph
-    edge : tuple
-        full edge tuple
-
-    Returns
-    -------
-    next_edges : list
-        a list of edges to be labeled next
-    """
-
-    neighbors_groups = graph_tools._get_neighbors(G, edge)
-    edge[3]['neighbors'] = str([len(group) for group in neighbors_groups])
-    neighbors_groups.append([edge])
-    next_edges = []
-    consecutive_cluster_id = None
-
-    for neighbors_group in neighbors_groups:
-        # Discard neighbor groups with multiple edges, indicating that the node has >2 adjacent edges
-        if len(neighbors_group) != 1:
-            continue
-
-        neighbor = neighbors_group[0]
-        # Add to next_edges if it has not been processed yet (i.e. has no consec_id)
-        neighbor[3].get('consec_id') or next_edges.append(neighbor)
-        # If it has a consec_id, take it over
-        consecutive_cluster_id = consecutive_cluster_id or neighbor[3].get('consec_id')
-
-    # If no consec_id was found, assign a new one based on the own edge_hash
-    consecutive_cluster_id = consecutive_cluster_id or graph_tools._edge_hash(edge)
-
-    # Write the consec_id into all edges of the cluster
-    for edge in next_edges:
-        #print(consecutive_cluster_id)
-        edge[3]['consec_id'] = consecutive_cluster_id
-        pass
-
-    return next_edges
-
-
-def _label_edges(G, edges):
-    """
-    Assign all edges in a list to bunches of consecutive edges
-
-    Parameters
-    ----------
-    G : nx.MultiGraph
-        street graph
-    edges : list
-        list of full edge tuples
-
-    Returns
-    -------
-    next_edges : list
-        a list of edges to be labeled next
-    """
-
-    next_edges = []
-    for edge in edges:
-        result = _label_edge(G, edge)
-        if (len(result) > 0):
-            next_edges += result
-
-    return next_edges
+        u = edge_subchain[0][0]
+        v = edge_subchain[-1][1]
+        G.add_edge(u, v, **merged_data)
