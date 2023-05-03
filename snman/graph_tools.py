@@ -76,6 +76,7 @@ def street_graph_to_lane_graph(G, mode, lanes_attribute=KEY_LANES_DESCRIPTION):
             only_active_modes = lp.modes.issubset(ACTIVE_MODES)
             only_active_modes_length = length * only_active_modes
 
+            # common attributes independent of direction
             common_attributes = {
                 'length': length,
                 'cost': cost,
