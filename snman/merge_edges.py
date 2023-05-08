@@ -1,5 +1,5 @@
 import networkx as nx
-from . import any_graph, geometry_tools, utils, centerline_graph, lane_config
+from . import graph_utils, geometry_tools, utils, street_graph, space_allocation
 from. constants import *
 from shapely import geometry, ops
 import numpy as np
@@ -142,7 +142,7 @@ def merge_consecutive_edges(G):
         for edge in path_edges:
             if edge not in G.edges:
                 edges_to_merge.append(
-                    any_graph.reverse_edge(G, edge[1], edge[0], edge[2])
+                    street_graph.reverse_edge(G, edge[1], edge[0], edge[2])
                 )
             else:
                 edges_to_merge.append(
@@ -177,7 +177,7 @@ def _merge_given_consecutive_edges(G, edge_chain):
     edge_subchains = []
     motorized_access = None
     for edge in edge_chain:
-        ls = lane_config._lane_stats(KEY_LANES_DESCRIPTION)
+        ls = space_allocation._lane_stats(KEY_LANES_DESCRIPTION)
         motorized_access_here = 0 < (
             ls.n_lanes_motorized_forward
             + ls.n_lanes_motorized_backward

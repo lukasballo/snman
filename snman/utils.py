@@ -26,3 +26,18 @@ def flatten_list(items):
 
 def convert_list_items_to_strings(items):
     return [str(item) for item in items]
+
+
+def is_convertible_to_int(s):
+    try:
+        int(s)
+        return True
+    except ValueError:
+        return False
+
+
+def safe_int(s, fallback_value=None):
+    if is_convertible_to_int(s):
+        return int(s)
+    else:
+        return fallback_value

@@ -77,8 +77,8 @@ def _generate_lanes_for_edge(edge):
         n_lanes = int(edge.get('lanes', 2))
 
     # initialize detailed lane counts
-    n_lanes_forward = int(edge.get('lanes:forward', 0))
-    n_lanes_backward = int(edge.get('lanes:backward', 0))
+    n_lanes_forward = utils.safe_int(edge.get('lanes:forward', 0), fallback_value=0)
+    n_lanes_backward = utils.safe_int(edge.get('lanes:backward', 0), fallback_value=0)
     n_lanes_both = 0
 
     n_lanes_motorized = 0
@@ -688,16 +688,12 @@ def _is_backward_oneway_street(lanes):
     ls = _lane_stats(lanes)
 
     # only motorized lanes backward
-    if (
-            ls.n_lanes_motorized_forward == 0
-            and ls.n_lanes_motorized_both_ways == 0
-            and ls.n_lanes_motorized_direction_tbd == 0
-            and ls.n_lanes_motorized_backward > 0
-    ):
-        return True
-    else:
-        return False
-
+    return (
+        ls.n_lanes_motorized_forward == 0
+        and ls.n_lanes_motorized_both_ways == 0
+        and ls.n_lanes_motorized_direction_tbd == 0
+        and ls.n_lanes_motorized_backward > 0
+    )
 
 def reorder_lanes(G, lanes_attribute=KEY_LANES_DESCRIPTION):
 

@@ -27,8 +27,8 @@ def remove_multipart_geometries(G):
             end_node = G.nodes.items()[id[1]]
             simple_line = shp.geometry.LineString(
                 shp.geometry.Point(
-                    start_node.get('x',0),
-                    start_node.get('y',0)
+                    start_node.get('x', 0),
+                    start_node.get('y', 0)
                 ),
                 shp.geometry.Point(
                     end_node.get('x', 0),

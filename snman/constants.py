@@ -204,7 +204,7 @@ OSM_FILTER = [
     #)
 ]
 
-CRS = 'epsg:2056'
+DEFAULT_CRS = 'epsg:2056'
 
 EXPORT_EDGE_COLUMNS = [
     'grade',

@@ -2,7 +2,7 @@ import geopandas as gpd
 import pandas as pd
 import shapely as shp
 from . import osmnx_customized as oxc
-from . import io, geometry_tools, any_graph
+from . import io, geometry_tools, graph_utils, street_graph
 from .constants import *
 import networkx as nx
 import itertools as it
@@ -147,9 +147,10 @@ def consolidate_intersections(Gc, intersections_gdf, reconnect_edges=True):
     # attach each node to its cluster of merged nodes. first get the original
     # graph's node points then spatial join to give each node the label of
     # cluster it's within
-    node_points = oxc.utils_graph.graph_to_gdfs(Gc, edges=False)[["geometry", "street_count", "highway"]]
+    node_points = oxc.utils_graph.graph_to_gdfs(Gc, edges=False)[
+        ["geometry", "street_count", "highway", "traffic_signals"]
+    ]
     gdf = gpd.sjoin(node_points, node_clusters, how="left", predicate="within")
-    #print(gdf[gdf['x'].isna()])
     gdf = gdf.drop(columns="geometry").rename(columns={"index_right": "cluster"})
 
     # STEP 3
@@ -197,14 +198,16 @@ def consolidate_intersections(Gc, intersections_gdf, reconnect_edges=True):
 
         osmids = nodes_subset.index.to_list()
         highway_tags = set(nodes_subset['highway'].to_list())
-        traffic_signals = 1 * ('traffic_signals' in highway_tags)
+
+        traffic_signals = 1 * (1 in set(nodes_subset.get('traffic_signals').to_list()))
+
         if len(osmids) == 1:
             # if cluster is a single node, add that node to new graph
             osmid = osmids[0]
             Hc.add_node(
                 cluster_label,
                 osmid_original=osmid,
-                traffic_signals = traffic_signals,
+                traffic_signals=traffic_signals,
                 highway=Gc.nodes[osmid].get('highway'),
                 x=Gc.nodes[osmid].get('x'),
                 y=Gc.nodes[osmid].get('y')
@@ -250,7 +253,7 @@ def consolidate_intersections(Gc, intersections_gdf, reconnect_edges=True):
 
             # reverse the edge attributes if its topological direction has changed
             #if u2 > v2:
-            #    any_graph.reverse_edge(Hc, u2, v2, key2, reverse_topology=True)
+            #    street_graph.reverse_edge(Hc, u2, v2, key2, reverse_topology=True)
 
     # STEP 7
     # for every group of merged nodes with more than 1 node in it, extend the
@@ -321,7 +324,9 @@ def split_through_edges_in_intersections(Gc, intersections_gdf):
             edge['geometry'].coords[-1]
         ])
         # make sure the edge geometry is not corrupted
-        if isinstance(edge.get('geometry'), shp.ops.LineString) and not edge.get('geometry').is_empty
+        if isinstance(edge.get('geometry'), shp.ops.LineString)
+            and edge.get('geometry').is_valid
+            and not edge.get('geometry').is_empty
         else None,
         axis=1
     )
@@ -354,7 +359,7 @@ def split_through_edges_in_intersections(Gc, intersections_gdf):
         return
 
     a.apply(
-        lambda row: any_graph.split_edge(Gc, *row.name, row.split_points),
+        lambda row: street_graph.split_edge(Gc, *row.name, row.split_points),
         axis=1
     )
 

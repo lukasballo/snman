@@ -1,5 +1,5 @@
 import networkx as nx
-from . import constants, lane_config, hierarchy
+from . import constants, space_allocation, hierarchy
 from .constants import *
 
 
@@ -33,7 +33,7 @@ def set_given_lanes(
         source_lanes = data[source_lanes_attribute]
         target_lanes = []
 
-        lane_stats = lane_config._lane_stats(source_lanes)
+        lane_stats = space_allocation._lane_stats(source_lanes)
 
         # for roads with public transport...
         if data.get('pt_tram') or data.get('pt_bus'):
@@ -100,7 +100,7 @@ def create_given_lanes_graph(
             lanes_list = data.get(constants.KEY_GIVEN_LANES_DESCRIPTION, [])
 
         for lane in lanes_list:
-            lane_properties = lane_config._lane_properties(lane)
+            lane_properties = space_allocation._lane_properties(lane)
 
             if data.get('hierarchy') in hierarchies_to_remove:
                 continue

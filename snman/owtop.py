@@ -1,5 +1,5 @@
 import networkx as nx
-from . import constants, utils, distribution, lane_config
+from . import constants, utils, distribution, space_allocation
 from . import osmnx_customized as oxc
 
 
@@ -303,5 +303,5 @@ def rebuild_lanes_from_owtop_graph(
                     ]
 
         lanes_after = list(utils.flatten_list(lanes_after))
-        lanes_after = lanes._reorder_lanes_on_edge(lanes_after)
+        lanes_after = space_allocation._reorder_lanes_on_edge(lanes_after)
         data[target_lanes_attribute] = lanes_after

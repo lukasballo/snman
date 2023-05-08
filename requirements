@@ -1,12 +1,17 @@
-osmnx
-geopandas
-leuvenmapmatching
-NetworkX
-shapely
-statistics
-gdal
-rasterio
-smopy
+jupyter
+pyproj
 
+rasterio
+networkx
+shapely
+geopandas
+
+leuvenmapmatching
+osmnx
+smopy
+rtree
+
+
+gdal
 
 

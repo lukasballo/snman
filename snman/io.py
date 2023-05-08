@@ -1,5 +1,6 @@
 from . import osmnx_customized as oxc
-from . import geometry_tools, lane_config, utils
+from . import geometry_tools, space_allocation, utils, street_graph
+from .constants import *
 import geopandas as gpd
 import pandas as pd
 import pyproj
@@ -14,7 +15,7 @@ import numpy as np
 import json
 
 
-def load_street_graph(edges_path, nodes_path, crs=2056):
+def load_street_graph(edges_path, nodes_path, crs=DEFAULT_CRS, recreate_iterables=True):
     """
     Load a pre-generated street graph that has been saved as geofile (shp, gpkg, etc.)
 
@@ -35,18 +36,20 @@ def load_street_graph(edges_path, nodes_path, crs=2056):
 
     edges_gdf = import_geofile_to_gdf(edges_path, index=['u', 'v', 'key'], crs=crs).replace(np.nan, None)
     nodes_gdf = import_geofile_to_gdf(nodes_path, index='osmid', crs=crs).replace(np.nan, None)
-    _iterable_columns_from_strings(edges_gdf, {'ln_desc', 'ln_desc_after', 'given_lanes'}, separator=' | ')
-    _iterable_columns_from_strings(edges_gdf, {'sensors_forward', 'sensors_backward'}, method='str')
-    _iterable_columns_from_strings(nodes_gdf, {'layers'}, separator=',')
 
-    G = nx.MultiGraph(crs=crs)
+    if recreate_iterables:
+        _iterable_columns_from_strings(edges_gdf, {'ln_desc', 'ln_desc_after', 'given_lanes'}, separator=' | ')
+        _iterable_columns_from_strings(edges_gdf, {'sensors_forward', 'sensors_backward'}, method='str')
+        _iterable_columns_from_strings(nodes_gdf, {'layers'}, separator=',')
+
+    G = nx.MultiDiGraph(crs=crs)
     nodes_gdf.apply(lambda n: G.add_node(n.name, **n), axis=1)
     edges_gdf.apply(lambda e: G.add_edge(*e.name, **e), axis=1)
 
     return G
 
 
-def import_geofile_to_gdf(file_path, crs=2056, index=None, filter_index=None, perimeter=None):
+def import_geofile_to_gdf(file_path, crs=DEFAULT_CRS, index=None, filter_index=None, perimeter=None):
     """
     Import a geofile (shp, gpkg, etc.) as a GeoDataFrame
 
@@ -81,7 +84,7 @@ def import_geofile_to_gdf(file_path, crs=2056, index=None, filter_index=None, pe
     return gdf
 
 
-def load_perimeters(path, filter=None):
+def load_perimeters(path, filter=None, crs=DEFAULT_CRS):
     """
     Load a geofile (shp, gpkg, etc.) with network perimeters. These will be used to download the data from OSM
     and prepare the simplified street graph
@@ -101,11 +104,11 @@ def load_perimeters(path, filter=None):
     perimeters : gpd.GeoDataFrame
     """
 
-    perimeters = import_geofile_to_gdf(path, index='id', filter_index=filter)
+    perimeters = import_geofile_to_gdf(path, index='id', filter_index=filter, crs=crs)
     return perimeters
 
 
-def load_regions(path, default_tolerance=None, street_graph=None):
+def load_regions(path, default_tolerance=None, street_graph=None, crs=DEFAULT_CRS):
     """
     Load a geofile (shp, gpkg, etc.) with regions. These will be used to override the network simplification settings
     in specified areas
@@ -125,7 +128,7 @@ def load_regions(path, default_tolerance=None, street_graph=None):
     regions : gpd.GeoDataFrame
     """
 
-    regions = import_geofile_to_gdf(path)
+    regions = import_geofile_to_gdf(path, crs=crs)
 
     # create a new region containing all points that don't belong to a region yet
     if default_tolerance and street_graph is not None:
@@ -142,7 +145,7 @@ def load_regions(path, default_tolerance=None, street_graph=None):
     return regions
 
 
-def load_intersections(path):
+def load_intersections(path, crs=DEFAULT_CRS):
     """
     Load an geofile (shp, gpkg, etc.) with intersection polygons. These will be used to override the automatically
     detected intersections. It is useful in cases where the auto-detection delivers unsatisfactory results
@@ -160,13 +163,13 @@ def load_intersections(path):
     intersections : gpd.GeoDataFrame
     """
 
-    polygons = import_geofile_to_gdf(path)
+    polygons = import_geofile_to_gdf(path, crs=crs)
     # Duplicate the point geometries so that they get taken along after the spatial join
     intersections = polygons
     return intersections
 
 
-def load_rebuilding_regions(path):
+def load_rebuilding_regions(path, crs=DEFAULT_CRS):
     """
     Load a geofile (shp, gpkg, etc.) with rebuilding regions. These will be used to define areas where the streets
     should be rebuilt. In each rebuilding region, you can also specify which street hierarchies should be considered
@@ -193,7 +196,7 @@ def load_rebuilding_regions(path):
     rebuilding_regions : gpd.GeoDataFrame
     """
 
-    rebuilding_regions = import_geofile_to_gdf(path)
+    rebuilding_regions = import_geofile_to_gdf(path, crs=crs)
     # convert strings into lists
     rebuilding_regions['hierarchies_to_include'] = \
         rebuilding_regions['hierarchies_to_include'].apply(
@@ -207,17 +210,17 @@ def load_rebuilding_regions(path):
     return rebuilding_regions
 
 
-def load_measurement_regions(path):
+def load_measurement_regions(path, crs=DEFAULT_CRS):
 
-    measurement_regions = import_geofile_to_gdf(path)
+    measurement_regions = import_geofile_to_gdf(path, crs=crs)
     measurement_regions = measurement_regions[measurement_regions['active'] == True]
     measurement_regions['area'] = measurement_regions.geometry.area
     return measurement_regions
 
 
-def load_poi(path, perimeter=None):
+def load_poi(path, perimeter=None, crs=DEFAULT_CRS):
 
-    poi = import_geofile_to_gdf(path, perimeter=perimeter)
+    poi = import_geofile_to_gdf(path, perimeter=perimeter, crs=crs)
     return poi
 
 
@@ -322,12 +325,12 @@ def export_street_graph_with_lanes(G, lanes_attribute, path, scaling=1):
 
         # Reconstruct total width of given lanes
         for lane in data.get(lanes_attribute, []):
-            lane_properties = lane_config._lane_properties(lane)
+            lane_properties = space_allocation._lane_properties(lane)
             given_total_width += lane_properties.width
 
         offset = -given_total_width / 2
         for lane in data.get(lanes_attribute, []):
-            lane_properties = lane_config._lane_properties(lane)
+            lane_properties = space_allocation._lane_properties(lane)
 
             centerline_offset = offset + lane_properties.width / 2
             offset += lane_properties.width
@@ -382,9 +385,6 @@ def export_gdf(gdf, path, columns=[]):
         gdf[columns].to_file(path)
 
 
-
-
-
 def export_osm_xml(G, path, tags, uv_tags=False, tag_all_nodes=False):
     """
     Generates an OSM file from the street graph
@@ -410,11 +410,12 @@ def export_osm_xml(G, path, tags, uv_tags=False, tag_all_nodes=False):
     max_node_id = max(list(G.nodes))
     osm_id = itertools.count(max_node_id * 100)
 
-    # make a copy of the original graph and convert it to pseudo mercator which is the official OSM crs
-    G = copy.deepcopy(G)
-    convert_crs_of_street_graph(G, 'epsg:4326')
+    # prepare a copy of the street graph for osm export
+    H = copy.deepcopy(G)
+    street_graph.organize_edge_directions(H, method='by_osm_convention')
+    space_allocation.update_osm_tags(H)
+    street_graph.convert_crs(H, 'epsg:4326')
 
-    # here, we build the XML tree...
     # create the overall structure of the XML
     tree = ET.ElementTree('tree')
 
@@ -425,8 +426,8 @@ def export_osm_xml(G, path, tags, uv_tags=False, tag_all_nodes=False):
     })
 
     # bounds
-    lats = [data.get('y') for id, data in G.nodes.items()]
-    lons = [data.get('x') for id, data in G.nodes.items()]
+    lats = [data.get('y') for id, data in H.nodes.items()]
+    lons = [data.get('x') for id, data in H.nodes.items()]
     ET.SubElement(osm, 'bounds', attrib={
         'minlat': str(min(lats)),
         'minlon': str(min(lons)),
@@ -434,42 +435,44 @@ def export_osm_xml(G, path, tags, uv_tags=False, tag_all_nodes=False):
         'maxlon': str(max(lons))
     })
 
-    # nodes dictionary, will be filled while creating ways
-    nodes = {}
 
     # ways
-    for id, data in G.edges.items():
+    ways = []
+    node_points = {}
+    for uvk, data in H.edges.items():
 
-        way = ET.SubElement(osm, 'way', attrib={
+        way = ET.Element('way', attrib={
             'id': str(next(osm_id)),  # assign a new unique osm id to each way
             'version': '1',
             'timestamp': '2000-01-01T00:00:00Z'
         })
+
+        ways.append(way)
 
         # way nodes
         for i in [0, 0.5, 1]:
 
             # first and last node
             if i in [0, 1]:
-                this_id = id[i]
-                this_graph_node = G.nodes[this_id]
-                nodes[this_id] = shapely.geometry.Point(this_graph_node['x'], this_graph_node['y'])
+                node_id = uvk[i]
+                # avoid id=0
+                node_points[node_id+1] = shapely.Point(H.nodes[node_id]['x'], H.nodes[node_id]['y'])
                 # add node along the way, use the existing node id
-                ET.SubElement(way, 'nd', attrib={'ref': str(this_id)})
+                ET.SubElement(way, 'nd', attrib={'ref': str(node_id+1)})
 
             # intermediary nodes
             elif i == 0.5:
                 linestring = data.get('geometry')
-                # iterate over all points along the linestring geometry but exclude the first ans last one
+                # iterate over all points along the linestring geometry but exclude the first and last one
                 for point in linestring.coords[1:-1]:
-                    this_new_osm_id = next(osm_id)
-                    nodes[this_new_osm_id] = shapely.geometry.Point(point)
+                    node_id = next(osm_id)
+                    node_points[node_id] = shapely.geometry.Point(point)
                     # add node along the way, assign a new unique id
-                    ET.SubElement(way, 'nd', attrib={'ref': str(this_new_osm_id)})
+                    ET.SubElement(way, 'nd', attrib={'ref': str(node_id)})
 
         # way tags
         for tag in tags:
-            # skip if the tag is note defined for this way
+            # skip if the tag is not defined for this way
             if data.get(tag, None) is None:
                 continue
             ET.SubElement(way, 'tag', attrib={
@@ -478,14 +481,14 @@ def export_osm_xml(G, path, tags, uv_tags=False, tag_all_nodes=False):
             })
 
         if uv_tags:
-            ET.SubElement(way, 'tag', attrib={'k': '_u', 'v': str(id[0])})
-            ET.SubElement(way, 'tag', attrib={'k': '_v', 'v': str(id[1])})
-            ET.SubElement(way, 'tag', attrib={'k': '_key', 'v': str(id[2])})
+            ET.SubElement(way, 'tag', attrib={'k': '_u', 'v': str(uvk[0])})
+            ET.SubElement(way, 'tag', attrib={'k': '_v', 'v': str(uvk[1])})
+            ET.SubElement(way, 'tag', attrib={'k': '_key', 'v': str(uvk[2])})
 
     # nodes
-    for id, point in nodes.items():
+    for node_id, point in node_points.items():
         node = ET.SubElement(osm, 'node', attrib={
-            'id': str(id),
+            'id': str(node_id),
             'version': '1',
             'timestamp': '2000-01-01T00:00:00Z',
             'lat': str(point.y),
@@ -495,7 +498,9 @@ def export_osm_xml(G, path, tags, uv_tags=False, tag_all_nodes=False):
         if tag_all_nodes:
             ET.SubElement(node, 'tag', attrib={'k': '_node', 'v': 'true'})
 
-        # TODO: add other tags
+    # append ways
+    for way in ways:
+        osm.append(way)
 
     # Save into xml file
     tree._setroot(osm)
