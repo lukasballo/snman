@@ -194,6 +194,11 @@ def _generate_lanes_for_edge(edge):
                 or edge.get('cycleway:both') == 'lane' \
                 or edge.get('cycleway') == 'lane':
             right_lanes_list.extend([LANETYPE_CYCLING_LANE + _DIRECTION_FORWARD])
+
+        # Add cycling allowed in opposite direction
+        if edge.get('cycleway') == 'opposite':
+            left_lanes_list.extend([LANETYPE_CYCLING_PSEUDO + _DIRECTION_BACKWARD])
+
         # Add sidewalk right
         # if edge.get('sidewalk') in {'right', 'both'}:
         #    right_lanes_list.extend([LANETYPE_FOOT + DIRECTION_BOTH])
