@@ -224,3 +224,11 @@ EXPORT_EDGE_COLUMNS = [
     'adt_avg_forward',
     'adt_avg_backward'
 ]
+
+EXPORT_OSM_TAGS = {
+    'highway', 'maxspeed',
+    'lanes', 'lanes:forward', 'lanes:backward', 'lanes:both_ways', 'oneway',
+    'cycleway', 'cycleway:lane', 'cycleway:left', 'cycleway:left:lane', 'cycleway:right', 'cycleway:right:lane',
+    'bus:lanes:backward', 'bus:lanes:forward', 'vehicle:lanes:backward', 'vehicle:lanes:forward',
+    '_connected_component'
+}

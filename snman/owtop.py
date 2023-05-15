@@ -169,7 +169,7 @@ def link_elimination(O, keep_all_streets=True, verbose=False):
     i = 0
     while True:
         i+=1
-        if verbose:
+        if verbose and i % 10 == 0:
             print('Iteration ', i)
         # Calculate betweenness centrality
         bc = nx.edge_betweenness_centrality(O)

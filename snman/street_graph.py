@@ -56,7 +56,7 @@ def prepare_graph(G):
     surrogate_missing_edge_geometries(G)
 
 
-def organize_edge_directions(G, method='lower_to_higher_node_id'):
+def organize_edge_directions(G, method='lower_to_higher_node_id', key_lanes_description=KEY_LANES_DESCRIPTION):
     """
     Ensure that all edges in a street graph have the direction from the lower to the higher node id.
     Edges with a different direction will be reversed, including the lanes and their geometry.
@@ -80,7 +80,7 @@ def organize_edge_directions(G, method='lower_to_higher_node_id'):
             if edge[0] > edge[1]:
                 reverse_edge(G, *edge[0:3])
         elif method == 'by_osm_convention':
-            if space_allocation._is_backward_oneway_street(edge[3].get('ln_desc')):
+            if space_allocation._is_backward_oneway_street(edge[3].get(key_lanes_description)):
                 reverse_edge(G, *edge[0:3])
         else:
             raise 'Reorganization method not implemented: ' + str(method)

@@ -385,13 +385,13 @@ def export_gdf(gdf, path, columns=[]):
         gdf[columns].to_file(path)
 
 
-def export_osm_xml(G, path, tags, uv_tags=False, tag_all_nodes=False):
+def export_osm_xml(G, path, tags, uv_tags=False, tag_all_nodes=False, key_lanes_description=KEY_LANES_DESCRIPTION):
     """
     Generates an OSM file from the street graph
 
     Parameters
     ----------
-    G : nx.MultiGraph or nx.MultiDiGraph
+    G : nx.MultiDiGraph
         street graph
     path : str
     tags : list
@@ -412,8 +412,8 @@ def export_osm_xml(G, path, tags, uv_tags=False, tag_all_nodes=False):
 
     # prepare a copy of the street graph for osm export
     H = copy.deepcopy(G)
-    street_graph.organize_edge_directions(H, method='by_osm_convention')
-    space_allocation.update_osm_tags(H)
+    street_graph.organize_edge_directions(H, method='by_osm_convention', key_lanes_description=key_lanes_description)
+    space_allocation.update_osm_tags(H, lanes_description_key=key_lanes_description)
     street_graph.convert_crs(H, 'epsg:4326')
 
     # create the overall structure of the XML

@@ -169,6 +169,16 @@ def save_street_graph(G, path):
     io.export_street_graph(G, path + '_edges.gpkg', path + '_nodes.gpkg')
 
 
+def save_street_graph_as_osm(G, path, key_lanes='before', osm_tags=EXPORT_OSM_TAGS):
+
+    if key_lanes == 'before':
+        key_lanes = KEY_LANES_DESCRIPTION
+    elif key_lanes == 'after':
+        key_lanes = KEY_LANES_DESCRIPTION_AFTER
+
+    io.export_osm_xml(G, path + '.osm', osm_tags, uv_tags=True, tag_all_nodes=False, key_lanes_description=key_lanes)
+
+
 def save_lane_geometries(G, path, scaling=1, key_lanes='before'):
 
     if key_lanes == 'before':

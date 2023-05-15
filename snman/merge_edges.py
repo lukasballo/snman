@@ -13,7 +13,7 @@ def merge_parallel_edges(G):
 
     Parameters
     ----------
-    G : nx.MultiGraph
+    G : nx.MultiDiGraph
         street graph
 
     Returns
@@ -21,28 +21,29 @@ def merge_parallel_edges(G):
     None
     """
 
-    uv_index = {}
+    edge_lists = {}
     for edge in G.edges(data=True, keys=True):
-        # Group edges by start/end nodes and layer
-        uv_key = ','.join([str(min(edge[0:2])), str(max(edge[0:2])), str(edge[3].get('layer'))])
-        if uv_key not in uv_index:
-            uv_index[uv_key] = []
-        uv_index[uv_key].append(edge)
+        # group edges by start/end nodes and layer (uvl = u, v, layer)
+        uvl = (min(edge[0:2]), max(edge[0:2]), edge[3].get('layer'))
+        # initialize empty edge list if necessary
+        if uvl not in edge_lists:
+            edge_lists[uvl] = []
+        edge_lists[uvl].append(edge)
 
     # Merge each set of grouped edges
-    for uv_key, edge_list in uv_index.items():
+    for uvl, edge_list in edge_lists.items():
         if len(edge_list) > 1:
-            _merge_given_parallel_edges(G, edge_list)
+            _merge_given_parallel_edges(G, *uvl, edge_list)
             pass
 
 
-def _merge_given_parallel_edges(G, edges):
+def _merge_given_parallel_edges(G, u, v, l, edges):
     """
     Merge the parallel edges given in a list
 
     Parameters
     ----------
-    G : nx.MultiGraph
+    G : nx.MultiDiGraph
         street graph
     edges : list
         list of edges to be merged
@@ -51,6 +52,17 @@ def _merge_given_parallel_edges(G, edges):
     -------
     None
     """
+
+    # normalize edge directions
+    edges_normalized = []
+    for edge in edges:
+        if edge[0:2] == (v, u):
+            reversed_edge = street_graph.reverse_edge(G, *edge[0:3])
+            edges_normalized.append(reversed_edge)
+        else:
+            edges_normalized.append(edge)
+
+    edges = edges_normalized
 
     geometries = [edge[3].get('geometry') for edge in edges]
     offsets = np.array(geometry_tools._offset_distance(geometries))
@@ -65,20 +77,19 @@ def _merge_given_parallel_edges(G, edges):
     i_parent_edge = 0
     edges_sorted_by_hierarchy = sorted(edges, key=lambda x: x[3].get('hierarchy'))
     parent_edge = edges_sorted_by_hierarchy[i_parent_edge]
-    u = parent_edge[0]
-    v = parent_edge[1]
 
     # merge the lanes from all
-    parent_edge[3]['_merge_parallel_src_ln_desc'] = str([edge[3].get('ln_desc') for edge in edges_sorted_by_go])
-    parent_edge[3]['ln_desc'] = list(it.chain(*[edge[3].get('ln_desc') for edge in edges_sorted_by_go]))
+    parent_edge_data = G.edges[parent_edge[0:3]]
+    parent_edge_data['_merge_parallel_src_ln_desc'] = str([edge[3].get('ln_desc') for edge in edges_sorted_by_go])
+    parent_edge_data['ln_desc'] = list(it.chain(*[edge[3].get('ln_desc') for edge in edges_sorted_by_go]))
 
     # merge sensors
-    parent_edge[3]['sensors_forward'] = list(set(
+    parent_edge_data['sensors_forward'] = list(set(
         utils.flatten_list(
             [edge[3].get('sensors_forward', []) for edge in edges_sorted_by_go]
         )
     ))
-    parent_edge[3]['sensors_backward'] = list(set(
+    parent_edge_data['sensors_backward'] = list(set(
         utils.flatten_list(
             [edge[3].get('sensors_backward', []) for edge in edges_sorted_by_go]
         )
@@ -88,7 +99,7 @@ def _merge_given_parallel_edges(G, edges):
     maxspeeds = [edge[3].get('maxspeed') for edge in edges]
     maxspeeds = list(filter(lambda e: isinstance(e, int), maxspeeds))
     maxspeed = max(maxspeeds) if len(maxspeeds) > 0 else None
-    parent_edge[3]['maxspeed'] = maxspeed
+    parent_edge_data['maxspeed'] = maxspeed
 
     for index, edge in enumerate(edges_sorted_by_hierarchy):
         # remove edge, except if it's the parent edge
@@ -96,7 +107,7 @@ def _merge_given_parallel_edges(G, edges):
             G.remove_edges_from([edge])
 
     # Take the highest hierarchy level from all source edges
-    parent_edge[3]['hierarchy'] = min([edge[3].get('hierarchy') for edge in edges])
+    parent_edge_data['hierarchy'] = min([edge[3].get('hierarchy') for edge in edges])
 
 
 def merge_consecutive_edges(G):
