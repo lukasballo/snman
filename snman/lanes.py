@@ -409,7 +409,7 @@ class _lane_properties:
             self.private_cars = lane_description[0:-1] == LANETYPE_MOTORIZED
             self.dedicated_pt = lane_description[0:-1] == LANETYPE_DEDICATED_PT
             self.dedicated_cycling = lane_description[0:-1] in \
-                [LANETYPE_CYCLING_TRACK, LANETYPE_CYCLING_LANE, LANETYPE_FOOT_CYCLING_MIXED]
+                [LANETYPE_CYCLING_TRACK, LANETYPE_CYCLING_LANE, LANETYPE_FOOT_CYCLING_MIXED, LANETYPE_CYCLING_PSEUDO]
             self.dedicated_cycling_lane = lane_description[0:-1] == LANETYPE_CYCLING_LANE
             self.dedicated_cycling_track = lane_description[0:-1] == LANETYPE_CYCLING_TRACK
             self.cycling_cost_factor = LANE_TYPES[lane_description]['cycling_cost_factor']
