@@ -6,6 +6,8 @@ DEAD_END = '3_dead_end'
 PATHWAY = '4_path'
 OTHER_HIERARCHY = '9_other'
 
+HIERARCHIES = {HIGHWAY, MAIN_ROAD, LOCAL_ROAD, DEAD_END, PATHWAY, OTHER_HIERARCHY}
+
 
 def add_hierarchy(G, iterations=20):
     """

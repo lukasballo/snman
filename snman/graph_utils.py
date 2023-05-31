@@ -27,3 +27,53 @@ def keep_only_the_largest_connected_component(G, weak=False):
         nodes = max(nx.connected_components(G), key=len)
 
     return G.subgraph(nodes).copy()
+
+
+def safe_degree(G, node):
+    """
+    For directed graphs, returns the sum of in_degree and out_degree.
+    For undirected graphs, return the degree.
+
+    Parameters
+    ----------
+    G : nx.Graph, nx.DiGraph, nx.MultiGraph, nx.MultiDiGraph
+    node : int
+
+    Returns
+    -------
+    int
+    """
+
+    if G.is_directed():
+        return G.degree(node)
+    else:
+        return G.in_degree(node) + G.out_degree(node)
+
+
+def safe_remove_edge(G, u, v, k, remove_dangling_nodes=True):
+    """
+    Removes an edge from the graph:
+    - without throwing error if the edge does not exist
+    - optional: removing any dangling nodes
+
+    Parameters
+    ----------
+    G : nx.Graph, nx.DiGraph, nx.MultiGraph, nx.MultiDiGraph
+    u : int
+    v : int
+    k : int
+
+    Returns
+    -------
+    None
+    """
+
+    if not G.has_edge(u, v, k):
+        return
+
+    G.remove_edge(u, v, k)
+
+    if remove_dangling_nodes:
+        for node in [u, v]:
+            if safe_degree(G, node) == 0:
+                G.remove_node(node)

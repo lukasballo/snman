@@ -1,13 +1,16 @@
+import copy
+
 import networkx as nx
-from . import constants, utils, distribution, space_allocation
+from . import utils, distribution, space_allocation
+from .constants import *
 from . import osmnx_customized as oxc
 
 
 def rebuild_regions(
         G,
         rebuilding_regions_gdf,
-        source_lanes_attribute=constants.KEY_LANES_DESCRIPTION,
-        target_lanes_attribute=constants.KEY_LANES_DESCRIPTION_AFTER,
+        source_lanes_attribute=KEY_LANES_DESCRIPTION,
+        target_lanes_attribute=KEY_LANES_DESCRIPTION_AFTER,
         initialize_target_lanes_attribute=True,
         **kwargs
 ):
@@ -59,8 +62,8 @@ def _rebuild_region(
         polygon,
         hierarchies_to_include,
         hierarchies_to_fix,
-        source_lanes_attribute=constants.KEY_LANES_DESCRIPTION,
-        target_lanes_attribute=constants.KEY_LANES_DESCRIPTION_AFTER,
+        source_lanes_attribute=KEY_LANES_DESCRIPTION,
+        target_lanes_attribute=KEY_LANES_DESCRIPTION_AFTER,
         **kwargs
 ):
     """
@@ -105,11 +108,9 @@ def _rebuild_region(
         hierarchies_to_fix=hierarchies_to_fix,
         source_lanes_attribute=source_lanes_attribute
     )
-    #snman.export_streetgraph(H_minimal_graph_input, export_path + 'given_lanes.gpkg', export_path + 'given_lanes_nodes.gpkg')
 
     # run the link elimination
     H_minimal_graph_output = link_elimination(H_minimal_graph_input, **kwargs)
-    #snman.export_streetgraph(H_minimal_graph_output, export_path + 'minimal_graph_out_edges.gpkg', export_path + 'minimal_graph_out_nodes.gpkg')
 
     # apply the link elimination output to the subgraph graph
     rebuild_lanes_from_owtop_graph(
@@ -124,7 +125,7 @@ def _rebuild_region(
     nx.set_edge_attributes(G, nx.get_edge_attributes(H, target_lanes_attribute), target_lanes_attribute)
 
 
-def link_elimination(O, keep_all_streets=True, verbose=False):
+def link_elimination(L, verbose=False):
     """
     Generating a network fo one-way streets. A greedy algorithm that sequentially removes links from the graph
     until no link can be removed without losing strong connectivity.
@@ -133,73 +134,73 @@ def link_elimination(O, keep_all_streets=True, verbose=False):
 
     Parameters
     ----------
-    O: nx.DiGraph
-        owtop graph, an initial directed graph with links labeled as fixed (direction cannot change) or not fixed
-    keep_all_streets : bool
-        if false, complete streets can be removed as long as all nodes are strongly connected
+    L: nx.DiGraph
+        lane graph
     verbose : bool
         print internal details during the process
 
     Returns
     -------
-    O : nx.DiGraph
+    L : nx.DiGraph
         a copy of the graph after link elimination
     """
 
     # Get the giant weakly connected component (remove any unconnected parts)
-    gcc = sorted(nx.weakly_connected_components(O), key=len, reverse=True)[0]
-    O = O.subgraph(gcc).copy()
-
-    # Add complementary edges in cases where they don't already exist
-    for i, data in O.edges.items():
-        if not O.has_edge(i[1], i[0]):
-            O.add_edge(i[1], i[0], fixed=False)
+    gcc = sorted(nx.weakly_connected_components(L), key=len, reverse=True)[0]
+    L = L.subgraph(gcc).copy()
 
     if verbose:
-        print('Initialized graph has ', len(O.nodes), ' nodes and ', len(O.edges), ' edges')
+        print('Initialized graph has ', len(L.nodes), ' nodes and ', len(L.edges), ' edges')
 
-    if not nx.is_strongly_connected(O):
+    if not nx.is_strongly_connected(L):
         print('Initialized graph is not strongly connected')
         return
 
-    def opposite_direction_exists(O, *edge_id):
-        return O.has_edge(edge_id[1], edge_id[0])
+    def opposite_direction_exists(L, u, v, k):
+        return L.has_edge(v, u, k)
 
     # Remove edges
     i = 0
     while True:
-        i+=1
+        i += 1
         if verbose and i % 10 == 0:
             print('Iteration ', i)
-        # Calculate betweenness centrality
-        bc = nx.edge_betweenness_centrality(O)
-        nx.set_edge_attributes(O, bc, 'bc')
-        edges = [edge for edge in list(O.edges.items()) if edge[1].get('fixed', False) == False]
 
-        # Finish the loop if no edge candidates exist
-        if len(edges) == 0:
+        # calculate betweenness centrality
+        bc = nx.edge_betweenness_centrality(L)
+        nx.set_edge_attributes(L, bc, 'bc')
+        removal_candidates = [edge for edge in list(L.edges.items()) if edge[1].get('fixed', False) == False]
+
+        # stop here if no removal candidates exist
+        if len(removal_candidates) == 0:
             break
-        edges = sorted(edges, key=lambda x: x[1]['bc'])
-        edge = list(edges)[0]
-        edge_id = edge[0]
 
-        # Check if the new graph is strongly connected
-        H = O.copy()
-        H.remove_edge(*edge_id)
-        if nx.is_strongly_connected(H) and (opposite_direction_exists(O, *edge_id) or not keep_all_streets):
-            O.remove_edge(*edge_id)
+        # find the edge with the lowest bc
+        removal_candidates = sorted(removal_candidates, key=lambda x: x[1]['bc'])
+        removal_candidate = list(removal_candidates)[0]
+        remove_edge_id = removal_candidate[0]
+
+        # remove the edge but add it back if the conditions get violated
+        L.remove_edge(*remove_edge_id)
+        if \
+            not nx.is_strongly_connected(L)\
+            or (removal_candidate[1].get('mandatory_lane') and not opposite_direction_exists(L, *remove_edge_id)):
+            attributes = copy.deepcopy(removal_candidate[1])
+            attributes['fixed'] = True
+            L.add_edge(*remove_edge_id, **attributes)
         else:
-            nx.set_edge_attributes(O, {edge_id: {'fixed': True}})
+            pass
 
-    return O
+
+    return L
 
 
 def rebuild_lanes_from_owtop_graph(
         G,
         O,
         hierarchies_to_protect=[],
-        source_lanes_attribute=constants.KEY_LANES_DESCRIPTION,
-        target_lanes_attribute=constants.KEY_LANES_DESCRIPTION_AFTER
+        source_lanes_attribute=KEY_LANES_DESCRIPTION,
+        target_lanes_attribute=KEY_LANES_DESCRIPTION_AFTER
 ):
     """
     Update lanes in the street graph to match the topology in the owtop graph
@@ -242,7 +243,7 @@ def rebuild_lanes_from_owtop_graph(
         for i, l in enumerate(lanes_before):
 
             # M- lanes
-            if l == constants.LANETYPE_MOTORIZED + constants.DIRECTION_BOTH:
+            if l == LANETYPE_MOTORIZED + DIRECTION_BOTH:
 
                 # if there are connections in both directions
                 if n_car_lanes[(u, v)] >= 1 and n_car_lanes[(v, u)] >= 1:
@@ -254,8 +255,8 @@ def rebuild_lanes_from_owtop_graph(
                 elif n_car_lanes[(u, v)] >= 1 and n_car_lanes[(v, u)] == 0:
                     # turn it into [L<,M>]
                     lanes_after[i] = [
-                        constants.LANETYPE_CYCLING_LANE + constants.DIRECTION_BACKWARD,
-                        constants.LANETYPE_MOTORIZED + constants.DIRECTION_FORWARD,
+                        LANETYPE_CYCLING_LANE + DIRECTION_BACKWARD,
+                        LANETYPE_MOTORIZED + DIRECTION_FORWARD,
                     ]
                     n_car_lanes[(u, v)] -= 1
 
@@ -263,45 +264,80 @@ def rebuild_lanes_from_owtop_graph(
                 elif n_car_lanes[(u, v)] == 0 and n_car_lanes[(v, u)] >= 1:
                     # convert it into [M<,L>]
                     lanes_after[i] = [
-                        constants.LANETYPE_MOTORIZED + constants.DIRECTION_BACKWARD,
-                        constants.LANETYPE_CYCLING_LANE + constants.DIRECTION_FORWARD,
+                        LANETYPE_MOTORIZED + DIRECTION_BACKWARD,
+                        LANETYPE_CYCLING_LANE + DIRECTION_FORWARD,
                     ]
                     n_car_lanes[(v, u)] -= 1
 
                 # if there is no connection
                 else:
-                    # convert it into [P<,P>]
-                    # TODO: match the new and old width, curently 4.5 -> 3.0 m
+                    # convert it into [P<,P>,P>]
                     lanes_after[i] = [
-                        constants.LANETYPE_CYCLING_TRACK + constants.DIRECTION_BACKWARD,
-                        constants.LANETYPE_CYCLING_TRACK + constants.DIRECTION_FORWARD,
+                        LANETYPE_CYCLING_TRACK + DIRECTION_BACKWARD,
+                        LANETYPE_CYCLING_TRACK + DIRECTION_FORWARD,
+                        LANETYPE_CYCLING_TRACK + DIRECTION_FORWARD,
                     ]
 
             # M< and M> lanes
             if l in [
-                constants.LANETYPE_MOTORIZED + constants.DIRECTION_BACKWARD,
-                constants.LANETYPE_MOTORIZED + constants.DIRECTION_FORWARD
+                LANETYPE_MOTORIZED + DIRECTION_BACKWARD,
+                LANETYPE_MOTORIZED + DIRECTION_FORWARD
             ]:
 
                 # if forward connection exists (process forward first)
                 if n_car_lanes[(v, u)] >= 1:
                     # convert into M<
-                    lanes_after[i] = constants.LANETYPE_MOTORIZED + constants.DIRECTION_BACKWARD
+                    lanes_after[i] = LANETYPE_MOTORIZED + DIRECTION_BACKWARD
                     n_car_lanes[(v, u)] -= 1
 
                 # if backward connection exists
                 elif n_car_lanes[(u, v)] >= 1:
                     # convert into M>
-                    lanes_after[i] = constants.LANETYPE_MOTORIZED + constants.DIRECTION_FORWARD
+                    lanes_after[i] = LANETYPE_MOTORIZED + DIRECTION_FORWARD
                     n_car_lanes[(u, v)] -= 1
 
                 else:
                     # convert it into [P<,P>]
                     lanes_after[i] = [
-                        constants.LANETYPE_CYCLING_TRACK + constants.DIRECTION_BACKWARD,
-                        constants.LANETYPE_CYCLING_TRACK + constants.DIRECTION_FORWARD,
+                        LANETYPE_CYCLING_TRACK + DIRECTION_BACKWARD,
+                        LANETYPE_CYCLING_TRACK + DIRECTION_FORWARD,
                     ]
 
+        # try to convert single-direction lanes to bidirectional ones
+        for i, l in enumerate(lanes_before):
+
+            # try to convert M< to M-
+            if l == LANETYPE_MOTORIZED + DIRECTION_BACKWARD:
+                if n_car_lanes[(v, u)] >= 1:
+                    lanes_after[i] = str(
+                        space_allocation._lane_properties(LANETYPE_MOTORIZED + DIRECTION_BOTH + str(
+                            space_allocation._lane_properties(l).width
+                        ))
+                    )
+                    n_car_lanes[(v, u)] -= 1
+
+            # try to convert M> to M-
+            if l == LANETYPE_MOTORIZED + DIRECTION_FORWARD:
+                if n_car_lanes[(u, v)] >= 1:
+                    lanes_after[i] = str(
+                        space_allocation._lane_properties(LANETYPE_MOTORIZED + DIRECTION_BOTH + str(
+                            space_allocation._lane_properties(l).width
+                        ))
+                    )
+                    n_car_lanes[(u, v)] -= 1
+
+        # add the remaining access directions as additional bidirectional lanes
+        n_bidirectional = min([n_car_lanes[(v, u)], n_car_lanes[(u, v)]])
+        lanes_after.extend([LANETYPE_MOTORIZED + DIRECTION_BOTH] * n_bidirectional)
+        n_car_lanes[(v, u)] -= n_bidirectional
+        n_car_lanes[(u, v)] -= n_bidirectional
+
+        # ...and single-direction lanes
+        lanes_after.extend([LANETYPE_MOTORIZED + DIRECTION_BACKWARD] * n_car_lanes[(v, u)])
+        n_car_lanes[(v, u)] = 0
+        lanes_after.extend([LANETYPE_MOTORIZED + DIRECTION_FORWARD] * n_car_lanes[(u, v)])
+        n_car_lanes[(u, v)] = 0
+
+
         lanes_after = list(utils.flatten_list(lanes_after))
-        lanes_after = space_allocation._reorder_lanes_on_edge(lanes_after)
         data[target_lanes_attribute] = lanes_after

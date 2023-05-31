@@ -101,13 +101,13 @@ def _merge_given_parallel_edges(G, u, v, l, edges):
     maxspeed = max(maxspeeds) if len(maxspeeds) > 0 else None
     parent_edge_data['maxspeed'] = maxspeed
 
+    # Take the highest hierarchy level from all source edges
+    parent_edge_data['hierarchy'] = min([edge[3].get('hierarchy') for edge in edges])
+
     for index, edge in enumerate(edges_sorted_by_hierarchy):
         # remove edge, except if it's the parent edge
         if index != i_parent_edge:
-            G.remove_edges_from([edge])
-
-    # Take the highest hierarchy level from all source edges
-    parent_edge_data['hierarchy'] = min([edge[3].get('hierarchy') for edge in edges])
+            graph_utils.safe_remove_edge(G, *edge[0:3])
 
 
 def merge_consecutive_edges(G):
@@ -172,8 +172,8 @@ def _merge_given_consecutive_edges(G, edge_chain):
     ----------
     G : nx.MultiGraph
         street graph
-    edges : list
-        list of edges to be merged
+    edge_chain : list
+        edges to be merged
 
     Returns
     -------
@@ -188,7 +188,7 @@ def _merge_given_consecutive_edges(G, edge_chain):
     edge_subchains = []
     motorized_access = None
     for edge in edge_chain:
-        ls = space_allocation._lane_stats(KEY_LANES_DESCRIPTION)
+        ls = space_allocation._lane_stats(edge[3].get(KEY_LANES_DESCRIPTION, []))
         motorized_access_here = 0 < (
             ls.n_lanes_motorized_forward
             + ls.n_lanes_motorized_backward
@@ -239,11 +239,11 @@ def _merge_given_consecutive_edges(G, edge_chain):
             )
         ))
 
-        # Delete the old edges
-        for edge in edge_subchain:
-            G.remove_edge(*edge[0:3])
-
         # Create a new merged edge
         u = edge_subchain[0][0]
         v = edge_subchain[-1][1]
         G.add_edge(u, v, **merged_data)
+
+        # Delete the old edges
+        for edge in edge_subchain:
+            graph_utils.safe_remove_edge(G, *edge[0:3])

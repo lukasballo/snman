@@ -9,13 +9,13 @@ import itertools as it
 import copy
 
 
-def simplify_edge_geometries(G, radius):
+def simplify_edge_geometries(G, radius=DEFAULT_SIMPLIFICATION_RADIUS):
     for uvk, edge in G.edges.items():
         if edge.get('geometry') is not None:
             edge['geometry'] = edge['geometry'].simplify(radius, preserve_topology=False)
 
 
-def merge_nodes_geometric(Gc, tolerance, given_intersections_gdf=None, regions_gdf=None):
+def merge_nodes_geometric(Gc, tolerance=DEFAULT_INTERSECTION_TOLERANCE, given_intersections_gdf=None, regions_gdf=None):
     """
     Create intersection geometries.
     Optionally use given intersection geometries to locally override the auto-detected results
@@ -275,8 +275,23 @@ def consolidate_intersections(Gc, intersections_gdf, reconnect_edges=True):
             in_edges = set(Hc.in_edges(cluster_label, keys=True))
             out_edges = set(Hc.out_edges(cluster_label, keys=True))
             for u, v, k in in_edges | out_edges:
-                old_coords = list(Hc.edges[u, v, k]["geometry"].coords)
-                new_coords = xy + old_coords if cluster_label == u else old_coords + xy
+                geometry = Hc.edges[u, v, k]["geometry"]
+
+                # for longer geometries, strip a part of the edge geometry before connecting it to the new node
+                if geometry.length > 40:
+                    strip_length = 10
+                    if cluster_label == u:
+                        geometry = shp.ops.substring(geometry, strip_length, geometry.length)
+                        new_coords = xy + list(geometry.coords)
+                    else:
+                        geometry = shp.ops.substring(geometry, 0, geometry.length - strip_length)
+                        new_coords = list(geometry.coords) + xy
+
+                # for shorter geometries, just take the straight line
+                else:
+                    old_coords = list(geometry.coords)
+                    new_coords = xy + [old_coords[-1]] if cluster_label == u else [old_coords[0]] + xy
+
                 new_geom = shp.ops.LineString(new_coords)
                 Hc.edges[u, v, k]["geometry"] = new_geom
                 Hc.edges[u, v, k]["_extension"] = str([u, v, k])

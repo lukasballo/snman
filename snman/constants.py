@@ -2,11 +2,20 @@ import osmnx as ox
 
 ox.config(log_console=False, use_cache=True)
 
+DEFAULT_INTERSECTION_TOLERANCE = 10
+DEFAULT_SIMPLIFICATION_RADIUS = 35
+
 DIRECTION_FORWARD = '>'
 DIRECTION_BACKWARD = '<'
 DIRECTION_BOTH = '-'
 DIRECTION_TBD = '?'
-DIRECTIONS = [DIRECTION_FORWARD, DIRECTION_BACKWARD, DIRECTION_BOTH, DIRECTION_TBD]
+DIRECTION_FORWARD_OPTIONAL = ')'
+DIRECTION_BACKWARD_OPTIONAL = '('
+DIRECTION_TBD_OPTIONAL = '*'
+DIRECTIONS = [
+    DIRECTION_FORWARD, DIRECTION_BACKWARD, DIRECTION_BOTH, DIRECTION_TBD,
+    DIRECTION_FORWARD_OPTIONAL, DIRECTION_BACKWARD_OPTIONAL, DIRECTION_TBD_OPTIONAL
+]
 
 MODE_FOOT = 'foot'
 MODE_CYCLING = 'cycling'
@@ -44,110 +53,75 @@ KEY_LANES_DESCRIPTION_AFTER = 'ln_desc_after'   # under which key is the lane co
 KEY_GIVEN_LANES_DESCRIPTION = 'given_lanes'
 KEY_REVERSED = '_reversed'          # which key tells if the edge has been reversed
 
-# in meters
-# TODO: deprecated and will be removed later, use LANE_TYPES instead
-DEFAULT_LANE_WIDTHS = {
-
-    LANETYPE_MOTORIZED + DIRECTION_FORWARD: 3,
-    LANETYPE_MOTORIZED + DIRECTION_BACKWARD: 3,
-    LANETYPE_MOTORIZED + DIRECTION_TBD: 3,
-    LANETYPE_MOTORIZED + DIRECTION_BOTH: 4.5,
-
-    LANETYPE_DEDICATED_PT + DIRECTION_FORWARD: 3,
-    LANETYPE_DEDICATED_PT + DIRECTION_BACKWARD: 3,
-    LANETYPE_DEDICATED_PT + DIRECTION_TBD: 3,
-    LANETYPE_DEDICATED_PT + DIRECTION_BOTH: 4.5,
-
-    LANETYPE_CYCLING_LANE + DIRECTION_FORWARD: 1.5,
-    LANETYPE_CYCLING_LANE + DIRECTION_BACKWARD: 1.5,
-    LANETYPE_CYCLING_LANE + DIRECTION_TBD: 1.5,
-    LANETYPE_CYCLING_LANE + DIRECTION_BOTH: 2,
-
-    LANETYPE_CYCLING_TRACK + DIRECTION_FORWARD: 1.5,
-    LANETYPE_CYCLING_TRACK + DIRECTION_BACKWARD: 1.5,
-    LANETYPE_CYCLING_TRACK + DIRECTION_TBD: 1.5,
-    LANETYPE_CYCLING_TRACK + DIRECTION_BOTH: 2,
-
-    LANETYPE_CYCLING_PSEUDO + DIRECTION_FORWARD: 0,
-    LANETYPE_CYCLING_PSEUDO + DIRECTION_BACKWARD: 0,
-    LANETYPE_CYCLING_PSEUDO + DIRECTION_TBD: 0,
-    LANETYPE_CYCLING_PSEUDO + DIRECTION_BOTH: 0,
-
-    LANETYPE_FOOT_CYCLING_MIXED + DIRECTION_FORWARD: 2.5,
-    LANETYPE_FOOT_CYCLING_MIXED + DIRECTION_BACKWARD: 2.5,
-    LANETYPE_FOOT_CYCLING_MIXED + DIRECTION_TBD: 2.5,
-    LANETYPE_FOOT_CYCLING_MIXED + DIRECTION_BOTH: 2.5,
-
-    LANETYPE_FOOT + DIRECTION_FORWARD: 1.8,
-    LANETYPE_FOOT + DIRECTION_BACKWARD: 1.8,
-    LANETYPE_FOOT + DIRECTION_TBD: 1.8,
-    LANETYPE_FOOT + DIRECTION_BOTH: 1.8,
-
-}
-
 LANE_TYPES = {
     LANETYPE_MOTORIZED + DIRECTION_FORWARD:
-        {'width': 3.0, 'cycling_cost_factor': 1.0, 'modes': {MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_CYCLING, MODE_FOOT}},
+        {'width': 3.0, 'order': 1, 'cycling_cost_factor': 1.0,
+         'modes': {MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_CYCLING, MODE_FOOT}},
     LANETYPE_MOTORIZED + DIRECTION_BACKWARD:
-        {'width': 3.0, 'cycling_cost_factor': 1.0, 'modes': {MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_CYCLING, MODE_FOOT}},
-    LANETYPE_MOTORIZED + DIRECTION_TBD:
-        {'width': 3.0, 'cycling_cost_factor': 1.0, 'modes': {MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_CYCLING, MODE_FOOT}},
+        {'width': 3.0, 'order': 1, 'cycling_cost_factor': 1.0,
+         'modes': {MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_CYCLING, MODE_FOOT}},
     LANETYPE_MOTORIZED + DIRECTION_BOTH:
-        {'width': 4.5, 'cycling_cost_factor': 1.0, 'modes': {MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_CYCLING, MODE_FOOT}},
+        {'width': 4.5, 'order': 1, 'cycling_cost_factor': 1.0,
+         'modes': {MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_CYCLING, MODE_FOOT}},
+
+    # lane to be kept but with direction to be decided yet
+    LANETYPE_MOTORIZED + DIRECTION_TBD:
+        {'width': 3.0, 'order': 1, 'cycling_cost_factor': 1.0,
+         'modes': {MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_CYCLING, MODE_FOOT}},
+
+    LANETYPE_MOTORIZED + DIRECTION_FORWARD_OPTIONAL:
+        {'width': 3.0, 'order': 1, 'cycling_cost_factor': 1.0,
+         'modes': {MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_CYCLING, MODE_FOOT}},
+    LANETYPE_MOTORIZED + DIRECTION_BACKWARD_OPTIONAL:
+        {'width': 3.0, 'order': 1, 'cycling_cost_factor': 1.0,
+         'modes': {MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_CYCLING, MODE_FOOT}},
+
+    # optional lane with undecided direction
+    LANETYPE_MOTORIZED + DIRECTION_TBD_OPTIONAL:
+        {'width': 3.0, 'order': 1, 'cycling_cost_factor': 1.0,
+         'modes': {MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_CYCLING, MODE_FOOT}},
 
     LANETYPE_DEDICATED_PT + DIRECTION_FORWARD:
-        {'width': 3.0, 'cycling_cost_factor': 1.0, 'modes': {MODE_TRANSIT}},
+        {'width': 3.0, 'order': 2, 'cycling_cost_factor': 1.0, 'modes': {MODE_TRANSIT}},
     LANETYPE_DEDICATED_PT + DIRECTION_BACKWARD:
-        {'width': 3.0, 'cycling_cost_factor': 1.0, 'modes': {MODE_TRANSIT}},
-    LANETYPE_DEDICATED_PT + DIRECTION_TBD:
-        {'width': 3.0, 'cycling_cost_factor': 1.0, 'modes': {MODE_TRANSIT}},
+        {'width': 3.0, 'order': 2, 'cycling_cost_factor': 1.0, 'modes': {MODE_TRANSIT}},
     LANETYPE_DEDICATED_PT + DIRECTION_BOTH:
-        {'width': 4.5, 'cycling_cost_factor': 1.0, 'modes': {MODE_TRANSIT}},
+        {'width': 4.5, 'order': 2, 'cycling_cost_factor': 1.0, 'modes': {MODE_TRANSIT}},
 
     LANETYPE_CYCLING_LANE + DIRECTION_FORWARD:
-        {'width': 1.5, 'cycling_cost_factor': 0.5, 'modes': {MODE_CYCLING}},
+        {'width': 1.5, 'order': 3, 'cycling_cost_factor': 0.5, 'modes': {MODE_CYCLING}},
     LANETYPE_CYCLING_LANE + DIRECTION_BACKWARD:
-        {'width': 1.5, 'cycling_cost_factor': 0.5, 'modes': {MODE_CYCLING}},
-    LANETYPE_CYCLING_LANE + DIRECTION_TBD:
-        {'width': 1.5, 'cycling_cost_factor': 0.5, 'modes': {MODE_CYCLING}},
+        {'width': 1.5, 'order': 3, 'cycling_cost_factor': 0.5, 'modes': {MODE_CYCLING}},
     LANETYPE_CYCLING_LANE + DIRECTION_BOTH:
-        {'width': 2.0, 'cycling_cost_factor': 0.5, 'modes': {MODE_CYCLING}},
+        {'width': 2.0, 'order': 3, 'cycling_cost_factor': 0.5, 'modes': {MODE_CYCLING}},
 
     LANETYPE_CYCLING_TRACK + DIRECTION_FORWARD:
-        {'width': 1.5, 'cycling_cost_factor': 0.5, 'modes': {MODE_CYCLING}},
+        {'width': 1.5, 'order': 4, 'cycling_cost_factor': 0.5, 'modes': {MODE_CYCLING}},
     LANETYPE_CYCLING_TRACK + DIRECTION_BACKWARD:
-        {'width': 1.5, 'cycling_cost_factor': 0.5, 'modes': {MODE_CYCLING}},
-    LANETYPE_CYCLING_TRACK + DIRECTION_TBD:
-        {'width': 1.5, 'cycling_cost_factor': 0.5, 'modes': {MODE_CYCLING}},
+        {'width': 1.5, 'order': 4, 'cycling_cost_factor': 0.5, 'modes': {MODE_CYCLING}},
     LANETYPE_CYCLING_TRACK + DIRECTION_BOTH:
-        {'width': 2.5, 'cycling_cost_factor': 0.5, 'modes': {MODE_CYCLING}},
+        {'width': 2.5, 'order': 4, 'cycling_cost_factor': 0.5, 'modes': {MODE_CYCLING}},
 
     LANETYPE_CYCLING_PSEUDO + DIRECTION_FORWARD:
-        {'width': 0.0, 'cycling_cost_factor': 1.0, 'modes': {MODE_CYCLING}},
+        {'width': 0.0, 'order': 5, 'cycling_cost_factor': 1.0, 'modes': {MODE_CYCLING}},
     LANETYPE_CYCLING_PSEUDO + DIRECTION_BACKWARD:
-        {'width': 0.0, 'cycling_cost_factor': 1.0, 'modes': {MODE_CYCLING}},
-    LANETYPE_CYCLING_PSEUDO + DIRECTION_TBD:
-        {'width': 0.0, 'cycling_cost_factor': 1.0, 'modes': {MODE_CYCLING}},
+        {'width': 0.0, 'order': 5, 'cycling_cost_factor': 1.0, 'modes': {MODE_CYCLING}},
     LANETYPE_CYCLING_PSEUDO + DIRECTION_BOTH:
-        {'width': 0.0, 'cycling_cost_factor': 1.0, 'modes': {MODE_CYCLING}},
+        {'width': 0.0, 'order': 5, 'cycling_cost_factor': 1.0, 'modes': {MODE_CYCLING}},
 
     LANETYPE_FOOT_CYCLING_MIXED + DIRECTION_FORWARD:
-        {'width': 2.5, 'cycling_cost_factor': 0.5, 'modes': {MODE_CYCLING, MODE_FOOT}},
+        {'width': 2.5, 'order': 6, 'cycling_cost_factor': 0.5, 'modes': {MODE_CYCLING, MODE_FOOT}},
     LANETYPE_FOOT_CYCLING_MIXED + DIRECTION_BACKWARD:
-        {'width': 2.5, 'cycling_cost_factor': 0.5, 'modes': {MODE_CYCLING, MODE_FOOT}},
-    LANETYPE_FOOT_CYCLING_MIXED + DIRECTION_TBD:
-        {'width': 2.5, 'cycling_cost_factor': 0.5, 'modes': {MODE_CYCLING, MODE_FOOT}},
+        {'width': 2.5, 'order': 6, 'cycling_cost_factor': 0.5, 'modes': {MODE_CYCLING, MODE_FOOT}},
     LANETYPE_FOOT_CYCLING_MIXED + DIRECTION_BOTH:
-        {'width': 2.5, 'cycling_cost_factor': 0.5, 'modes': {MODE_CYCLING, MODE_FOOT}},
+        {'width': 2.5, 'order': 6, 'cycling_cost_factor': 0.5, 'modes': {MODE_CYCLING, MODE_FOOT}},
 
     LANETYPE_FOOT + DIRECTION_FORWARD:
-        {'width': 1.8, 'cycling_cost_factor': 1.0, 'modes': {MODE_FOOT}},
+        {'width': 1.8, 'order': 7, 'cycling_cost_factor': 1.0, 'modes': {MODE_FOOT}},
     LANETYPE_FOOT + DIRECTION_BACKWARD:
-        {'width': 1.8, 'cycling_cost_factor': 1.0, 'modes': {MODE_FOOT}},
-    LANETYPE_FOOT + DIRECTION_TBD:
-        {'width': 1.8, 'cycling_cost_factor': 1.0, 'modes': {MODE_FOOT}},
+        {'width': 1.8, 'order': 7, 'cycling_cost_factor': 1.0, 'modes': {MODE_FOOT}},
     LANETYPE_FOOT + DIRECTION_BOTH:
-        {'width': 1.8, 'cycling_cost_factor': 1.0, 'modes': {MODE_FOOT}},
+        {'width': 1.8, 'order': 7, 'cycling_cost_factor': 1.0, 'modes': {MODE_FOOT}},
 }
 
 # Which highway=* values represent different infrastructures (primarily) for pedestrians and cyclists

@@ -20,6 +20,7 @@ from . import graph_utils
 from . import distribution
 from . import owtop
 from . import space_allocation
+from . import stats
 
 
 def get_street_graph(

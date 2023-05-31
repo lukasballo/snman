@@ -112,7 +112,7 @@ def match_sensors(Gm, sensors_df):
     Gm : nx.MultiDiGraph
         OSM graph
     sensors_df : pd.DataFrame
-        dataframe with matched sensors
+        sensors and their osm links
 
     Returns
     -------
@@ -121,17 +121,17 @@ def match_sensors(Gm, sensors_df):
 
     s = sensors_df.copy()
     s['id'] = s.index
-    s = s.set_index(['link_osm_id', 'node_from_osm_id', 'node_to_osm_id']).sort_index()
+    s = s.set_index(['id', 'u', 'v']).sort_index()
 
-    for id, data in Gm.edges.items():
-        u, v, key = id
+    for uvk, data in Gm.edges.items():
+        u, v, k = uvk
 
-        i_forward = (data['osmid'],u,v)
+        i_forward = (data['osmid'], u, v)
         if i_forward in s.index:
             sensors = list(s.loc[i_forward]['id'])
             data['sensors_forward'] = sensors
 
-        i_backward = (data['osmid'],v,u)
+        i_backward = (data['osmid'], v, u)
         if i_backward in s.index:
             sensors = list(s.loc[i_backward]['id'])
             data['sensors_backward'] = sensors

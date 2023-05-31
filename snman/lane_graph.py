@@ -5,6 +5,7 @@ import statistics as stats
 
 def calculate_stats(L):
 
+    # calculate the approximate area as a convex hull of all nodes
     points_gpd = oxc.graph_to_gdfs(L, edges=False)
     area_km2 = points_gpd.geometry.unary_union.convex_hull.area / pow(1000, 2)
 
@@ -16,6 +17,14 @@ def calculate_stats(L):
         'lane_km':
             round(
                 sum(nx.get_edge_attributes(L, 'length').values()) / 1000,
+            3),
+        'lane_surface_km2':
+            round(
+                sum([e['length'] * e['width'] for uvk, e in L.edges.items()]) / pow(1000, 2),
+            3),
+        'lane_surface_km2/km2':
+            round(
+                sum([e['length'] * e['width'] for uvk, e in L.edges.items()]) / pow(1000, 2) / area_km2,
             3),
         'lane_km/km2':
             round(

@@ -1,5 +1,5 @@
 from . import osmnx_customized as oxc
-from . import graph_utils, space_allocation
+from . import graph_utils, space_allocation, _errors
 from .constants import *
 import geopandas as gpd
 import networkx as nx
@@ -68,6 +68,7 @@ def organize_edge_directions(G, method='lower_to_higher_node_id', key_lanes_desc
     method : str
         - lower_to_higher_node_id: each edge will be digitized from the lower to the higher node id
         - by_osm_convention: one-way nodes will be digitized according to their lane direction
+        - heaviest_forward:
 
     Returns
     -------
@@ -76,14 +77,21 @@ def organize_edge_directions(G, method='lower_to_higher_node_id', key_lanes_desc
 
     edges = list(G.edges(data=True, keys=True))
     for edge in edges:
+
         if method == 'lower_to_higher_node_id':
             if edge[0] > edge[1]:
                 reverse_edge(G, *edge[0:3])
+
         elif method == 'by_osm_convention':
-            if space_allocation._is_backward_oneway_street(edge[3].get(key_lanes_description)):
+            if space_allocation.is_backward_oneway_street(edge[3].get(key_lanes_description)):
                 reverse_edge(G, *edge[0:3])
+
+        elif method == 'by_top_order_lanes':
+            if space_allocation.is_backward_by_top_order_lanes(edge[3].get(key_lanes_description)):
+                reverse_edge(G, *edge[0:3])
+
         else:
-            raise 'Reorganization method not implemented: ' + str(method)
+            raise _errors.OptionNotImplemented('Method ' + str(method) + ' is not valid')
 
 
 def surrogate_missing_edge_geometries(G):
@@ -193,7 +201,22 @@ def convert_crs(G, to_crs):
         data['y'] = geom.y
 
 
-def to_lane_graph(G, mode, lanes_attribute=KEY_LANES_DESCRIPTION):
+def to_lane_graph(G, lanes_attribute=KEY_LANES_DESCRIPTION):
+    """
+    Creates a new lane graph, derived from the street graph
+    Parameters
+    ----------
+    G : nx.MultiDiGraph
+        street graph
+    lanes_attribute : str
+        which attribute should be used for the lane description
+    consolidate_active_modes : bool
+        if True, multiple parallel lanes for walking/cycling will be consolidated into one wider lane
+
+    Returns
+    -------
+
+    """
 
     # initialize and copy graph attributes
     L = nx.MultiDiGraph()
@@ -203,25 +226,40 @@ def to_lane_graph(G, mode, lanes_attribute=KEY_LANES_DESCRIPTION):
         u, v, k = uvk
 
         lanes_list = data.get(lanes_attribute)
-        for lane in lanes_list:
+
+        for i, lane in enumerate(lanes_list):
+
             lp = space_allocation._lane_properties(lane)
+
+            attributes = {}
             length = data['length']
-            cost = space_allocation._calculate_lane_cost(lane, length, mode)
-            only_active_modes = lp.modes.issubset(ACTIVE_MODES)
-            only_active_modes_length = length * only_active_modes
+            lane_id = '-'.join([str(u), str(v), str(k), str(i)])
+            attributes['length'] = length
 
-            common_attributes = {
-                'length': length,
-                'cost': cost,
-                'only_active_modes': only_active_modes,
-                'only_active_modes_length': only_active_modes_length
-            }
+            for mode in MODES:
+                cost = space_allocation._calculate_lane_cost(lane, length, mode)
+                attributes['cost_' + mode] = cost
 
-            if mode in lp.modes:
-                if lp.direction in [DIRECTION_FORWARD, DIRECTION_BOTH]:
-                    L.add_edge(u, v, lane=lane, **common_attributes)
-                if lp.direction in [DIRECTION_BACKWARD, DIRECTION_BOTH]:
-                    L.add_edge(v, u, lane=space_allocation.reverse_lane(lane), **common_attributes)
+            attributes['width'] = lp.width
+            attributes['only_active_modes'] = lp.modes.issubset(ACTIVE_MODES)
+            attributes['only_active_modes_length'] = length * attributes['only_active_modes']
+            attributes['lane_id'] = lane_id
+
+            attributes['fixed'] = lp.direction not in [
+                DIRECTION_BACKWARD_OPTIONAL, DIRECTION_FORWARD_OPTIONAL, DIRECTION_TBD_OPTIONAL, DIRECTION_TBD
+            ]
+            attributes['mandatory_lane'] = lp.direction not in [
+                DIRECTION_BACKWARD_OPTIONAL, DIRECTION_FORWARD_OPTIONAL, DIRECTION_TBD_OPTIONAL
+            ]
+
+            if lp.direction in [
+                DIRECTION_FORWARD, DIRECTION_BOTH, DIRECTION_FORWARD_OPTIONAL, DIRECTION_TBD, DIRECTION_TBD_OPTIONAL
+            ]:
+                L.add_edge(u, v, lane_id, **attributes, lane=lane)
+            if lp.direction in [
+                DIRECTION_BACKWARD, DIRECTION_BOTH, DIRECTION_BACKWARD_OPTIONAL, DIRECTION_TBD, DIRECTION_TBD_OPTIONAL
+            ]:
+                L.add_edge(v, u, lane_id, **attributes, lane=space_allocation.reverse_lane(lane))
 
     # take over the node attributes from the street graph
     nx.set_node_attributes(L, dict(G.nodes))
@@ -324,12 +362,13 @@ def split_edge(G, u, v, key, split_points):
     # snap split points to the edge linestring
     split_points = shapely.ops.nearest_points(edge_linestring, split_points)[0]
     # make a small buffer around the points to deal with numeric errors
-    split_circles = shapely.MultiPoint(split_points).buffer(0.1)
+    split_circles = shapely.MultiPoint(split_points).buffer(0.5)
     # split the edge linestring using the buffer circles
     segments = shapely.ops.split(edge_linestring, split_circles)
 
-    # generate a list of node points
+    # generate a list of new node points (where the linestring has been split)
     node_points = list(map(lambda segment: segment.centroid, list(segments.geoms)[1::2]))
+    # add first and last node of the linestring to the new node points
     node_points = [shapely.Point(edge_linestring.coords[0])] + node_points + [shapely.Point(edge_linestring.coords[-1])]
 
     # generate a list of new node ids
@@ -345,9 +384,9 @@ def split_edge(G, u, v, key, split_points):
 
     if not len(nodes) == len(split_points) + 2 == len(edge_linestrings) + 1:
         print('not len(nodes) == len(split_points) + 2 == len(edge_linestrings) + 1')
-        print(nodes)
-        print(split_points)
-        print(edge_linestrings)
+        print(u, v, key)
+        print(edge_data.get('geometry', shapely.Point()).wkt)
+        print(shapely.MultiPoint(split_points).wkt)
         return
 
     new_edges = []
@@ -382,7 +421,10 @@ def split_edge(G, u, v, key, split_points):
     return new_edges
 
 
-def reverse_edge(G, u, v, key, reverse_topology=True):
+def reverse_edge(
+        G, u, v, key,
+        reverse_topology=True, lane_description_keys={KEY_LANES_DESCRIPTION, KEY_LANES_DESCRIPTION_AFTER}
+):
     """
     Flip the edge direction, including lanes and geometry
 
@@ -395,6 +437,8 @@ def reverse_edge(G, u, v, key, reverse_topology=True):
     reverse_topology : boolean
         flip the start and end node, automatically false if the G is undirected, be careful when using this
         as is may corrupt the graph by creating inconsistencies between the topological direction and the geometry
+    lane_description_keys : set
+        which lane description keys should be reversed
     """
 
     if not G.has_edge(u, v, key):
@@ -410,8 +454,9 @@ def reverse_edge(G, u, v, key, reverse_topology=True):
         G.remove_edge(u, v, key)
 
     # reverse lanes
-    if data.get('ln_desc') is not None:
-        data['ln_desc'] = space_allocation.reverse_lanes(data['ln_desc'])
+    for lane_description_key in lane_description_keys:
+        if data.get(lane_description_key) is not None:
+            data[lane_description_key] = space_allocation.reverse_lanes(data[lane_description_key])
 
     # reverse sensors
     sensors_forward = data.get('sensors_forward', [])
@@ -440,3 +485,25 @@ def reverse_edge(G, u, v, key, reverse_topology=True):
         return v, u, key, data
     else:
         return u, v, key, data
+
+
+def delete_edges_without_lanes(G, lane_description_key=KEY_LANES_DESCRIPTION):
+    edges_without_lanes = dict(filter(lambda x: x[1] == [], nx.get_edge_attributes(G, lane_description_key).items()))
+    G.remove_edges_from(edges_without_lanes)
+
+
+def filter_lanes_by_modes(G, modes, lane_description_key=KEY_LANES_DESCRIPTION):
+    H = copy.deepcopy(G)
+
+    for uvk, data in H.edges.items():
+        lanes = data.get(lane_description_key, [])
+        data[lane_description_key] = space_allocation.filter_lanes_by_modes(lanes, modes)
+
+    delete_edges_without_lanes(H, lane_description_key=lane_description_key)
+
+    return H
+
+
+def filter_by_hierarchy(G, hierarchy_levels):
+    edges = dict(filter(lambda x: x[1] in hierarchy_levels, nx.get_edge_attributes(G, 'hierarchy').items()))
+    return G.subgraph(edges).copy()

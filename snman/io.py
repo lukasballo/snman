@@ -169,7 +169,7 @@ def load_intersections(path, crs=DEFAULT_CRS):
     return intersections
 
 
-def load_rebuilding_regions(path, crs=DEFAULT_CRS):
+def load_rebuilding_regions(path, crs=DEFAULT_CRS, only_active=True):
     """
     Load a geofile (shp, gpkg, etc.) with rebuilding regions. These will be used to define areas where the streets
     should be rebuilt. In each rebuilding region, you can also specify which street hierarchies should be considered
@@ -197,14 +197,18 @@ def load_rebuilding_regions(path, crs=DEFAULT_CRS):
     """
 
     rebuilding_regions = import_geofile_to_gdf(path, crs=crs)
+
+    if only_active:
+        rebuilding_regions = rebuilding_regions[rebuilding_regions['active'] == True]
+
     # convert strings into lists
     rebuilding_regions['hierarchies_to_include'] = \
         rebuilding_regions['hierarchies_to_include'].apply(
-            lambda x: set(x.split(',')) if isinstance(x, str) and len(x) > 0 else {}
+            lambda x: set(x.split(',')) if isinstance(x, str) and len(x) > 0 else set()
         )
     rebuilding_regions['hierarchies_to_fix'] = \
         rebuilding_regions['hierarchies_to_fix'].apply(
-            lambda x: set(x.split(',')) if isinstance(x, str) and len(x) > 0 else {}
+            lambda x: set(x.split(',')) if isinstance(x, str) and len(x) > 0 else set()
         )
     rebuilding_regions = rebuilding_regions.sort_values(['order'])
     return rebuilding_regions
