@@ -2,10 +2,39 @@ import copy
 
 from . import osmnx_customized as oxc
 import networkx as nx
-import statistics as stats
 
 
 def calculate_stats(L, mode):
+    """
+    Calculates a set of standardized measures for a lane graph:
+
+    * **usable_N_nodes**: number of nodes that are accessible for the given mode
+    * **usable_N_edges**: number of edges that are accessible for the given mode
+    * **convex_hull_km2**: an approximate area of the network using a convex hull of all accessible nodes
+    * **usable_lane_km**: total length of lanes that are accessible for the given mode,
+        bidirectional lanes count only once
+    * **usable_surface_km2**: total surface of lanes that are accessible for the given mode
+    * **as_primary_lane_km**: total length of lanes where the given mode is primary
+        (see constants.LANE_TYPES, the primary mode is the first one in the mode list of each lane type),
+        bidirectional lanes count only once
+    * **as_primary_mode_lane_surface_km2**: total surface of lanes where the given mode is primary
+    * **avg_betweenness_centrality_norm**: average normalized betweenness centrality of edges
+    * **avg_shortest_path_length_km**: average length of the shortest path,
+        for cycling, the length is scaled using the comfort factors (cycling infrastructure will lead to lower values),
+        this means that you cannot compare the absolute average shortest path across modes, only the change before/after
+
+    Parameters
+    ----------
+    L : nx.MultiDiGraph
+        lane graph
+    mode : str
+        for which mode should the stats be calculated, see constants.MODES
+
+    Returns
+    -------
+    dict
+
+    """
 
     L = copy.deepcopy(L)
 

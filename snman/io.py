@@ -321,6 +321,7 @@ def export_street_graph_with_lanes(G, lanes_attribute, path, scaling=1):
     -------
     None
     """
+    # TODO: Build on top of a lane graph
 
     # Create empty list for the lanes
     lanes_list = []
@@ -355,12 +356,13 @@ def export_street_graph_with_lanes(G, lanes_attribute, path, scaling=1):
                 'descr': lane,
                 'width_m': lane_properties.width * scaling,
                 'layer': data.get('layer'),
+                'length': data.get('length'),
                 'geometry': geom
             })
 
     lanes_gdf = gpd.GeoDataFrame(
         lanes_list,
-        columns=['type', 'direction', 'descr', 'width_m', 'layer', 'geometry'],
+        columns=['type', 'direction', 'descr', 'width_m', 'layer', 'length', 'geometry'],
         geometry='geometry'
     )
 
