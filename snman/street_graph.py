@@ -241,8 +241,7 @@ def to_lane_graph(G, lanes_attribute=KEY_LANES_DESCRIPTION):
                 attributes['cost_' + mode] = cost
 
             attributes['width'] = lp.width
-            attributes['only_active_modes'] = lp.modes.issubset(ACTIVE_MODES)
-            attributes['only_active_modes_length'] = length * attributes['only_active_modes']
+            attributes['primary_mode'] = lp.primary_mode
             attributes['lane_id'] = lane_id
 
             attributes['fixed'] = lp.direction not in [
@@ -253,13 +252,19 @@ def to_lane_graph(G, lanes_attribute=KEY_LANES_DESCRIPTION):
             ]
 
             if lp.direction in [
-                DIRECTION_FORWARD, DIRECTION_BOTH, DIRECTION_FORWARD_OPTIONAL, DIRECTION_TBD, DIRECTION_TBD_OPTIONAL
+                DIRECTION_FORWARD, DIRECTION_FORWARD_OPTIONAL
             ]:
-                L.add_edge(u, v, lane_id, **attributes, lane=lane)
+                L.add_edge(u, v, lane_id, **attributes, lane=lane, twin_factor=1)
             if lp.direction in [
-                DIRECTION_BACKWARD, DIRECTION_BOTH, DIRECTION_BACKWARD_OPTIONAL, DIRECTION_TBD, DIRECTION_TBD_OPTIONAL
+                DIRECTION_BACKWARD, DIRECTION_BACKWARD_OPTIONAL
             ]:
-                L.add_edge(v, u, lane_id, **attributes, lane=space_allocation.reverse_lane(lane))
+                L.add_edge(v, u, lane_id, **attributes, lane=space_allocation.reverse_lane(lane), twin_factor=1)
+            if lp.direction in [
+                DIRECTION_BOTH, DIRECTION_TBD, DIRECTION_TBD_OPTIONAL
+            ]:
+                L.add_edge(u, v, lane_id, **attributes, lane=lane, twin_factor=0.5)
+                L.add_edge(v, u, lane_id, **attributes, lane=space_allocation.reverse_lane(lane), twin_factor=0.5)
+
 
     # take over the node attributes from the street graph
     nx.set_node_attributes(L, dict(G.nodes))
@@ -506,4 +511,5 @@ def filter_lanes_by_modes(G, modes, lane_description_key=KEY_LANES_DESCRIPTION):
 
 def filter_by_hierarchy(G, hierarchy_levels):
     edges = dict(filter(lambda x: x[1] in hierarchy_levels, nx.get_edge_attributes(G, 'hierarchy').items()))
-    return G.subgraph(edges).copy()
+    return G.edge_subgraph(edges).copy()
+

@@ -214,10 +214,11 @@ def load_rebuilding_regions(path, crs=DEFAULT_CRS, only_active=True):
     return rebuilding_regions
 
 
-def load_measurement_regions(path, crs=DEFAULT_CRS):
+def load_measurement_regions(path, crs=DEFAULT_CRS, only_active=True):
 
     measurement_regions = import_geofile_to_gdf(path, crs=crs)
-    measurement_regions = measurement_regions[measurement_regions['active'] == True]
+    if only_active:
+        measurement_regions = measurement_regions[measurement_regions['active'] == True]
     measurement_regions['area'] = measurement_regions.geometry.area
     return measurement_regions
 

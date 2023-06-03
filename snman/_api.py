@@ -18,7 +18,7 @@ from . import simplification
 from . import merge_edges
 from . import graph_utils
 from . import distribution
-from . import owtop
+from . import rebuilding
 from . import space_allocation
 from . import stats
 

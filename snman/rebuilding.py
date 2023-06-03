@@ -1,7 +1,7 @@
 import copy
 
 import networkx as nx
-from . import utils, distribution, space_allocation
+from . import utils, distribution, space_allocation, hierarchy, street_graph, graph_utils, io
 from .constants import *
 from . import osmnx_customized as oxc
 
@@ -11,118 +11,58 @@ def rebuild_regions(
         rebuilding_regions_gdf,
         source_lanes_attribute=KEY_LANES_DESCRIPTION,
         target_lanes_attribute=KEY_LANES_DESCRIPTION_AFTER,
-        initialize_target_lanes_attribute=True,
-        **kwargs
+        verbose=False,
+        export_L=False
 ):
-    """
-    Rebuild parts of the street graph in all "rebuilding regions"
 
-    Parameters
-    ----------
-    G : nx.MultiGraph
-        street graph
-    rebuilding_regions_gdf : gpd.GeoDataFrame
-        see .io.load_rebuilding_regions
-    source_lanes_attribute : str
-        attribute holding the lanes that should be used as input
-    target_lanes_attribute : str
-        attribute holding the lanes that should be used as output
-    initialize_target_lanes_attribute : bool
-        reset the rebuilt lane configurations before starting
-    kwargs
-        see link_elimination
+    # initialize lanes after rebuild
+    nx.set_edge_attributes(G, nx.get_edge_attributes(G, source_lanes_attribute), target_lanes_attribute)
 
-    Returns
-    -------
-    None
-    """
+    for i, rebuilding_region in rebuilding_regions_gdf.iterrows():
 
-    if initialize_target_lanes_attribute:
-        nx.set_edge_attributes(
-            G,
-            nx.get_edge_attributes(G, source_lanes_attribute),
-            target_lanes_attribute
+        print('Rebuilding region', i, rebuilding_region['description'])
+
+        hierarchies_to_fix = hierarchy.HIERARCHIES.difference(rebuilding_region['hierarchies_to_include']).union(
+            rebuilding_region['hierarchies_to_fix'])
+
+        polygon = rebuilding_region['geometry']
+        # make subgraph
+        H = oxc.truncate.truncate_graph_polygon(G, polygon, quadrat_width=100, retain_all=True)
+        # keep only hierarchies toi include
+        if len(rebuilding_region['hierarchies_to_include']) > 0:
+            H = street_graph.filter_by_hierarchy(H, rebuilding_region['hierarchies_to_include'])
+        # set given lanes according to network rules
+        distribution.set_given_lanes(
+            H,
+            maintain_motorized_access_on_street_level=rebuilding_region['keep_all_streets'],
+            hierarchies_to_fix=rebuilding_region['hierarchies_to_fix']
         )
+        # get only the car lanes
+        H = street_graph.filter_lanes_by_modes(H, {MODE_PRIVATE_CARS})
+        # make lane graph
+        L = street_graph.to_lane_graph(H, KEY_GIVEN_LANES_DESCRIPTION)
+        # make sure that the graph is strongly connected
+        L = graph_utils.keep_only_the_largest_connected_component(L)
 
-    for idx, data in rebuilding_regions_gdf[rebuilding_regions_gdf['active'] == True].iterrows():
-        _rebuild_region(
-            G,
-            data['geometry'],
-            data['hierarchies_to_include'],
-            data['hierarchies_to_fix'],
-            source_lanes_attribute=target_lanes_attribute,  # chaining by taking target attribute as a source
-            target_lanes_attribute=target_lanes_attribute,
-            keep_all_streets=data['keep_all_streets'],
-            **kwargs
+        if export_L:
+            io.export_street_graph(L, export_L[0], export_L[1])
+
+        # link elimination
+        L = link_elimination(L, verbose=verbose)
+
+        if export_L:
+            io.export_street_graph(L, export_L[0], export_L[1])
+
+        # rebuild lanes in subgraph based on new lane graph
+        rebuild_lanes_from_owtop_graph(
+            H,
+            L,
+            hierarchies_to_protect=rebuilding_region['hierarchies_to_fix'],
+            source_lanes_attribute=KEY_LANES_DESCRIPTION_AFTER,
+            target_lanes_attribute=KEY_LANES_DESCRIPTION_AFTER
         )
-
-
-def _rebuild_region(
-        G,
-        polygon,
-        hierarchies_to_include,
-        hierarchies_to_fix,
-        source_lanes_attribute=KEY_LANES_DESCRIPTION,
-        target_lanes_attribute=KEY_LANES_DESCRIPTION_AFTER,
-        **kwargs
-):
-    """
-    Rebuild part of the street graph within a polygon
-
-    Parameters
-    ----------
-    G : nx.MultiGraph
-        street graph
-    polygon : shp.geometry.Polygon
-        which part of the street graph should be rebuilt
-    hierarchies_to_include : list
-        which hierarchies of streets should be considered in the process, include all streets if empty
-    hierarchies_to_fix : list
-        which hierarchies of streets should be left unchanged
-    source_lanes_attribute : str
-        attribute holding the lanes that should be used as input
-    target_lanes_attribute : str
-        attribute holding the lanes that should be used as output
-    kwargs
-        see link_elimination
-
-    Returns
-    -------
-    None
-    """
-
-    # create a subgraph with only those edges that should be reorganized
-    H = oxc.truncate.truncate_graph_polygon(G, polygon, quadrat_width=100, retain_all=True)
-
-    if len(H.edges) == 0:
-        return
-
-    if len(hierarchies_to_include) > 0:
-        filtered_edges = dict(filter(lambda key_value: key_value[1]['hierarchy']
-            not in hierarchies_to_include, H.edges.items()))
-        H.remove_edges_from(filtered_edges.keys())
-
-    # initialize the input for link elimination
-    H_minimal_graph_input = distribution.create_given_lanes_graph(
-        H,
-        hierarchies_to_fix=hierarchies_to_fix,
-        source_lanes_attribute=source_lanes_attribute
-    )
-
-    # run the link elimination
-    H_minimal_graph_output = link_elimination(H_minimal_graph_input, **kwargs)
-
-    # apply the link elimination output to the subgraph graph
-    rebuild_lanes_from_owtop_graph(
-        H,
-        H_minimal_graph_output,
-        hierarchies_to_protect=hierarchies_to_fix,
-        source_lanes_attribute=source_lanes_attribute,
-        target_lanes_attribute=target_lanes_attribute
-    )
-
-    # write the reorganized lanes from subgraph H into the main graph G
-    nx.set_edge_attributes(G, nx.get_edge_attributes(H, target_lanes_attribute), target_lanes_attribute)
+        # write rebuilt lanes from subgraph into the main graph
+        nx.set_edge_attributes(G, nx.get_edge_attributes(H, KEY_LANES_DESCRIPTION_AFTER), KEY_LANES_DESCRIPTION_AFTER)
 
 
 def link_elimination(L, verbose=False):
@@ -167,7 +107,7 @@ def link_elimination(L, verbose=False):
             print('Iteration ', i)
 
         # calculate betweenness centrality
-        bc = nx.edge_betweenness_centrality(L)
+        bc = nx.edge_betweenness_centrality(L, weight='cost_'+MODE_PRIVATE_CARS)
         nx.set_edge_attributes(L, bc, 'bc')
         removal_candidates = [edge for edge in list(L.edges.items()) if edge[1].get('fixed', False) == False]
 

@@ -399,6 +399,7 @@ class _lane_properties:
     primary_mode = None
     modes = None
     order = None
+    is_cycling_infra = None
 
     def __init__(self, lane_description):
         """
@@ -428,17 +429,10 @@ class _lane_properties:
             self.dedicated_cycling_track = lane_description[0] == LANETYPE_CYCLING_TRACK
             self.cycling_cost_factor = LANE_TYPES[lane_description[0:2]]['cycling_cost_factor']
 
-            if self.private_cars:
-                self.primary_mode = MODE_PRIVATE_CARS
-            elif self.dedicated_pt:
-                self.primary_mode = MODE_TRANSIT
-            elif self.dedicated_cycling:
-                self.primary_mode = MODE_CYCLING
-            elif lane_description[0:-1] == LANETYPE_FOOT:
-                self.primary_mode = MODE_FOOT
-
-            self.modes = LANE_TYPES[lane_description[0:2]]['modes']
+            self.modes = set(LANE_TYPES[lane_description[0:2]]['modes'])
+            self.primary_mode = LANE_TYPES[lane_description[0:2]]['modes'][0]
             self.order = LANE_TYPES[lane_description[0:2]]['order']
+            self.is_cycling_infra = self.lanetype in CYCLING_INFRA
 
     def get_standard_width(self):
         return LANE_TYPES[self.lanetype + self.direction]['width']

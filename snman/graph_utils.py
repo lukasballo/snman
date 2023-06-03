@@ -1,4 +1,5 @@
 import networkx as nx
+from . import osmnx_customized as oxc
 
 
 def keep_only_the_largest_connected_component(G, weak=False):
@@ -77,3 +78,17 @@ def safe_remove_edge(G, u, v, k, remove_dangling_nodes=True):
         for node in [u, v]:
             if safe_degree(G, node) == 0:
                 G.remove_node(node)
+
+
+def plot_scc(G):
+    # Calculate strongly connected components
+    components = list(nx.strongly_connected_components(G))
+
+    # Assign a different color to each component
+    colors = {}
+    for i, component in enumerate(components):
+        for node in component:
+            colors[node] = i
+
+    # Draw the graph with nodes colored by component
+    oxc.plot_graph(G, node_color=[colors[node] for node in G.nodes()])
