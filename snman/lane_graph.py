@@ -12,11 +12,13 @@ def calculate_stats(L, mode):
     * **usable_N_edges**: number of edges that are accessible for the given mode
     * **convex_hull_km2**: an approximate area of the network using a convex hull of all accessible nodes
     * **usable_lane_km**: total length of lanes that are accessible for the given mode,
-        bidirectional lanes count only once
+        bidirectional lanes count only once,
+        pseudo-lanes with width=0 don't count
     * **usable_surface_km2**: total surface of lanes that are accessible for the given mode
     * **as_primary_lane_km**: total length of lanes where the given mode is primary
         (see constants.LANE_TYPES, the primary mode is the first one in the mode list of each lane type),
-        bidirectional lanes count only once
+        bidirectional lanes count only once,
+        pseudo-lanes with width=0 don't count
     * **as_primary_mode_lane_surface_km2**: total surface of lanes where the given mode is primary
     * **avg_betweenness_centrality_norm**: average normalized betweenness centrality of edges
     * **avg_shortest_path_length_km**: average length of the shortest path,
@@ -49,33 +51,78 @@ def calculate_stats(L, mode):
         'usable_N_nodes': len(L.nodes),
         'usable_N_edges':
             round(
-                sum([1 * e['twin_factor'] for uvk, e in L.edges.items()]),
+                sum(
+                    [
+                        1 * e['twin_factor']
+                        for uvk, e
+                        in L.edges.items()
+                    ]
+                ),
                 3
             ),
         'convex_hull_km2': area_km2,
         'usable_lane_km':
             round(
-                sum([e['length'] * e['twin_factor'] for uvk, e in L.edges.items()]) / 1000,
+                sum(
+                    [
+                        e['length'] * e['twin_factor']
+                        for uvk, e
+                        in L.edges.items()
+                        if e['width'] > 0
+                    ]
+                ) / 1000,
                 3
             ),
         'usable_lane_surface_km2':
             round(
-                sum([e['length'] * e['width'] * e['twin_factor'] for uvk, e in L.edges.items()]) / pow(1000, 2),
+                sum(
+                    [
+                        e['length'] * e['width'] * e['twin_factor']
+                        for uvk, e
+                        in L.edges.items()
+                    ]
+                ) / pow(1000, 2),
                 3
             ),
         'as_primary_mode_lane_km':
             round(
-                sum([e['length'] * e['twin_factor'] * (e['primary_mode'] == mode) for uvk, e in L.edges.items()]) / 1000,
+                sum(
+                    [
+                        e['length'] * e['twin_factor'] * (e['primary_mode'] == mode)
+                        for uvk, e
+                        in L.edges.items()
+                        if e['width'] > 0
+                    ]
+                ) / 1000,
                 3
             ),
         'as_primary_mode_lane_surface_km2':
             round(
-                sum([e['length'] * e['width'] * e['twin_factor'] * (e['primary_mode'] == mode) for uvk, e in L.edges.items()]) / pow(1000, 2),
+                sum(
+                    [
+                        e['length'] * e['width'] * e['twin_factor'] * (e['primary_mode'] == mode)
+                        for uvk, e
+                        in L.edges.items()
+                    ]
+                ) / pow(1000, 2),
                 3
             ),
         'avg_betweenness_centrality_norm':
             round(
-                sum([e['bc'] * e['twin_factor'] for uvk, e in L.edges.items()]) / sum([e['twin_factor'] for uvk, e in L.edges.items()]),
+                sum(
+                    [
+                        e['bc'] * e['twin_factor']
+                        for uvk, e
+                        in L.edges.items()
+                    ]
+                ) /
+                sum(
+                    [
+                        e['twin_factor']
+                        for uvk, e
+                        in L.edges.items()
+                    ]
+                ),
                 5
             ),
         'avg_shortest_path_length_km':
