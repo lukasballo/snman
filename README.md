@@ -11,9 +11,8 @@ ETH Zurich, Department of Civil and Environmental Engineering.
   * Install Python 3.9
   * Make sure you have installed the dependencies in the *dependencies* file
   * Pull the *main-v2* branch of this repository
-  * Start with *prepare_simplified_street_graph.ipynb* and *rebuild_street_graph.ipynb* for a complete process
-    of network simplification, enrichment, and rebuilding into a system of one-way streets. 
-    Change the *data_directory* variable in both files to match the path of your *data_directory*
+  * Use the Jupyter notebooks under examples, start with *prepare_simplified_street_graph.ipynb*
+  * Make sure to change the *data_directory* variable in both files to match the path of your *data_directory*
 
 
 ## Changing the process inputs ()

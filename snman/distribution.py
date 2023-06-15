@@ -37,9 +37,6 @@ def set_given_lanes(
 
         # for streets with public transit...
         elif data.get('pt_tram') or data.get('pt_bus'):
-            if lane_stats.n_lanes_dedicated_pt_forward + lane_stats.n_lanes_dedicated_pt_both_ways == 0:
-                # ...keep forward lane if there is no dedicated forward/both ways lane
-                target_lanes += [LANETYPE_MOTORIZED + DIRECTION_FORWARD]
             if lane_stats.n_lanes_dedicated_pt_backward + lane_stats.n_lanes_dedicated_pt_both_ways == 0:
                 # ...keep backward lane if there is no dedicated backward/both ways lane
                 target_lanes += [LANETYPE_MOTORIZED + DIRECTION_BACKWARD]
@@ -49,6 +46,9 @@ def set_given_lanes(
                     target_lanes += [LANETYPE_MOTORIZED + DIRECTION_TBD]
                 else:
                     target_lanes += [LANETYPE_MOTORIZED + DIRECTION_TBD_OPTIONAL]
+            if lane_stats.n_lanes_dedicated_pt_forward + lane_stats.n_lanes_dedicated_pt_both_ways == 0:
+                # ...keep forward lane if there is no dedicated forward/both ways lane
+                target_lanes += [LANETYPE_MOTORIZED + DIRECTION_FORWARD]
 
         # for normal streets, keep one single-direction lane
         elif data.get('hierarchy') in [hierarchy.MAIN_ROAD, hierarchy.LOCAL_ROAD, hierarchy.HIGHWAY]:

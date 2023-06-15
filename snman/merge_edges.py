@@ -2,8 +2,10 @@ import networkx as nx
 from . import graph_utils, geometry_tools, utils, street_graph, space_allocation
 from. constants import *
 from shapely import geometry, ops
+import shapely
 import numpy as np
 import itertools as it
+import copy
 
 
 def merge_parallel_edges(G):
@@ -110,7 +112,7 @@ def _merge_given_parallel_edges(G, u, v, l, edges):
             graph_utils.safe_remove_edge(G, *edge[0:3])
 
 
-def merge_consecutive_edges(G):
+def merge_consecutive_edges(G, distinction_attributes=set()):
 
     # create a subgraph that only contains degree=2 nodes
     H = G.copy()
@@ -161,10 +163,10 @@ def merge_consecutive_edges(G):
                 )
 
         # merge the edges
-        _merge_given_consecutive_edges(G, edges_to_merge)
+        _merge_given_consecutive_edges(G, edges_to_merge, distinction_attributes)
 
 
-def _merge_given_consecutive_edges(G, edge_chain):
+def _merge_given_consecutive_edges(G, edge_chain, distinction_attributes):
     """
     Merge the consecutive edges in a given list
 
@@ -174,6 +176,9 @@ def _merge_given_consecutive_edges(G, edge_chain):
         street graph
     edge_chain : list
         edges to be merged
+    distinction_attributes : set
+        if these attributes differ, then start a new subchain,
+        e.g., when the lanes are different
 
     Returns
     -------
@@ -186,7 +191,9 @@ def _merge_given_consecutive_edges(G, edge_chain):
 
     # split the edge chain into subchains based on permitted modes
     edge_subchains = []
+    # initialize distinction variables
     motorized_access = None
+    distinction_attr_values = {attr: None for attr in distinction_attributes}
     for edge in edge_chain:
         ls = space_allocation._lane_stats(edge[3].get(KEY_LANES_DESCRIPTION, []))
         motorized_access_here = 0 < (
@@ -195,11 +202,15 @@ def _merge_given_consecutive_edges(G, edge_chain):
             + ls.n_lanes_motorized_both_ways
             + ls.n_lanes_motorized_direction_tbd
         )
-        if motorized_access != motorized_access_here:
+        distinction_attr_values_here = {attr: edge[3][attr] for attr in distinction_attributes}
+        # start a new subchain if the distinction triggers
+        if motorized_access != motorized_access_here or distinction_attr_values != distinction_attr_values_here:
             edge_subchains.append([])
         edge[3]['_subchain'] = len(edge_subchains)
+        # add the edge to the last subchain
         edge_subchains[-1].append(edge)
         motorized_access = motorized_access_here
+        distinction_attr_values = distinction_attr_values_here
 
     # merge all edges within each subchain
     for edge_subchain in edge_subchains:
@@ -239,6 +250,9 @@ def _merge_given_consecutive_edges(G, edge_chain):
             )
         ))
 
+        # add a list of merged intermediary nodes
+        merged_data['_intermediary_nodes'] = [edge[0] for edge in edge_subchain[1:]]
+
         # Create a new merged edge
         u = edge_subchain[0][0]
         v = edge_subchain[-1][1]
@@ -247,3 +261,58 @@ def _merge_given_consecutive_edges(G, edge_chain):
         # Delete the old edges
         for edge in edge_subchain:
             graph_utils.safe_remove_edge(G, *edge[0:3])
+
+
+def reconstruct_consecutive_edges(G):
+    """
+    Converts all merged edges into their original parts.
+    This function is needed to write back the rebuilt lanes into the original street graph if we merge
+    consecutive edges in the subgraph (e.g., when rebuilding only the main roads).
+
+    For simplicity, the reconstructed graph does not maintain the original locations of the intermediary points,
+    nor the real edge geometries. Instead, the intermediary points are distributed evenly and connected with straight
+    lines.
+
+    Parameters
+    ----------
+    G : MultiDiGraph
+        street graph
+
+    Returns
+    -------
+    None
+
+    """
+
+    H = G.copy()
+
+    for uvk, data in H.edges.items():
+
+        u, v, k = uvk
+        intermediary_nodes = data.get('_intermediary_nodes')
+        if intermediary_nodes is None or len(intermediary_nodes) == 0:
+            continue
+
+        nodes = [u] + intermediary_nodes + [v]
+        nodes_i = range(0, len(nodes))
+        line = data['geometry']
+
+        distances = np.linspace(0, 1, len(nodes))
+        points = [line.interpolate(distance, normalized=True) for distance in distances]
+
+        for i in nodes_i[1:-1]:
+            point = points[i]
+            G.add_node(nodes[i], x=point.x, y=point.y)
+
+        for i in nodes_i[0:-1]:
+            this_data = copy.copy(data)
+            this_data['geometry'] = shapely.LineString((points[i], points[i+1]))
+            this_data['length'] = None
+            G.add_edge(nodes[i], nodes[i+1], **this_data)
+
+        G.remove_edge(u, v, k)
+
+
+def reset_intermediate_nodes(G):
+    for uvk, data in G.edges.items():
+        data['_intermediary_nodes'] = []

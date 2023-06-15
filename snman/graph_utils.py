@@ -1,5 +1,24 @@
 import networkx as nx
 from . import osmnx_customized as oxc
+from . import utils
+
+
+def weak_neighbors(G, node):
+    """
+    Returns neighbors of a node considering both incoming and outcoming edges
+
+    Parameters
+    ----------
+    G : nx.DiGraph or nx.MultiDiGraph
+    node : int
+
+    Returns
+    -------
+    set
+    """
+
+    edges = list(G.in_edges(node)) + list(G.out_edges(node))
+    return set(utils.flatten_list(edges)).difference({node})
 
 
 def keep_only_the_largest_connected_component(G, weak=False):

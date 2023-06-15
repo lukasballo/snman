@@ -1,4 +1,5 @@
 from typing import Iterable
+import json
 
 
 def flatten_list(items):
@@ -41,3 +42,18 @@ def safe_int(s, fallback_value=None):
         return int(s)
     else:
         return fallback_value
+
+
+def _is_json_serializable(obj):
+    try:
+        json.dumps(obj)
+        return True
+    except (TypeError, OverflowError):
+        return False
+
+
+def safe_dumps(data):
+    if _is_json_serializable(data):
+        return json.dumps(data)
+    else:
+        return 'NULL'

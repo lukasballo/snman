@@ -431,7 +431,8 @@ def split_edge(G, u, v, key, split_points):
 
 def reverse_edge(
         G, u, v, key,
-        reverse_topology=True, lane_description_keys={KEY_LANES_DESCRIPTION, KEY_LANES_DESCRIPTION_AFTER}
+        reverse_topology=True,
+        lane_description_keys={KEY_LANES_DESCRIPTION, KEY_LANES_DESCRIPTION_AFTER, KEY_GIVEN_LANES_DESCRIPTION}
 ):
     """
     Flip the edge direction, including lanes and geometry

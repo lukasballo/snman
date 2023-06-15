@@ -1,7 +1,7 @@
 import copy
 
 import networkx as nx
-from . import utils, distribution, space_allocation, hierarchy, street_graph, graph_utils, io
+from . import utils, distribution, space_allocation, hierarchy, street_graph, graph_utils, io, merge_edges
 from .constants import *
 from . import osmnx_customized as oxc
 
@@ -12,11 +12,14 @@ def rebuild_regions(
         source_lanes_attribute=KEY_LANES_DESCRIPTION,
         target_lanes_attribute=KEY_LANES_DESCRIPTION_AFTER,
         verbose=False,
-        export_L=False
+        export_L=False,
+        export_H=False
 ):
 
     # initialize lanes after rebuild
     nx.set_edge_attributes(G, nx.get_edge_attributes(G, source_lanes_attribute), target_lanes_attribute)
+    # ensure consistent edge directions
+    street_graph.organize_edge_directions(G)
 
     for i, rebuilding_region in rebuilding_regions_gdf.iterrows():
 
@@ -28,7 +31,7 @@ def rebuild_regions(
         polygon = rebuilding_region['geometry']
         # make subgraph
         H = oxc.truncate.truncate_graph_polygon(G, polygon, quadrat_width=100, retain_all=True)
-        # keep only hierarchies toi include
+        # keep only hierarchies to include
         if len(rebuilding_region['hierarchies_to_include']) > 0:
             H = street_graph.filter_by_hierarchy(H, rebuilding_region['hierarchies_to_include'])
         # set given lanes according to network rules
@@ -38,7 +41,10 @@ def rebuild_regions(
             hierarchies_to_fix=rebuilding_region['hierarchies_to_fix']
         )
         # get only the car lanes
-        H = street_graph.filter_lanes_by_modes(H, {MODE_PRIVATE_CARS})
+        H = street_graph.filter_lanes_by_modes(H, {MODE_PRIVATE_CARS}, lane_description_key=KEY_GIVEN_LANES_DESCRIPTION)
+        # remove intermediary nodes from the subgraph
+        merge_edges.reset_intermediate_nodes(H)
+        merge_edges.merge_consecutive_edges(H, distinction_attributes={KEY_LANES_DESCRIPTION_AFTER})
         # make lane graph
         L = street_graph.to_lane_graph(H, KEY_GIVEN_LANES_DESCRIPTION)
         # make sure that the graph is strongly connected
@@ -61,6 +67,11 @@ def rebuild_regions(
             source_lanes_attribute=KEY_LANES_DESCRIPTION_AFTER,
             target_lanes_attribute=KEY_LANES_DESCRIPTION_AFTER
         )
+        # reconstruct intermediary nodes and ensure consistent edge directions
+        merge_edges.reconstruct_consecutive_edges(H)
+        street_graph.organize_edge_directions(H)
+        if export_H:
+            io.export_street_graph(H, export_H[0], export_H[1])
         # write rebuilt lanes from subgraph into the main graph
         nx.set_edge_attributes(G, nx.get_edge_attributes(H, KEY_LANES_DESCRIPTION_AFTER), KEY_LANES_DESCRIPTION_AFTER)
 

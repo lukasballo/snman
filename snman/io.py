@@ -39,7 +39,7 @@ def load_street_graph(edges_path, nodes_path, crs=DEFAULT_CRS, recreate_iterable
 
     if recreate_iterables:
         _iterable_columns_from_strings(edges_gdf, {'ln_desc', 'ln_desc_after', 'given_lanes'}, separator=' | ')
-        _iterable_columns_from_strings(edges_gdf, {'sensors_forward', 'sensors_backward'}, method='str')
+        _iterable_columns_from_strings(edges_gdf, {'sensors_forward', 'sensors_backward', '_intermediate_nodes'}, method='str')
         _iterable_columns_from_strings(nodes_gdf, {'layers'}, separator=',')
 
     G = nx.MultiDiGraph(crs=crs)
@@ -294,7 +294,7 @@ def export_street_graph(G, path_edges, path_nodes, edge_columns=None, node_colum
 
     # stringify iterable columns
     _stringify_iterable_columns(edges, {'ln_desc', 'ln_desc_after', 'given_lanes'}, separator=' | ')
-    _stringify_iterable_columns(edges, {'sensors_forward', 'sensors_backward'}, method='str')
+    _stringify_iterable_columns(edges, {'sensors_forward', 'sensors_backward', '_intermediary_nodes'}, method='str')
     _stringify_iterable_columns(nodes, {'layers'}, separator=',')
 
     # write files
@@ -573,5 +573,5 @@ def _stringify_iterable_columns(df, columns, method='separator', separator=','):
                     else ''
                 )
             elif method == 'str':
-                df[column] = df[column].apply(lambda x: json.dumps(x))
+                df[column] = df[column].apply(lambda x: utils.safe_dumps(x))
 
