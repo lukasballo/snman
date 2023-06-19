@@ -3,16 +3,17 @@ import math
 import networkx as nx
 from . import utils
 import numpy as np
+import copy
 
 
-def generate_lanes(Gm, attr=KEY_LANES_DESCRIPTION):
+def generate_lanes(G, attr=KEY_LANES_DESCRIPTION):
     """
     Reverse-engineer the lanes of each street edge and store them as a list in an attribute
 
     Parameters
     ----------
-    Gm : nx.MultiDiGraph
-        OSM Graph
+    G : nx.MultiDiGraph
+        street graph
     attr : str
         in which attribute should the lanes be stored
 
@@ -21,7 +22,7 @@ def generate_lanes(Gm, attr=KEY_LANES_DESCRIPTION):
     None
     """
 
-    for edge in Gm.edges(data=True, keys=True):
+    for edge in G.edges(data=True, keys=True):
         edge_data = edge[3]
         edge_data[attr] = _generate_lanes_for_edge(edge_data)
 
@@ -64,6 +65,12 @@ def _generate_lanes_for_edge(edge):
     else:
         _DIRECTION_FORWARD = DIRECTION_FORWARD
         _DIRECTION_BACKWARD = DIRECTION_BACKWARD
+
+    # motorized lanes: replace with highway lanes if the road is a highway (motorway in osm terminology)
+    if edge.get('highway') in {'motorway', 'motorway_link'}:
+        _LANETYPE_MOTORIZED = LANETYPE_HIGHWAY
+    else:
+        _LANETYPE_MOTORIZED = LANETYPE_MOTORIZED
 
     # is this street oneway?
     oneway = edge.get('oneway', False) or edge.get('junction', False) == 'roundabout'
@@ -206,14 +213,14 @@ def _generate_lanes_for_edge(edge):
         # if edge.get('sidewalk') in {'right', 'both'}:
         #    right_lanes_list.extend([LANETYPE_FOOT + DIRECTION_BOTH])
 
-        backward_lanes_list.extend([LANETYPE_MOTORIZED + _DIRECTION_BACKWARD] * n_lanes_motorized_backward)
+        backward_lanes_list.extend([_LANETYPE_MOTORIZED + _DIRECTION_BACKWARD] * n_lanes_motorized_backward)
         backward_lanes_list.extend([LANETYPE_DEDICATED_PT + _DIRECTION_BACKWARD] * n_lanes_dedicated_pt_backward)
 
         both_dir_lanes_list.extend([LANETYPE_DEDICATED_PT + DIRECTION_BOTH] * n_lanes_dedicated_pt_both)
-        both_dir_lanes_list.extend([LANETYPE_MOTORIZED + DIRECTION_BOTH] * n_lanes_motorized_both)
+        both_dir_lanes_list.extend([_LANETYPE_MOTORIZED + DIRECTION_BOTH] * n_lanes_motorized_both)
 
         forward_lanes_list.extend([LANETYPE_DEDICATED_PT + _DIRECTION_FORWARD] * n_lanes_dedicated_pt_forward)
-        forward_lanes_list.extend([LANETYPE_MOTORIZED + _DIRECTION_FORWARD] * n_lanes_motorized_forward)
+        forward_lanes_list.extend([_LANETYPE_MOTORIZED + _DIRECTION_FORWARD] * n_lanes_motorized_forward)
 
     # Everything else
     else:
@@ -774,15 +781,50 @@ def is_backward_by_top_order_lanes(lanes):
     return balance < 0
 
 
-def reorder_lanes(G, lanes_attribute=KEY_LANES_DESCRIPTION):
+def add_pseudo_contraflow_cycling(G, lane_attribute=KEY_LANES_DESCRIPTION):
 
-    for id, data in G.edges.items():
+    for uvk, data in G.edges.items():
+
+        lanes = data[lane_attribute]
+
+        # remove any existing S lanes
+        for i, lane in enumerate(copy.copy(lanes)):
+            lp = _lane_properties(lane)
+            if lp.lanetype == LANETYPE_CYCLING_PSEUDO:
+                lanes.remove(i)
+
+        # add contraflow S lanes if there are M lanes but no cycling infra
+        has_m_lanes = False
+        cycling_forward = False
+        for i, lane in enumerate(copy.copy(lanes)):
+            if lp.primary_mode == MODE_PRIVATE_CARS:
+                has_m_lanes = True
+
+
+
+
+def reorder_lanes(G, lanes_attribute=KEY_LANES_DESCRIPTION):
+    """
+    Reorder lanes in the street graph: Puts the lanes on each street into a consistent order and consolidates cycling
+    infrastructure.
+
+    Parameters
+    ----------
+    G
+    lanes_attribute
+
+    Returns
+    -------
+
+    """
+
+    for uvk, data in G.edges.items():
         data[lanes_attribute] = _reorder_lanes_on_edge(data[lanes_attribute])
 
 
 def _reorder_lanes_on_edge(lanes):
     """
-    Reorder the lane list of an edge
+    Reorder the lane list and consolidate cycling infrastructure of an edge
 
     Parameters
     ----------
@@ -805,19 +847,12 @@ def _reorder_lanes_on_edge(lanes):
         lp = _lane_properties(l)
         sorted_lanes[lp.primary_mode][lp.direction].append(lp)
 
-    # reorganize cycling infra:
-
+    # calculate stats
     cycling_lanes = list(utils.flatten_list(sorted_lanes[MODE_CYCLING].values()))
     width_cycling_total = sum([l.width for l in cycling_lanes])
     width_mixed = sum([l.width for l in cycling_lanes if l.lanetype == LANETYPE_FOOT_CYCLING_MIXED])
     n_mixed_total = len([l for l in cycling_lanes if l.lanetype == LANETYPE_FOOT_CYCLING_MIXED])
-    #print([str(l) for l in cycling_lanes if l.lanetype == LANETYPE_FOOT_CYCLING_MIXED])
     n_cars = len(list(utils.flatten_list(sorted_lanes[MODE_PRIVATE_CARS])))
-
-    sorted_lanes[MODE_CYCLING][DIRECTION_BOTH] = []
-    sorted_lanes[MODE_CYCLING][DIRECTION_FORWARD] = []
-    sorted_lanes[MODE_CYCLING][DIRECTION_BACKWARD] = []
-    sorted_lanes[MODE_FOOT][DIRECTION_BOTH] = []
 
     direction_preference = DIRECTION_FORWARD
     if len(sorted_lanes[MODE_CYCLING][DIRECTION_BACKWARD]) == 0\
@@ -826,6 +861,11 @@ def _reorder_lanes_on_edge(lanes):
     elif len(sorted_lanes[MODE_CYCLING][DIRECTION_FORWARD]) == 0 \
             and len(sorted_lanes[MODE_CYCLING][DIRECTION_BACKWARD]) > 0:
         direction_preference = DIRECTION_BACKWARD
+
+    sorted_lanes[MODE_CYCLING][DIRECTION_BOTH] = []
+    sorted_lanes[MODE_CYCLING][DIRECTION_FORWARD] = []
+    sorted_lanes[MODE_CYCLING][DIRECTION_BACKWARD] = []
+    sorted_lanes[MODE_FOOT][DIRECTION_BOTH] = []
 
     direction_preference_for_mixed = _reverse_direction(direction_preference)
     for i in range(n_mixed_total):
@@ -852,6 +892,7 @@ def _reorder_lanes_on_edge(lanes):
     elif width_cycling_total > 0:
         width_cycling[direction_preference] = width_cycling_total
 
+    # choose the comfort level of cycling infra (lane or track)
     for direction in [DIRECTION_BACKWARD, DIRECTION_FORWARD]:
         # no cars or enough width => cycling track
         if n_cars == 0 or width_cycling[direction] > 1.5:
@@ -887,7 +928,7 @@ def _reorder_lanes_on_edge(lanes):
     ]))
 
 
-def _calculate_lane_cost(lane, length, mode):
+def _calculate_lane_cost(lane, length, mode, direction=DIRECTION_FORWARD):
     """
     Returns the cost of traversing this lane using the specified mode.
     The resulting cost is relative to other lanes with the same mode but is not comparable across modes.
@@ -909,14 +950,17 @@ def _calculate_lane_cost(lane, length, mode):
 
     lp = _lane_properties(lane)
 
+    # if this lane can not carry the specified mode, return infinity
     if mode not in lp.modes:
-        # if this lane can not carry the specified mode, then return infinity
         return np.Inf
+    # if this lane is not accessible in the specified direction, return infinity
+    if lp.direction not in {direction, DIRECTION_BOTH}:
+        return np.Inf
+    # apply the cycling cost factor if the mode is cycling
     elif mode == MODE_CYCLING:
-        # apply the cycling cost factor if the mode is cycling
         return length * lp.cycling_cost_factor
+    # otherwise, return just the length
     else:
-        # otherwise, return just the length
         return length
 
 

@@ -13,8 +13,8 @@ DIRECTION_FORWARD_OPTIONAL = ')'
 DIRECTION_BACKWARD_OPTIONAL = '('
 DIRECTION_TBD_OPTIONAL = '*'
 DIRECTIONS = [
-    DIRECTION_FORWARD, DIRECTION_BACKWARD, DIRECTION_BOTH, DIRECTION_TBD,
-    DIRECTION_FORWARD_OPTIONAL, DIRECTION_BACKWARD_OPTIONAL, DIRECTION_TBD_OPTIONAL
+    DIRECTION_FORWARD, DIRECTION_BACKWARD, DIRECTION_BOTH,
+    DIRECTION_TBD, DIRECTION_FORWARD_OPTIONAL, DIRECTION_BACKWARD_OPTIONAL, DIRECTION_TBD_OPTIONAL
 ]
 
 MODE_FOOT = 'foot'
@@ -26,6 +26,7 @@ ACTIVE_MODES = {MODE_FOOT, MODE_CYCLING}
 MOTORIZED_MODES = {MODE_PRIVATE_CARS, MODE_TRANSIT}
 
 LANETYPE_MOTORIZED = 'M'            # A normal lane accessible to car, public transport, and cyclists
+LANETYPE_HIGHWAY = 'H'              # A highway lane
 LANETYPE_DEDICATED_PT = 'T'         # Only for public transport
 LANETYPE_CYCLING_TRACK = 'P'        # Only for cyclists and separated from other modes
 LANETYPE_CYCLING_LANE = 'L'         # Advisory cycling lane, in some cases also used by other traffic
@@ -51,7 +52,7 @@ CYCLING_INFRA = [
 
 # For sorting lanes in the crosssection
 # TODO: To be replaced by sorting heuristics
-LANETYPE_ORDER = ['T', 'M', 'L', 'P', 'S', 'F']
+LANETYPE_ORDER = ['H', 'T', 'M', 'L', 'P', 'S', 'F']
 DIRECTION_ORDER = ['<', '-', '>']
 
 KEY_LANES_DESCRIPTION = 'ln_desc'               # under which key is the existing lane configuration
@@ -60,6 +61,12 @@ KEY_GIVEN_LANES_DESCRIPTION = 'given_lanes'
 KEY_REVERSED = '_reversed'          # which key tells if the edge has been reversed
 
 LANE_TYPES = {
+
+    LANETYPE_HIGHWAY + DIRECTION_FORWARD:
+        {'width': 4.0, 'order': 0, 'cycling_cost_factor': 1.0, 'modes': [MODE_PRIVATE_CARS, MODE_TRANSIT]},
+    LANETYPE_HIGHWAY + DIRECTION_BACKWARD:
+        {'width': 4.0, 'order': 0, 'cycling_cost_factor': 1.0, 'modes': [MODE_PRIVATE_CARS, MODE_TRANSIT]},
+
     LANETYPE_MOTORIZED + DIRECTION_FORWARD:
         {'width': 3.0, 'order': 1, 'cycling_cost_factor': 1.0,
          'modes': [MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_CYCLING, MODE_FOOT]},

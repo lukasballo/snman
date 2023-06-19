@@ -20,10 +20,12 @@ def calculate_stats(L, mode):
         bidirectional lanes count only once,
         pseudo-lanes with width=0 don't count
     * **as_primary_mode_lane_surface_km2**: total surface of lanes where the given mode is primary
-    * **avg_betweenness_centrality_norm**: average normalized betweenness centrality of edges
-    * **avg_shortest_path_length_km**: average length of the shortest path,
+    * **avg_betweenness_centrality_norm**: average normalized betweenness centrality of edges,
+        the edge weights consider the scaling of cycling distanced by comfort
+    * **avg_shortest_path_vod_km**: average length of the shortest path,
         for cycling, the length is scaled using the comfort factors (cycling infrastructure will lead to lower values),
         this means that you cannot compare the absolute average shortest path across modes, only the change before/after
+    * **avg_shortest_path_km**: average length of the shortest path, without scaling for cycling
 
     Parameters
     ----------
@@ -125,8 +127,14 @@ def calculate_stats(L, mode):
                 ),
                 5
             ),
-        'avg_shortest_path_length_km':
+        'avg_shortest_path_vod_km':
             round(
                 nx.average_shortest_path_length(L, 'cost_' + mode) / 1000,
-            3),
+                3
+            ),
+        'avg_shortest_path_km':
+            round(
+                nx.average_shortest_path_length(L, 'length') / 1000,
+                3
+            ),
     }

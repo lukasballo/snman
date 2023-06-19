@@ -6,6 +6,7 @@ import networkx as nx
 import pyproj
 import copy
 import shapely
+import numpy as np
 
 
 def get_subgraph_with_invalid_geometries(G):
@@ -210,8 +211,6 @@ def to_lane_graph(G, lanes_attribute=KEY_LANES_DESCRIPTION):
         street graph
     lanes_attribute : str
         which attribute should be used for the lane description
-    consolidate_active_modes : bool
-        if True, multiple parallel lanes for walking/cycling will be consolidated into one wider lane
 
     Returns
     -------
@@ -230,6 +229,11 @@ def to_lane_graph(G, lanes_attribute=KEY_LANES_DESCRIPTION):
         for i, lane in enumerate(lanes_list):
 
             lp = space_allocation._lane_properties(lane)
+            reverse = lp.direction in {DIRECTION_BACKWARD, DIRECTION_BACKWARD_OPTIONAL}
+
+            if reverse:
+                lane = space_allocation.reverse_lane(lane)
+                lp = space_allocation._lane_properties(lane)
 
             attributes = {}
             length = data['length']
@@ -254,20 +258,15 @@ def to_lane_graph(G, lanes_attribute=KEY_LANES_DESCRIPTION):
                 DIRECTION_BACKWARD_OPTIONAL, DIRECTION_FORWARD_OPTIONAL, DIRECTION_TBD_OPTIONAL
             ]
 
-            if lp.direction in [
-                DIRECTION_FORWARD, DIRECTION_FORWARD_OPTIONAL
-            ]:
+            if not reverse:
                 L.add_edge(u, v, lane_id, **attributes, lane=lane, twin_factor=1)
-            if lp.direction in [
-                DIRECTION_BACKWARD, DIRECTION_BACKWARD_OPTIONAL
-            ]:
-                L.add_edge(v, u, lane_id, **attributes, lane=space_allocation.reverse_lane(lane), twin_factor=1)
+            if reverse:
+                L.add_edge(v, u, lane_id, **attributes, lane=lane, twin_factor=1)
             if lp.direction in [
                 DIRECTION_BOTH, DIRECTION_TBD, DIRECTION_TBD_OPTIONAL
             ]:
                 L.add_edge(u, v, lane_id, **attributes, lane=lane, twin_factor=0.5)
                 L.add_edge(v, u, lane_id, **attributes, lane=space_allocation.reverse_lane(lane), twin_factor=0.5)
-
 
     # take over the node attributes from the street graph
     nx.set_node_attributes(L, dict(G.nodes))
@@ -517,3 +516,44 @@ def filter_by_hierarchy(G, hierarchy_levels):
     edges = dict(filter(lambda x: x[1] in hierarchy_levels, nx.get_edge_attributes(G, 'hierarchy').items()))
     return G.edge_subgraph(edges).copy()
 
+
+def calculate_edge_cost(G, u, v, k, direction, mode, lanes_description=KEY_LANES_DESCRIPTION):
+
+    cost_list = []
+    uvk = (u, v, k)
+    data = G.edges[uvk]
+    for lane in data[lanes_description]:
+        lp = space_allocation._lane_properties(lane)
+        length = data['length']
+        cost = space_allocation._calculate_lane_cost(lane, length, mode, direction)
+        cost_list.append(cost)
+
+    return min(cost_list)
+
+
+def add_edge_costs(G, lanes_description=KEY_LANES_DESCRIPTION):
+
+    for uvk, data in G.edges.items():
+        for mode in MODES:
+            for direction in ['<', '>']:
+                cost = calculate_edge_cost(G, *uvk, direction, mode, lanes_description=lanes_description)
+                key = '_'.join(['cost', lanes_description, mode, direction])
+                data[key] = cost
+
+
+def add_pseudo_cycling_lanes(G, lanes_description=KEY_LANES_DESCRIPTION):
+
+    for uvk, data in G.edges.items():
+        lanes = data[lanes_description]
+        lane_types = [space_allocation._lane_properties(lane).lanetype for lane in lanes]
+        has_m_lanes = LANETYPE_MOTORIZED in lane_types
+
+        # ignore if there are no lanes for private cars
+        if not has_m_lanes:
+            continue
+
+        for direction in [DIRECTION_FORWARD, DIRECTION_BACKWARD]:
+            cycling_cost = calculate_edge_cost(G, *uvk, direction, MODE_CYCLING, lanes_description=lanes_description)
+
+            if cycling_cost == np.Inf:
+                lanes.append(LANETYPE_CYCLING_PSEUDO + direction)
