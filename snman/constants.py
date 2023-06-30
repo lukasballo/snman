@@ -66,6 +66,8 @@ LANE_TYPES = {
         {'width': 4.0, 'order': 0, 'cycling_cost_factor': 1.0, 'modes': [MODE_PRIVATE_CARS, MODE_TRANSIT]},
     LANETYPE_HIGHWAY + DIRECTION_BACKWARD:
         {'width': 4.0, 'order': 0, 'cycling_cost_factor': 1.0, 'modes': [MODE_PRIVATE_CARS, MODE_TRANSIT]},
+    LANETYPE_HIGHWAY + DIRECTION_BOTH:
+        {'width': 6.0, 'order': 0, 'cycling_cost_factor': 1.0, 'modes': [MODE_PRIVATE_CARS, MODE_TRANSIT]},
 
     LANETYPE_MOTORIZED + DIRECTION_FORWARD:
         {'width': 3.0, 'order': 1, 'cycling_cost_factor': 1.0,
