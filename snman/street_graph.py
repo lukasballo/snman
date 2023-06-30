@@ -557,3 +557,68 @@ def add_pseudo_cycling_lanes(G, lanes_description=KEY_LANES_DESCRIPTION):
 
             if cycling_cost == np.Inf:
                 lanes.append(LANETYPE_CYCLING_PSEUDO + direction)
+
+
+def clone(G, edges=True):
+
+    H = nx.MultiDiGraph()
+    H.graph = G.graph
+    H.nodes = G.nodes
+
+    if edges:
+        for uvk, data in G.edges.items():
+            H.add_edge(*uvk, **data)
+
+    return H
+
+
+def separate_edges_for_lane_directions(G):
+
+    H = clone(G, edges=False)
+
+    for uvk, data in G.edges.items():
+
+        u, v, k = uvk
+        lanes = data[KEY_LANES_DESCRIPTION]
+        lanes_forward = []
+        lanes_backward = []
+
+        for lane in lanes:
+            lp = space_allocation._lane_properties(lane)
+            if lp.direction == DIRECTION_FORWARD:
+                lanes_forward.append(lane)
+            if lp.direction == DIRECTION_BACKWARD:
+                lanes_backward.append(lane)
+            # convert bidirectional lanes into two separate oneway lanes
+            if lp.direction == DIRECTION_BOTH:
+                lp_forward = space_allocation._lane_properties(lane)
+                lp_forward.direction = DIRECTION_FORWARD
+                lanes_forward.append(str(lp_forward))
+                lp_backward = space_allocation._lane_properties(lane)
+                lp_backward.direction = DIRECTION_BACKWARD
+                lanes_backward.append(str(lp_backward))
+
+        new_data = copy.deepcopy(data)
+        del new_data[KEY_LANES_DESCRIPTION]
+        del new_data['sensors_forward'], new_data['sensors_backward']
+
+        if len(lanes_forward) > 0:
+            H.add_edge(
+                u, v, **new_data,
+                **{KEY_LANES_DESCRIPTION: lanes_forward},
+                sensors_forward=data['sensors_forward'],
+                sensors_backward=[]
+            )
+
+        if len(lanes_backward) > 0:
+            H.add_edge(
+                u, v, **new_data,
+                **{KEY_LANES_DESCRIPTION: lanes_backward},
+                sensors_forward=[],
+                sensors_backward=data['sensors_backward']
+            )
+
+    space_allocation.update_osm_tags(G, lanes_description_key=KEY_LANES_DESCRIPTION)
+    organize_edge_directions(G)
+
+    return H

@@ -103,13 +103,13 @@ def match_linestrings(G, source, column_configs, show_test_plot=None):
         mmviz.plot_map(map_con, matcher=matcher,show_labels=False, show_matching=True, show_graph=True)
 
 
-def match_sensors(Gm, sensors_df):
+def match_sensors(G, sensors_df):
     """
     Assign traffic sensors to edges in the street graph. Must be used with OSM graph.
 
     Parameters
     ----------
-    Gm : nx.MultiDiGraph
+    G : nx.MultiDiGraph
         OSM graph
     sensors_df : pd.DataFrame
         sensors and their osm links
@@ -121,20 +121,22 @@ def match_sensors(Gm, sensors_df):
 
     s = sensors_df.copy()
     s['id'] = s.index
-    s = s.set_index(['id', 'u', 'v']).sort_index()
+    s = s.set_index(['u', 'v', 'osmid']).sort_index()
 
-    for uvk, data in Gm.edges.items():
+    for uvk, data in G.edges.items():
         u, v, k = uvk
 
-        i_forward = (data['osmid'], u, v)
+        i_forward = (u, v, data['osmid'])
         if i_forward in s.index:
-            sensors = list(s.loc[i_forward]['id'])
-            data['sensors_forward'] = sensors
+            data['sensors_forward'] = [s.loc[i_forward]['id']]
+        else:
+            data['sensors_forward'] = []
 
-        i_backward = (data['osmid'], v, u)
+        i_backward = (v, u, data['osmid'])
         if i_backward in s.index:
-            sensors = list(s.loc[i_backward]['id'])
-            data['sensors_backward'] = sensors
+            data['sensors_backward'] = [s.loc[i_backward]['id']]
+        else:
+            data['sensors_backward'] = []
 
 
 def match_pt(G, pt_network):

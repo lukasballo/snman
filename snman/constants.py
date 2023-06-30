@@ -219,5 +219,5 @@ EXPORT_OSM_TAGS = {
     'lanes', 'lanes:forward', 'lanes:backward', 'lanes:both_ways', 'oneway',
     'cycleway', 'cycleway:lane', 'cycleway:left', 'cycleway:left:lane', 'cycleway:right', 'cycleway:right:lane',
     'bus:lanes:backward', 'bus:lanes:forward', 'vehicle:lanes:backward', 'vehicle:lanes:forward',
-    '_connected_component'
+    '_connected_component', 'sensors_forward', 'sensors_backward'
 }

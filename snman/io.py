@@ -392,7 +392,13 @@ def export_gdf(gdf, path, columns=[]):
         gdf[columns].to_file(path)
 
 
-def export_osm_xml(G, path, tags, uv_tags=False, tag_all_nodes=False, key_lanes_description=KEY_LANES_DESCRIPTION):
+def export_osm_xml(
+        G, path, tags,
+        uv_tags=False,
+        tag_all_nodes=False,
+        key_lanes_description=KEY_LANES_DESCRIPTION,
+        as_oneway_links=False
+):
     """
     Generates an OSM file from the street graph
 
@@ -407,18 +413,26 @@ def export_osm_xml(G, path, tags, uv_tags=False, tag_all_nodes=False, key_lanes_
         include special tags for the start and end node of each edge (for debugging)
     tag_all_nodes : bool
         add a special tag to each node so that all nodes appear as points when imported in QGIS (for debugging)
+    key_lanes_description : str
+        which attribute should be used for the lanes
+    as_oneway_links : bool
+        if true, every link with bidirectional traffic will be exported as two one-way links
 
     Returns
     -------
     None
     """
 
+    if as_oneway_links:
+        H = street_graph.separate_edges_for_lane_directions(G)
+    else:
+        H = copy.deepcopy(G)
+
     # initial ID value for new OSM objects, avoid duplicity with graph node ids
-    max_node_id = max(list(G.nodes))
+    max_node_id = max(list(H.nodes))
     osm_id = itertools.count(max_node_id * 100)
 
-    # prepare a copy of the street graph for osm export
-    H = copy.deepcopy(G)
+    # ensure right edge directions, tags and crs
     street_graph.organize_edge_directions(H, method='by_osm_convention', key_lanes_description=key_lanes_description)
     space_allocation.update_osm_tags(H, lanes_description_key=key_lanes_description)
     street_graph.convert_crs(H, 'epsg:4326')
@@ -432,7 +446,7 @@ def export_osm_xml(G, path, tags, uv_tags=False, tag_all_nodes=False, key_lanes_
         'generator': 'osmium/1.14.0'
     })
 
-    # bounds
+    # add bounds
     lats = [data.get('y') for id, data in H.nodes.items()]
     lons = [data.get('x') for id, data in H.nodes.items()]
     ET.SubElement(osm, 'bounds', attrib={
@@ -442,8 +456,7 @@ def export_osm_xml(G, path, tags, uv_tags=False, tag_all_nodes=False, key_lanes_
         'maxlon': str(max(lons))
     })
 
-
-    # ways
+    # add ways
     ways = []
     node_points = {}
     for uvk, data in H.edges.items():
@@ -457,10 +470,10 @@ def export_osm_xml(G, path, tags, uv_tags=False, tag_all_nodes=False, key_lanes_
         ways.append(way)
 
         # way nodes
-        for i in [0, 0.5, 1]:
+        for i in [0, 'intermediary_nodes', 1]:
 
             # first and last node
-            if i in [0, 1]:
+            if i in {0, 1}:
                 node_id = uvk[i]
                 # avoid id=0
                 node_points[node_id+1] = shapely.Point(H.nodes[node_id]['x'], H.nodes[node_id]['y'])
@@ -468,7 +481,7 @@ def export_osm_xml(G, path, tags, uv_tags=False, tag_all_nodes=False, key_lanes_
                 ET.SubElement(way, 'nd', attrib={'ref': str(node_id+1)})
 
             # intermediary nodes
-            elif i == 0.5:
+            elif i == 'intermediary_nodes':
                 linestring = data.get('geometry')
                 # iterate over all points along the linestring geometry but exclude the first and last one
                 for point in linestring.coords[1:-1]:
@@ -492,7 +505,7 @@ def export_osm_xml(G, path, tags, uv_tags=False, tag_all_nodes=False, key_lanes_
             ET.SubElement(way, 'tag', attrib={'k': '_v', 'v': str(uvk[1])})
             ET.SubElement(way, 'tag', attrib={'k': '_key', 'v': str(uvk[2])})
 
-    # nodes
+    # add nodes
     for node_id, point in node_points.items():
         node = ET.SubElement(osm, 'node', attrib={
             'id': str(node_id),
