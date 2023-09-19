@@ -1,3 +1,5 @@
+import copy
+
 from leuvenmapmatching.matcher.distance import DistanceMatcher
 from leuvenmapmatching.map.inmem import InMemMap
 from leuvenmapmatching import visualization as mmviz
@@ -5,9 +7,11 @@ import shapely as shp
 from statistics import mean
 import pandas as pd
 import warnings
+from . import utils, space_allocation
+from .constants import *
 
 
-def match_linestrings(G, source, column_configs, show_test_plot=None):
+def match_linestrings(G, source, column_configs, remove_short_overlaps=True, max_distance=None):
     """
     Make a spatial join of the graph edges and polylines in a GeoDataFrame.
     Copy selected attributes from the GeoFDataFrame to the graph edges.
@@ -38,45 +42,47 @@ def match_linestrings(G, source, column_configs, show_test_plot=None):
     None
     """
 
+    # stop here if the source geodataframe is empty
+    if len(source) == 0:
+        return
+
+    # create empty in-memory map for the mapmatching process
     map_con = InMemMap("source", use_latlon=False, use_rtree=True, index_edges=True, crs_xy=2056)
 
+    # add nodes to the in-memory map
     # please note that lv works with lat, lon (reverse order)
     for id, data in G.nodes.items():
         map_con.add_node(id, (data['y'], data['x']))
-        #print((data['y'], data['x']))
 
-    for id, data in G.edges.items():
-        u = int(id[0])
-        v = int(id[1])
+    # add edges to the in-memory map
+    for uvk, data in G.edges.items():
+        u = int(uvk[0])
+        v = int(uvk[1])
         # only include the edges that are accessible for cars, incl. the correct direction
         if 'M>' in data['ln_desc'] or 'M-' in data['ln_desc']:
             map_con.add_edge(u,v)
         if 'M<' in data['ln_desc'] or 'M-' in data['ln_desc']:
             map_con.add_edge(v,u)
 
-    matcher = DistanceMatcher(map_con, max_dist=30, max_dist_init=30, max_lattice_width=5, non_emitting_states=True, only_edges=True)
+    # create a matcher
+    matcher = DistanceMatcher(
+        map_con, max_dist=30, max_dist_init=30, max_lattice_width=5, non_emitting_states=True, only_edges=True
+    )
 
-    def _get_nodes_of_linestring(geom):
-        if isinstance(geom, shp.geometry.MultiLineString):
-            geom = geom.geoms[0]
-        path = geom.coords
-        path = [coords[::-1] for coords in path]
-        matcher.match(path)
-        nodes = matcher.path_pred_onlynodes
-        #print(nodes)
-        return nodes
+    # submit all source linestrings to the matcher
+    source['node_pairs'] = source.apply(lambda x: _submit_linestring_to_matcher(matcher, x['geometry'], remove_short_overlaps, max_distance), axis=1)
 
-    source['nodes'] = source.apply(lambda x: _get_nodes_of_linestring(x['geometry']), axis=1)
-
+    # transfer the attributes as specified in "column_configs"
+    # note that there may be multiple values that will be transferred to a single target edge,
+    # so they need to be aggregated (see next step)
     for config in column_configs:
 
         edge_values = {}
         for index, edge in source.iterrows():
             value = edge[config['source_column']]
-            nodes = edge['nodes']
-            if len(nodes) < 2:
+            node_pairs = edge['node_pairs']
+            if len(node_pairs) < 1:
                 continue
-            node_pairs = [nodes[i:i+2] for i in range(len(nodes)-1)]
             for node_pair in node_pairs:
                 u = node_pair[0]
                 v = node_pair[1]
@@ -84,23 +90,127 @@ def match_linestrings(G, source, column_configs, show_test_plot=None):
                     edge_values[(u,v)] = []
                 edge_values[(u,v)].append(value)
 
-        for id, data in G.edges.items():
+        # aggregate the target data using one of the following functions
+        for uvk, data in G.edges.items():
             if config['agg'] == 'avg':
-                data[config['target_column'] + '_forward']  = mean(edge_values.get(id[:2], [0]))
-                data[config['target_column'] + '_backward'] = mean(edge_values.get(id[:2][::-1], [0]))
+                data[config['target_column'] + '_forward']  = mean(edge_values.get(uvk[:2], [0]))
+                data[config['target_column'] + '_backward'] = mean(edge_values.get(uvk[:2][::-1], [0]))
             if config['agg'] == 'max':
-                data[config['target_column'] + '_forward']  = max(edge_values.get(id[:2], [0]))
-                data[config['target_column'] + '_backward'] = max(edge_values.get(id[:2][::-1], [0]))
-            elif config['agg'] == 'list':
-                data[config['target_column'] + '_forward']  = str(edge_values.get(id[:2]))
-                data[config['target_column'] + '_backward'] = str(edge_values.get(id[:2][::-1]))
+                data[config['target_column'] + '_forward']  = max(edge_values.get(uvk[:2], [0]))
+                data[config['target_column'] + '_backward'] = max(edge_values.get(uvk[:2][::-1], [0]))
+            if config['agg'] == 'count':
+                data[config['target_column'] + '_forward']  = len(edge_values.get(uvk[:2], []))
+                data[config['target_column'] + '_backward'] = len(edge_values.get(uvk[:2][::-1], []))
+            if config['agg'] == 'list':
+                data[config['target_column'] + '_forward']  = str(edge_values.get(uvk[:2]))
+                data[config['target_column'] + '_backward'] = str(edge_values.get(uvk[:2][::-1]))
+            if config['agg'] == 'add_lanes':
+                forward = utils.flatten_list(edge_values.get(uvk[:2], []))
+                data[config['target_column']].extend(forward)
+                backward = utils.flatten_list(edge_values.get(uvk[:2][::-1], []))
+                backward = space_allocation.reverse_lanes(backward)
+                data[config['target_column']] = backward + data[config['target_column']]
+            if config['agg'] == 'replace_lanes':
+                forward = list(utils.flatten_list(edge_values.get(uvk[:2], [])))
+                backward = list(utils.flatten_list(edge_values.get(uvk[:2][::-1], [])))
+                backward = space_allocation.reverse_lanes(backward)
+                if len(forward+backward) > 0:
+                    data[config['target_column']] = backward + forward
+                    #print(data[config['target_column']])
 
-    if show_test_plot is not None:
-        source_test_path = source.query(show_test_plot).reset_index().iloc[0]['geometry']
-        path = [coords[::-1] for coords in list(source_test_path.coords)]
-        matcher.match(path)
-        print(matcher.path_pred_onlynodes)
-        mmviz.plot_map(map_con, matcher=matcher,show_labels=False, show_matching=True, show_graph=True)
+
+def _submit_linestring_to_matcher(matcher, geom, remove_short_overlaps, max_distance):
+    """
+    Matches one linestring, respecting the specialties of lvmapmatching,
+    e.g., reversed coordinates
+
+    Parameters
+    ----------
+    matcher : DistanceMatcher
+    geom : shp.geometry.LineString
+
+    Returns
+    -------
+    list
+        matched node IDs
+
+    """
+    # convert any multilinestring to a linestring
+    geom = utils.multilinestring_to_linestring(geom)
+    path = geom.coords
+    # coordinates must be reversed for lvmapmatching
+    path = [coords[::-1] for coords in path]
+    matcher.match(path)
+
+    distances = matcher.path_all_distances()
+    if len(distances) < 2:
+        return []
+
+    matched_nodes = matcher.path_pred_onlynodes
+
+    # remove first/last node from target path if the overlap is short
+    if remove_short_overlaps:
+        for ij in [(0,1), (-1,-2)]:
+            # i: first/last node
+            # j: second/second-last node
+            i, j = ij
+            source_i= shp.Point(geom.coords[i])
+            target_i = shp.Point(
+                matcher.map.node_coordinates(
+                    matched_nodes[i]
+                )[::-1]
+            )
+            target_j = shp.Point(
+                matcher.map.node_coordinates(
+                    matched_nodes[j]
+                )[::-1]
+            )
+            dist_source_i_target_i = source_i.distance(target_i)
+            dist_source_i_target_j = source_i.distance(target_j)
+
+            if dist_source_i_target_i > dist_source_i_target_j:
+                del matched_nodes[i]
+
+    if max_distance:
+        if max(distances) > max_distance:
+            return []
+
+    matched_node_pairs = [(matched_nodes[i], matched_nodes[i + 1]) for i in range(len(matched_nodes) - 1)]
+
+    return matched_node_pairs
+
+
+def match_lane_edits(G, lane_edits):
+    column_configs = [
+        {'source_column': 'add_lanes', 'target_column': 'ln_desc', 'agg': 'add_lanes'},
+        {'source_column': 'replace_lanes', 'target_column': 'ln_desc', 'agg': 'replace_lanes'},
+    ]
+
+    return match_linestrings(G, lane_edits, column_configs)
+
+
+def match_parking_spots(G, parking_spots, parking_space_length=6):
+
+    # copy the parking spaces dataset and convert the points into linestrings that can be matched onto the edges
+    parking_spots = copy.deepcopy(parking_spots)
+    parking_spots.geometry = parking_spots.geometry.apply(lambda x: shp.LineString([x, x]))
+
+    parking_count_key = '_n_parking_spots'
+    column_configs = [
+        {'source_column': 'id1', 'target_column': parking_count_key, 'agg': 'count'}
+    ]
+
+    match_linestrings(G, parking_spots, column_configs, remove_short_overlaps=False)
+
+    for uvk, data in G.edges.items():
+        # please note that the forward/backward distinction is meaningless and completely random in this case
+        parking_count = data[parking_count_key + '_forward'] + data[parking_count_key + '_backward']
+        length = data['length']
+        parking_space_density = utils.safe_division(parking_count, length)
+        # estimating the number of parking lanes based on the number of parking spots that have been matched
+        n_parking_lanes = round(parking_space_density / (1 / parking_space_length))
+
+        data[KEY_LANES_DESCRIPTION].extend([LANETYPE_PARKING_PARALLEL + DIRECTION_BOTH] * n_parking_lanes)
 
 
 def match_sensors(G, sensors_df):

@@ -109,6 +109,17 @@ def calculate_stats(L, mode):
                 ) / pow(1000, 2),
                 3
             ),
+        'as_primary_mode_lane_surface_km2':
+            round(
+                sum(
+                    [
+                        e['length'] * e['width'] * e['twin_factor'] * (e['primary_mode'] == mode)
+                        for uvk, e
+                        in L.edges.items()
+                    ]
+                ) / pow(1000, 2),
+                3
+            ),
         'avg_betweenness_centrality_norm':
             round(
                 sum(

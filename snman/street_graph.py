@@ -244,12 +244,12 @@ def to_lane_graph(G, lanes_attribute=KEY_LANES_DESCRIPTION):
                 cost = space_allocation._calculate_lane_cost(lane, length, mode)
                 attributes['cost_' + mode] = cost
 
-            attributes['width'] = lp.width
             attributes['primary_mode'] = lp.primary_mode
             attributes['lane_id'] = lane_id
             attributes['lanetype'] = lp.lanetype
             attributes['direction'] = lp.direction
             attributes['width'] = lp.width
+            attributes['osm_highway'] = data.get('highway')
 
             attributes['fixed'] = lp.direction not in [
                 DIRECTION_BACKWARD_OPTIONAL, DIRECTION_FORWARD_OPTIONAL, DIRECTION_TBD_OPTIONAL, DIRECTION_TBD

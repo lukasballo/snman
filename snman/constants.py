@@ -21,7 +21,8 @@ MODE_FOOT = 'foot'
 MODE_CYCLING = 'cycling'
 MODE_PRIVATE_CARS = 'private_cars'
 MODE_TRANSIT = 'transit'
-MODES = {MODE_FOOT, MODE_CYCLING, MODE_PRIVATE_CARS, MODE_TRANSIT}
+MODE_CAR_PARKING = 'car_parking'
+MODES = {MODE_FOOT, MODE_CYCLING, MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_CAR_PARKING}
 ACTIVE_MODES = {MODE_FOOT, MODE_CYCLING}
 MOTORIZED_MODES = {MODE_PRIVATE_CARS, MODE_TRANSIT}
 
@@ -33,6 +34,9 @@ LANETYPE_CYCLING_LANE = 'L'         # Advisory cycling lane, in some cases also 
 LANETYPE_CYCLING_PSEUDO = 'S'       # Contraflow cycling in one-way streets without cycling infrastructure
 LANETYPE_FOOT_CYCLING_MIXED = 'X'   # Mixed, for cyclists and pedestrians
 LANETYPE_FOOT = 'F'                 # Pedestrians only
+LANETYPE_PARKING_PARALLEL = 'R'
+LANETYPE_PARKING_PERPENDICULAR = 'N'
+LANETYPE_PARKING_DIAGONAL = 'D'
 
 # For assessing cycling quality, from best to worst
 # TODO: To be replaced with ranking according to cycling comfort factors
@@ -104,18 +108,18 @@ LANE_TYPES = {
         {'width': 4.5, 'order': 2, 'cycling_cost_factor': 1.0, 'modes': [MODE_TRANSIT]},
 
     LANETYPE_CYCLING_LANE + DIRECTION_FORWARD:
-        {'width': 1.5, 'order': 3, 'cycling_cost_factor': 0.5, 'modes': [MODE_CYCLING]},
+        {'width': 1.5, 'order': 3, 'cycling_cost_factor': 0.51, 'modes': [MODE_CYCLING]},
     LANETYPE_CYCLING_LANE + DIRECTION_BACKWARD:
-        {'width': 1.5, 'order': 3, 'cycling_cost_factor': 0.5, 'modes': [MODE_CYCLING]},
+        {'width': 1.5, 'order': 3, 'cycling_cost_factor': 0.51, 'modes': [MODE_CYCLING]},
     LANETYPE_CYCLING_LANE + DIRECTION_BOTH:
-        {'width': 2.0, 'order': 3, 'cycling_cost_factor': 0.5, 'modes': [MODE_CYCLING]},
+        {'width': 2.0, 'order': 3, 'cycling_cost_factor': 0.51, 'modes': [MODE_CYCLING]},
 
     LANETYPE_CYCLING_TRACK + DIRECTION_FORWARD:
-        {'width': 1.5, 'order': 4, 'cycling_cost_factor': 0.5, 'modes': [MODE_CYCLING]},
+        {'width': 1.5, 'order': 4, 'cycling_cost_factor': 0.51, 'modes': [MODE_CYCLING]},
     LANETYPE_CYCLING_TRACK + DIRECTION_BACKWARD:
-        {'width': 1.5, 'order': 4, 'cycling_cost_factor': 0.5, 'modes': [MODE_CYCLING]},
+        {'width': 1.5, 'order': 4, 'cycling_cost_factor': 0.51, 'modes': [MODE_CYCLING]},
     LANETYPE_CYCLING_TRACK + DIRECTION_BOTH:
-        {'width': 2.5, 'order': 4, 'cycling_cost_factor': 0.5, 'modes': [MODE_CYCLING]},
+        {'width': 2.5, 'order': 4, 'cycling_cost_factor': 0.51, 'modes': [MODE_CYCLING]},
 
     LANETYPE_CYCLING_PSEUDO + DIRECTION_FORWARD:
         {'width': 0.0, 'order': 5, 'cycling_cost_factor': 1.0, 'modes': [MODE_CYCLING]},
@@ -125,11 +129,11 @@ LANE_TYPES = {
         {'width': 0.0, 'order': 5, 'cycling_cost_factor': 1.0, 'modes': [MODE_CYCLING]},
 
     LANETYPE_FOOT_CYCLING_MIXED + DIRECTION_FORWARD:
-        {'width': 2.5, 'order': 6, 'cycling_cost_factor': 0.5, 'modes': [MODE_CYCLING, MODE_FOOT]},
+        {'width': 2.5, 'order': 6, 'cycling_cost_factor': 0.51, 'modes': [MODE_CYCLING, MODE_FOOT]},
     LANETYPE_FOOT_CYCLING_MIXED + DIRECTION_BACKWARD:
-        {'width': 2.5, 'order': 6, 'cycling_cost_factor': 0.5, 'modes': [MODE_CYCLING, MODE_FOOT]},
+        {'width': 2.5, 'order': 6, 'cycling_cost_factor': 0.51, 'modes': [MODE_CYCLING, MODE_FOOT]},
     LANETYPE_FOOT_CYCLING_MIXED + DIRECTION_BOTH:
-        {'width': 2.5, 'order': 6, 'cycling_cost_factor': 0.5, 'modes': [MODE_CYCLING, MODE_FOOT]},
+        {'width': 2.5, 'order': 6, 'cycling_cost_factor': 0.51, 'modes': [MODE_CYCLING, MODE_FOOT]},
 
     LANETYPE_FOOT + DIRECTION_FORWARD:
         {'width': 1.8, 'order': 7, 'cycling_cost_factor': 1.0, 'modes': [MODE_FOOT]},
@@ -137,6 +141,13 @@ LANE_TYPES = {
         {'width': 1.8, 'order': 7, 'cycling_cost_factor': 1.0, 'modes': [MODE_FOOT]},
     LANETYPE_FOOT + DIRECTION_BOTH:
         {'width': 1.8, 'order': 7, 'cycling_cost_factor': 1.0, 'modes': [MODE_FOOT]},
+
+    LANETYPE_PARKING_PARALLEL + DIRECTION_BOTH:
+        {'width': 2, 'order': 8, 'cycling_cost_factor': 1.0, 'modes': [MODE_CAR_PARKING]},
+    LANETYPE_PARKING_DIAGONAL + DIRECTION_BOTH:
+        {'width': 4.5, 'order': 8, 'cycling_cost_factor': 1.0, 'modes': [MODE_CAR_PARKING]},
+    LANETYPE_PARKING_PERPENDICULAR + DIRECTION_BOTH:
+        {'width': 6, 'order': 8, 'cycling_cost_factor': 1.0, 'modes': [MODE_CAR_PARKING]},
 }
 
 # Which highway=* values represent different infrastructures (primarily) for pedestrians and cyclists
@@ -154,7 +165,9 @@ OSM_TAGS = {
     'sidewalk', 'sidewalk:left', 'sidewalk:right', 'foot',
     'psv', 'bus', 'bus:lanes', 'bus:lanes:forward', 'bus:lanes:backward',
     'vehicle:lanes:backward', 'vehicle:lanes:forward',
-    'footway'
+    'busway', 'busway:right', 'busway:left',
+    'footway',
+    'parking:left', 'parking:right', 'parking:both'
 }
 
 OSM_FILTER = [

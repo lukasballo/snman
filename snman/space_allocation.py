@@ -78,13 +78,13 @@ def _generate_lanes_for_edge(edge):
     # get the general lane count, fill in with default value according to the exact case
     if oneway:
         # 1 for all oneway streets
-        n_lanes = int(edge.get('lanes', 1))
-    elif edge.get('maxspeed', -1) < 50:
-        # 1 for speeds below 50 kmh
-        n_lanes = int(edge.get('lanes', 1))
+        n_lanes = int(float(edge.get('lanes', 1)))
+    elif edge.get('maxspeed', -1) >= 50 or edge.get('highway') in {'primary', 'secondary'}:
+        # 2 for speeds of at least 50 kmh or secondary/primary roads
+        n_lanes = int(float(edge.get('lanes', 2)))
     else:
-        # 2 for faster roads
-        n_lanes = int(edge.get('lanes', 2))
+        # 1 for slower roads
+        n_lanes = int(float(edge.get('lanes', 1)))
 
     # initialize detailed lane counts
     n_lanes_forward = utils.safe_int(edge.get('lanes:forward', 0), fallback_value=0)
@@ -205,9 +205,27 @@ def _generate_lanes_for_edge(edge):
                 or edge.get('cycleway') == 'lane':
             right_lanes_list.extend([LANETYPE_CYCLING_LANE + _DIRECTION_FORWARD])
 
+        # Add cycling track left
+        if edge.get('cycleway:left') == 'track' \
+                or edge.get('cycleway:both') == 'track' \
+                or edge.get('cycleway') == 'track':
+            left_lanes_list.extend([LANETYPE_CYCLING_TRACK + _DIRECTION_BACKWARD])
+
+        # Add cycling track right
+        if edge.get('cycleway:right') == 'track' \
+                or edge.get('cycleway:both') == 'track' \
+                or edge.get('cycleway') == 'track':
+            right_lanes_list.extend([LANETYPE_CYCLING_TRACK + _DIRECTION_FORWARD])
+
         # Add cycling allowed in opposite direction
         if edge.get('cycleway') == 'opposite':
             left_lanes_list.extend([LANETYPE_CYCLING_PSEUDO + _DIRECTION_BACKWARD])
+
+        # add parking lanes
+        if edge.get('parking:left') == 'lane' or edge.get('parking:both') == 'lane':
+            left_lanes_list.extend([LANETYPE_PARKING_PARALLEL + DIRECTION_BOTH])
+        if edge.get('parking:right') == 'lane' or edge.get('parking:both') == 'lane':
+            right_lanes_list.extend([LANETYPE_PARKING_PARALLEL + DIRECTION_BOTH])
 
         # Add sidewalk right
         # if edge.get('sidewalk') in {'right', 'both'}:
@@ -237,11 +255,14 @@ def _generate_lanes_for_edge(edge):
             if lane == 'designated' and i < len(forward_lanes_list):
                 forward_lanes_list[i] = LANETYPE_DEDICATED_PT + _DIRECTION_FORWARD
 
-    else:
+    elif edge.get('vehicle:lanes:forward'):
         osm_vehicle_lanes_forward = edge.get('vehicle:lanes:forward', '').split('|')
         for i, lane in enumerate(osm_vehicle_lanes_forward):
             if lane == 'no' and i < len(forward_lanes_list):
                 forward_lanes_list[i] = LANETYPE_DEDICATED_PT + _DIRECTION_FORWARD
+
+    elif edge.get('busway:right') or edge.get('busway:both') or edge.get('busway'):
+        utils.set_last_or_append(forward_lanes_list, LANETYPE_DEDICATED_PT + _DIRECTION_FORWARD)
 
     # do the same in backward direction
     if edge.get('bus:lanes:backward'):
@@ -252,13 +273,16 @@ def _generate_lanes_for_edge(edge):
             if lane == 'designated' and i < len(backward_lanes_list):
                 backward_lanes_list[i] = LANETYPE_DEDICATED_PT + _DIRECTION_BACKWARD
 
-    else:
+    elif edge.get('vehicle:lanes:backward'):
         osm_vehicle_lanes_backward = edge.get('vehicle:lanes:backward', '').split('|')
         # reverse the lane order because we are still working in the forward direction
         osm_vehicle_lanes_backward.reverse()
         for i, lane in enumerate(osm_vehicle_lanes_backward):
             if lane == 'no' and i < len(backward_lanes_list):
                 backward_lanes_list[i] = LANETYPE_DEDICATED_PT + _DIRECTION_BACKWARD
+
+    elif edge.get('busway:left') or edge.get('busway:both') or edge.get('busway'):
+        utils.set_last_or_append(backward_lanes_list, LANETYPE_DEDICATED_PT + _DIRECTION_BACKWARD)
 
     # PART 5: RETURN
 

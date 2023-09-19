@@ -1,5 +1,6 @@
 from typing import Iterable
 import json
+import shapely as shp
 
 
 def flatten_list(items):
@@ -27,6 +28,13 @@ def flatten_list(items):
 
 def convert_list_items_to_strings(items):
     return [str(item) for item in items]
+
+
+def set_last_or_append(given_list, value):
+    if not given_list:
+        given_list.append(value)
+    else:
+        given_list[-1] = value
 
 
 def is_convertible_to_int(s):
@@ -57,3 +65,13 @@ def safe_dumps(data):
         return json.dumps(data)
     else:
         return 'NULL'
+
+
+def multilinestring_to_linestring(geom):
+    if isinstance(geom, shp.geometry.MultiLineString):
+        geom = geom.geoms[0]
+    return geom
+
+
+def safe_division(dividend, divisor, if_division_by_zero=float('inf')):
+    return dividend / divisor if divisor != 0 else if_division_by_zero

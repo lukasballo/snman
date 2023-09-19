@@ -15,6 +15,8 @@ import numpy as np
 import json
 
 
+# - LOADING BASIC DATASETS ---------------------------------------------------------------------------------------------
+
 def load_street_graph(edges_path, nodes_path, crs=DEFAULT_CRS, recreate_iterables=True):
     """
     Load a pre-generated street graph that has been saved as geofile (shp, gpkg, etc.)
@@ -193,7 +195,7 @@ def load_rebuilding_regions(path, crs=DEFAULT_CRS, only_active=True):
 
     Returns
     -------
-    rebuilding_regions : gpd.GeoDataFrame
+    gpd.GeoDataFrame
     """
 
     rebuilding_regions = import_geofile_to_gdf(path, crs=crs)
@@ -235,6 +237,39 @@ def load_sensors(path):
     return sensors
 
 
+# - LOADING ENRICHMENT DATASETS ----------------------------------------------------------------------------------------
+
+def load_parking_spots(path, crs=DEFAULT_CRS):
+    """
+    Load a geofile with parking spaces. Each parking spot needs to be represented as a point.
+    For Zurich, see this dataset:
+    https://data.stadt-zuerich.ch/dataset/geo_oeffentlich_zugaengliche_strassenparkplaetze_ogd
+
+    Parameters
+    ----------
+    path : str
+    crs : int
+
+    Returns
+    -------
+    gpd.GeoDataFrame
+    """
+
+    parking_spots = import_geofile_to_gdf(path, crs=crs)
+    return parking_spots
+
+
+def load_lane_edits(path, crs=DEFAULT_CRS):
+    lane_edits = import_geofile_to_gdf(path, crs=crs)
+    # convert the lists encoded as strings into lists
+    lane_edits['add_lanes'] = (lane_edits['add_lanes']
+                               .apply(lambda x: x.split(',') if isinstance(x, str) else []))
+    lane_edits['replace_lanes'] = (lane_edits['replace_lanes']
+                                   .apply(lambda x: x.split(',') if isinstance(x, str) else []))
+    lane_edits['fid'] = lane_edits.index
+    return lane_edits
+
+
 def _get_nodes_within_polygon(G, polygon):
     """
     Return nodes of a graph that fit into a polygon
@@ -256,7 +291,7 @@ def _get_nodes_within_polygon(G, polygon):
     return set(nodes_gdf.index.values)
 
 
-def export_street_graph(G, path_edges, path_nodes, edge_columns=None, node_columns=None):
+def export_street_graph(G, path_edges, path_nodes, edge_columns=None, node_columns=None, crs=None):
     """
     Export street graph as a geofile (shp, gpkg, etc.)
 
@@ -272,6 +307,7 @@ def export_street_graph(G, path_edges, path_nodes, edge_columns=None, node_colum
         which columns should be included in the edges file (None -> include all columns)
     node_columns : list
         dito for nodes file
+    crs : int
 
     Returns
     -------
@@ -298,11 +334,11 @@ def export_street_graph(G, path_edges, path_nodes, edge_columns=None, node_colum
     _stringify_iterable_columns(nodes, {'layers'}, separator=',')
 
     # write files
-    export_gdf(edges, path_edges)
-    export_gdf(nodes, path_nodes)
+    export_gdf(edges, path_edges, crs=crs)
+    export_gdf(nodes, path_nodes, crs=crs)
 
 
-def export_street_graph_with_lanes(G, lanes_attribute, path, scaling=1):
+def export_street_graph_with_lanes(G, lanes_attribute, path, scaling=1, crs=None):
     """
     Export a geofile with individual lane geometries. This is helpful for visualization purposes.
 
@@ -316,6 +352,7 @@ def export_street_graph_with_lanes(G, lanes_attribute, path, scaling=1):
         where should the file be saved
     scaling : float
         optional scaling of the lane width, for an optimized visualization
+    crs : int
 
     Returns
     -------
@@ -363,13 +400,14 @@ def export_street_graph_with_lanes(G, lanes_attribute, path, scaling=1):
     lanes_gdf = gpd.GeoDataFrame(
         lanes_list,
         columns=['type', 'direction', 'descr', 'width_m', 'layer', 'length', 'geometry'],
-        geometry='geometry'
+        geometry='geometry',
+        crs=G.graph['crs']
     )
 
-    export_gdf(lanes_gdf, path)
+    export_gdf(lanes_gdf, path, crs=crs)
 
 
-def export_gdf(gdf, path, columns=[]):
+def export_gdf(gdf, path, columns=[], crs=None):
     """
     Export a GeoDataFrame into a geofile.
     A wrapper around GeoDataFrame.to_file() but with an optional column filter.
@@ -380,11 +418,16 @@ def export_gdf(gdf, path, columns=[]):
     path : str
     columns : list
         which columns should be included ([] -> include all columns)
+    crs : int
 
     Returns
     -------
     None
     """
+
+    # convert crs
+    if crs:
+        gdf = gdf.to_crs(crs)
 
     if columns == []:
         gdf.to_file(path)

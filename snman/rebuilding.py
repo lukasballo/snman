@@ -31,6 +31,9 @@ def rebuild_regions(
         polygon = rebuilding_region['geometry']
         # make subgraph
         H = oxc.truncate.truncate_graph_polygon(G, polygon, quadrat_width=100, retain_all=True)
+        # skip this region if the subgraph is empty
+        if len(H.edges) == 0:
+            continue
         # keep only hierarchies to include
         if len(rebuilding_region['hierarchies_to_include']) > 0:
             H = street_graph.filter_by_hierarchy(H, rebuilding_region['hierarchies_to_include'])
