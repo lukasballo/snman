@@ -270,6 +270,29 @@ def load_lane_edits(path, crs=DEFAULT_CRS):
     return lane_edits
 
 
+def load_public_transit_routes(path, crs=DEFAULT_CRS):
+    """
+    Load a geofile with public transit routes. Each route is represented by a (Multi)LineString.
+    For Zurich, see this dataset: 'Linien des öffentlichen Verkehrs OGD (kantonaler Datensatz)'
+    https://data.stadt-zuerich.ch/dataset/ktzh_linien_des_oeffentlichen_verkehrs__ogd_
+
+    Parameters
+    ----------
+    path : str
+    crs : int
+
+    Returns
+    -------
+    gpd.GeoDataFrame
+    """
+
+    parking_spots = import_geofile_to_gdf(path, crs=crs)
+    return parking_spots
+
+
+# - OTHER --------------------------------------------------------------------------------------------------------------
+
+
 def _get_nodes_within_polygon(G, polygon):
     """
     Return nodes of a graph that fit into a polygon
