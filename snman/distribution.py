@@ -50,7 +50,7 @@ def set_given_lanes(
                 # ...keep forward lane if there is no dedicated forward/both ways lane
                 target_lanes += [LANETYPE_MOTORIZED + DIRECTION_FORWARD]
 
-        # for normal streets, keep one single-direction lane
+        # for normal streets, keep one single-direction lane (mandatory or optional, depending on the inputs)
         elif data.get('hierarchy') in [hierarchy.MAIN_ROAD, hierarchy.LOCAL_ROAD, hierarchy.HIGHWAY]:
             if maintain_motorized_access_on_street_level:
                 target_lanes += [LANETYPE_MOTORIZED + DIRECTION_TBD]

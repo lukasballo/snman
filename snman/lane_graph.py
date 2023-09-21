@@ -1,7 +1,83 @@
 import copy
 
 from . import osmnx_customized as oxc
+from . import space_allocation
+from .constants import *
 import networkx as nx
+
+
+def create_lane_graph(G, lanes_attribute=KEY_LANES_DESCRIPTION):
+    """
+    Creates a new lane graph, derived from the street graph
+    Parameters
+    ----------
+    G : nx.MultiDiGraph
+        street graph
+    lanes_attribute : str
+        which attribute should be used for the lane description
+
+    Returns
+    -------
+
+    """
+
+    # initialize and copy graph attributes
+    L = nx.MultiDiGraph()
+    L.graph = G.graph
+
+    for uvk, data in G.edges.items():
+        u, v, k = uvk
+
+        lanes_list = data.get(lanes_attribute)
+
+        for i, lane in enumerate(lanes_list):
+
+            lp = space_allocation._lane_properties(lane)
+            reverse = lp.direction in {DIRECTION_BACKWARD, DIRECTION_BACKWARD_OPTIONAL}
+
+            if reverse:
+                lane = space_allocation.reverse_lane(lane)
+                lp = space_allocation._lane_properties(lane)
+
+            attributes = {}
+            length = data['length']
+            lane_id = '-'.join([str(u), str(v), str(k), str(i)])
+            attributes['length'] = length
+
+            for mode in MODES:
+                cost = space_allocation._calculate_lane_cost(lane, length, mode)
+                attributes['cost_' + mode] = cost
+
+            attributes['primary_mode'] = lp.primary_mode
+            attributes['lane_id'] = lane_id
+            attributes['lanetype'] = lp.lanetype
+            attributes['direction'] = lp.direction
+            attributes['width'] = lp.width
+            attributes['osm_highway'] = data.get('highway')
+            attributes['maxspeed'] = data.get('maxspeed')
+
+            attributes['fixed'] = lp.direction not in [
+                DIRECTION_BACKWARD_OPTIONAL, DIRECTION_FORWARD_OPTIONAL, DIRECTION_TBD_OPTIONAL, DIRECTION_TBD
+            ]
+            attributes['mandatory_lane'] = lp.direction not in [
+                DIRECTION_BACKWARD_OPTIONAL, DIRECTION_FORWARD_OPTIONAL, DIRECTION_TBD_OPTIONAL
+            ]
+
+            if not reverse:
+                L.add_edge(u, v, lane_id, **attributes, lane=lane, twin_factor=1)
+            if reverse:
+                L.add_edge(v, u, lane_id, **attributes, lane=lane, twin_factor=1)
+            if lp.direction in [
+                DIRECTION_BOTH, DIRECTION_TBD, DIRECTION_TBD_OPTIONAL
+            ]:
+                L.add_edge(u, v, lane_id, **attributes, lane=lane, twin_factor=0.5)
+                L.add_edge(v, u, lane_id, **attributes, lane=space_allocation.reverse_lane(lane), twin_factor=0.5)
+
+    # take over the node attributes from the street graph
+    nx.set_node_attributes(L, dict(G.nodes))
+
+    return L
+
 
 
 def calculate_stats(L, mode):

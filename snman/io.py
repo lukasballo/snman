@@ -352,7 +352,10 @@ def export_street_graph(G, path_edges, path_nodes, edge_columns=None, node_colum
         edges.columns = [column[0:10] for column in edges.columns]
 
     # stringify iterable columns
-    _stringify_iterable_columns(edges, {'ln_desc', 'ln_desc_after', 'given_lanes'}, separator=' | ')
+    _stringify_iterable_columns(
+        edges, {'ln_desc', 'ln_desc_after', 'ln_desc_no_cycling', 'ln_desc_year_x', 'given_lanes'},
+        separator=' | '
+    )
     _stringify_iterable_columns(edges, {'sensors_forward', 'sensors_backward', '_intermediary_nodes'}, method='str')
     _stringify_iterable_columns(nodes, {'layers'}, separator=',')
 

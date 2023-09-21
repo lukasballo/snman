@@ -1,82 +1,10 @@
 import copy
 
 import networkx as nx
-from . import utils, distribution, space_allocation, hierarchy, street_graph, graph_utils, io, merge_edges
+import geopandas as gpd
+from . import utils, distribution, space_allocation, hierarchy, street_graph, graph_utils, io, merge_edges, lane_graph
 from .constants import *
 from . import osmnx_customized as oxc
-
-
-def rebuild_regions(
-        G,
-        rebuilding_regions_gdf,
-        source_lanes_attribute=KEY_LANES_DESCRIPTION,
-        target_lanes_attribute=KEY_LANES_DESCRIPTION_AFTER,
-        verbose=False,
-        export_L=False,
-        export_H=False
-):
-
-    # initialize lanes after rebuild
-    nx.set_edge_attributes(G, nx.get_edge_attributes(G, source_lanes_attribute), target_lanes_attribute)
-    # ensure consistent edge directions
-    street_graph.organize_edge_directions(G)
-
-    for i, rebuilding_region in rebuilding_regions_gdf.iterrows():
-
-        print('Rebuilding region', i, rebuilding_region['description'])
-
-        hierarchies_to_fix = hierarchy.HIERARCHIES.difference(rebuilding_region['hierarchies_to_include']).union(
-            rebuilding_region['hierarchies_to_fix'])
-
-        polygon = rebuilding_region['geometry']
-        # make subgraph
-        H = oxc.truncate.truncate_graph_polygon(G, polygon, quadrat_width=100, retain_all=True)
-        # skip this region if the subgraph is empty
-        if len(H.edges) == 0:
-            continue
-        # keep only hierarchies to include
-        if len(rebuilding_region['hierarchies_to_include']) > 0:
-            H = street_graph.filter_by_hierarchy(H, rebuilding_region['hierarchies_to_include'])
-        # set given lanes according to network rules
-        distribution.set_given_lanes(
-            H,
-            maintain_motorized_access_on_street_level=rebuilding_region['keep_all_streets'],
-            hierarchies_to_fix=rebuilding_region['hierarchies_to_fix']
-        )
-        # get only the car lanes
-        H = street_graph.filter_lanes_by_modes(H, {MODE_PRIVATE_CARS}, lane_description_key=KEY_GIVEN_LANES_DESCRIPTION)
-        # remove intermediary nodes from the subgraph
-        merge_edges.reset_intermediate_nodes(H)
-        merge_edges.merge_consecutive_edges(H, distinction_attributes={KEY_LANES_DESCRIPTION_AFTER})
-        # make lane graph
-        L = street_graph.to_lane_graph(H, KEY_GIVEN_LANES_DESCRIPTION)
-        # make sure that the graph is strongly connected
-        L = graph_utils.keep_only_the_largest_connected_component(L)
-
-        if export_L:
-            io.export_street_graph(L, export_L[0], export_L[1])
-
-        # link elimination
-        L = link_elimination(L, verbose=verbose)
-
-        if export_L:
-            io.export_street_graph(L, export_L[0], export_L[1])
-
-        # rebuild lanes in subgraph based on new lane graph
-        rebuild_lanes_from_owtop_graph(
-            H,
-            L,
-            hierarchies_to_protect=rebuilding_region['hierarchies_to_fix'],
-            source_lanes_attribute=KEY_LANES_DESCRIPTION_AFTER,
-            target_lanes_attribute=KEY_LANES_DESCRIPTION_AFTER
-        )
-        # reconstruct intermediary nodes and ensure consistent edge directions
-        merge_edges.reconstruct_consecutive_edges(H)
-        street_graph.organize_edge_directions(H)
-        if export_H:
-            io.export_street_graph(H, export_H[0], export_H[1])
-        # write rebuilt lanes from subgraph into the main graph
-        nx.set_edge_attributes(G, nx.get_edge_attributes(H, KEY_LANES_DESCRIPTION_AFTER), KEY_LANES_DESCRIPTION_AFTER)
 
 
 def link_elimination(L, verbose=False):
@@ -84,19 +12,26 @@ def link_elimination(L, verbose=False):
     Generating a network fo one-way streets. A greedy algorithm that sequentially removes links from the graph
     until no link can be removed without losing strong connectivity.
 
-    The problem is referred to in the literature as One-Way Traffic Organization problem (OWTOP).
+    In literature, the problem is sometimes referred to as One-Way Traffic Organization problem (OWTOP).
+
+    The solution in this function is inspired by a cycling network design algorithm in
+
+    Steinacker, C., D.-M. Storch, M. Timme and M. Schröder (2022)
+    Demand-driven design of bicycle infrastructure networks for improved urban bikeability,
+    Nature Computational Science, DOI: https://doi.org/10.1038/s43588-022-00318-w.
+
 
     Parameters
     ----------
     L: nx.DiGraph
-        lane graph
+        lane graph of "given" car lanes based on the high-level design rules applied in distribution.set_given_lanes
     verbose : bool
         print internal details during the process
 
     Returns
     -------
     L : nx.DiGraph
-        a copy of the graph after link elimination
+        lane graph of car lanes after rebuilding
     """
 
     # Get the giant weakly connected component (remove any unconnected parts)
@@ -145,8 +80,113 @@ def link_elimination(L, verbose=False):
         else:
             pass
 
-
     return L
+
+
+def rebuild_regions(
+        G,
+        rebuilding_regions_gdf,
+        rebuilding_function=link_elimination,
+        source_lanes_attribute=KEY_LANES_DESCRIPTION,
+        target_lanes_attribute=KEY_LANES_DESCRIPTION_AFTER,
+        verbose=False,
+        export_L=None,
+        export_H=None
+):
+    """
+    Iterates through each one of the *rebuilding_regions* and applies the given *rebuilding_function*
+    to the lane within its area and road hierarchies.
+
+    Parameters
+    ----------
+    G : nx.MultiDiGraph
+        street graph
+    rebuilding_regions_gdf : gpd.GeoDataFrame
+        regions to be rebuilt
+    rebuilding_function : function
+        a function to be applied to the lane graph within each region,
+        see *link_elimination()* as example for the required inputs and outputs
+    source_lanes_attribute : str
+        key of the source lane description, where should the lanes be loaded from
+    target_lanes_attribute : str
+        key of the target lane description, where should the resulting lanes be saved
+    verbose : bool
+        show internal process information if true
+    export_L : list
+        a list of two strings, paths to save the edges and nodes of the intermediary lane graphs, use for debugging
+    export_H : list
+        a list of two strings, paths to save the edges and nodes of the intermediary street graphs, use for debugging
+
+    Returns
+    -------
+    None
+    """
+
+    # initialize lanes after rebuild
+    nx.set_edge_attributes(G, nx.get_edge_attributes(G, source_lanes_attribute), target_lanes_attribute)
+    # ensure consistent edge directions
+    street_graph.organize_edge_directions(G)
+
+    for i, rebuilding_region in rebuilding_regions_gdf.iterrows():
+
+        print('Rebuilding region', i, rebuilding_region['description'])
+
+        hierarchies_to_fix = hierarchy.HIERARCHIES.difference(rebuilding_region['hierarchies_to_include']).union(
+            rebuilding_region['hierarchies_to_fix'])
+
+        polygon = rebuilding_region['geometry']
+        # make subgraph
+        H = oxc.truncate.truncate_graph_polygon(G, polygon, quadrat_width=100, retain_all=True)
+        # skip this region if the subgraph is empty
+        if len(H.edges) == 0:
+            continue
+        # keep only hierarchies to include
+        if len(rebuilding_region['hierarchies_to_include']) > 0:
+            H = street_graph.filter_by_hierarchy(H, rebuilding_region['hierarchies_to_include'])
+        # set given lanes according to network rules
+        distribution.set_given_lanes(
+            H,
+            maintain_motorized_access_on_street_level=rebuilding_region['keep_all_streets'],
+            hierarchies_to_fix=rebuilding_region['hierarchies_to_fix']
+        )
+        # get only the car lanes
+        H = street_graph.filter_lanes_by_modes(H, {MODE_PRIVATE_CARS}, lane_description_key=KEY_GIVEN_LANES_DESCRIPTION)
+        # remove intermediary nodes from the subgraph
+        merge_edges.reset_intermediate_nodes(H)
+        merge_edges.merge_consecutive_edges(H, distinction_attributes={KEY_LANES_DESCRIPTION_AFTER})
+        # make lane graph
+        L = lane_graph.create_lane_graph(H, KEY_GIVEN_LANES_DESCRIPTION)
+        # make sure that the graph is strongly connected
+        L = graph_utils.keep_only_the_largest_connected_component(L)
+
+        if export_L:
+            io.export_street_graph(L, export_L[0], export_L[1])
+        if export_H:
+            io.export_street_graph(H, export_H[0], export_H[1])
+
+        # execute the provided rebuilding function
+        L = rebuilding_function(L, verbose=verbose)
+
+        if export_L:
+            io.export_street_graph(L, export_L[0], export_L[1])
+        if export_H:
+            io.export_street_graph(H, export_H[0], export_H[1])
+
+        # rebuild lanes in subgraph based on new lane graph
+        rebuild_lanes_from_owtop_graph(
+            H,
+            L,
+            hierarchies_to_protect=rebuilding_region['hierarchies_to_fix'],
+            source_lanes_attribute=KEY_LANES_DESCRIPTION_AFTER,
+            target_lanes_attribute=KEY_LANES_DESCRIPTION_AFTER
+        )
+        # reconstruct intermediary nodes and ensure consistent edge directions
+        merge_edges.reconstruct_consecutive_edges(H)
+        street_graph.organize_edge_directions(H)
+        if export_H:
+            io.export_street_graph(H, export_H[0], export_H[1])
+        # write rebuilt lanes from subgraph into the main graph
+        nx.set_edge_attributes(G, nx.get_edge_attributes(H, KEY_LANES_DESCRIPTION_AFTER), KEY_LANES_DESCRIPTION_AFTER)
 
 
 def rebuild_lanes_from_owtop_graph(
