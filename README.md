@@ -81,7 +81,7 @@ requires that derivative works provide proper attribution.
 
 ## Citing and further information
 
-  * Ballo, L. and K.W. Axhausen (2023).
+  * Ballo, L. and K.W. Axhausen (2023)
     Modeling sustainable mobility futures using an automated process
     of road space reallocation in urban street networks: A case study in Zurich,
-    *Transportation Research Board Annual Meeting*, Washington DC, January 2024
+    *103rd Annual Meeting of the Transportation Research Board*, Washington DC, January 2024.
