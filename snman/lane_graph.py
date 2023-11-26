@@ -29,7 +29,13 @@ def create_lane_graph(G, lanes_attribute=KEY_LANES_DESCRIPTION):
         u, v, k = uvk
 
         lanes_list = data.get(lanes_attribute)
+        # Reconstruct total width of the lanes
+        total_width = 0
+        for lane in data.get(lanes_attribute, []):
+            lp = space_allocation._lane_properties(lane)
+            total_width += lp.width
 
+        filled_width = 0
         for i, lane in enumerate(lanes_list):
 
             lp = space_allocation._lane_properties(lane)
@@ -41,12 +47,19 @@ def create_lane_graph(G, lanes_attribute=KEY_LANES_DESCRIPTION):
 
             attributes = {}
             length = data['length']
+            slope = data.get('grade', 0)
             lane_id = '-'.join([str(u), str(v), str(k), str(i)])
             attributes['length'] = length
 
             for mode in MODES:
-                cost = space_allocation._calculate_lane_cost(lane, length, mode)
+                cost = space_allocation._calculate_lane_cost(lane, length, slope, mode)
                 attributes['cost_' + mode] = cost
+
+            attributes['u_G'] = u
+            attributes['v_G'] = v
+            attributes['k_G'] = k
+            attributes['lane_id_within_street'] = i
+            attributes['horizontal_position'] = filled_width + lp.width/2 - total_width/2
 
             attributes['primary_mode'] = lp.primary_mode
             attributes['lane_id'] = lane_id
@@ -57,21 +70,32 @@ def create_lane_graph(G, lanes_attribute=KEY_LANES_DESCRIPTION):
             attributes['maxspeed'] = data.get('maxspeed')
 
             attributes['fixed'] = lp.direction not in [
-                DIRECTION_BACKWARD_OPTIONAL, DIRECTION_FORWARD_OPTIONAL, DIRECTION_TBD_OPTIONAL, DIRECTION_TBD
+                DIRECTION_BACKWARD_OPTIONAL, DIRECTION_FORWARD_OPTIONAL,
+                DIRECTION_TBD, DIRECTION_TBD_OPTIONAL, DIRECTION_BOTH_OPTIONAL
             ]
             attributes['mandatory_lane'] = lp.direction not in [
-                DIRECTION_BACKWARD_OPTIONAL, DIRECTION_FORWARD_OPTIONAL, DIRECTION_TBD_OPTIONAL
+                DIRECTION_BACKWARD_OPTIONAL, DIRECTION_FORWARD_OPTIONAL,
+                DIRECTION_TBD_OPTIONAL, DIRECTION_BOTH_OPTIONAL
+            ]
+            attributes['coupled_with_opposite_direction'] = lp.direction in [
+                DIRECTION_BOTH, DIRECTION_BOTH_OPTIONAL
             ]
 
             if not reverse:
-                L.add_edge(u, v, lane_id, **attributes, lane=lane, twin_factor=1)
+                L.add_edge(u, v, lane_id, **attributes, lane=lane, backward=0, twin_factor=1, instance=1)
             if reverse:
-                L.add_edge(v, u, lane_id, **attributes, lane=lane, twin_factor=1)
+                L.add_edge(v, u, lane_id, **attributes, lane=lane, backward=1, twin_factor=1, instance=1)
             if lp.direction in [
-                DIRECTION_BOTH, DIRECTION_TBD, DIRECTION_TBD_OPTIONAL
+                DIRECTION_BOTH, DIRECTION_BOTH_OPTIONAL, DIRECTION_TBD, DIRECTION_TBD_OPTIONAL
             ]:
-                L.add_edge(u, v, lane_id, **attributes, lane=lane, twin_factor=0.5)
-                L.add_edge(v, u, lane_id, **attributes, lane=space_allocation.reverse_lane(lane), twin_factor=0.5)
+                L.add_edge(u, v, lane_id, **attributes, lane=lane, backward=0, twin_factor=0.5, instance=1)
+                L.add_edge(
+                    v, u, lane_id, **attributes,
+                    lane=space_allocation.reverse_lane(lane), backward=1, twin_factor=0.5,
+                    instance=2
+                )
+
+            filled_width += lp.width
 
     # take over the node attributes from the street graph
     nx.set_node_attributes(L, dict(G.nodes))
@@ -225,3 +249,76 @@ def calculate_stats(L, mode):
                 3
             ),
     }
+
+
+def get_street_lanes(L, u_G, v_G, k_G, direction=None):
+    """
+    Returns a dictionary of edges from the lane graph that correspond to a particular street in the street graph
+
+    Parameters
+    ----------
+    L: nx.MultiDiGraph
+        lane graph
+    u_G: int
+        u in street graph
+    v_G: int
+        v in street graph
+    k_G: int
+        k in street graph
+    direction: str
+        returns only the lanes in forward or backward direction if specified,
+        returns all lanes if None
+    Returns
+    -------
+    dict
+    """
+
+    forward = dict(L.get_edge_data(u_G, v_G, default={}))
+    forward = {(u_G, v_G, k): value for k, value in forward.items()}
+    backward = dict(L.get_edge_data(v_G, u_G, default={}))
+    backward = {(v_G, u_G, k): value for k, value in backward.items()}
+
+    if direction is None:
+        # concat forward and backward lanes
+        lanes = forward
+        lanes.update(backward)
+    elif direction == DIRECTION_FORWARD:
+        lanes = forward
+    elif direction == DIRECTION_BACKWARD:
+        lanes = backward
+
+    # filter for those matching the k_G key which means they belong to the correct (parallel) street
+    lanes = {uvk: data for uvk, data in lanes.items() if data['k_G'] == k_G}
+    return lanes
+
+
+def calculate_street_width(L, u_G, v_G, k_G, use_twin_factor=True):
+    """
+    Calculates the width of a street in a lane graph
+
+    Parameters
+    ----------
+    L: nx.MultiDiGraph
+        lane graph
+    u_G: int
+        u in street graph
+    v_G: int
+        v in street graph
+    k_G:int
+        k in street graph
+    use_twin_factor: bool
+
+    Returns
+    -------
+    int
+    """
+
+    lanes = get_street_lanes(L, u_G, v_G, k_G)
+    if use_twin_factor:
+        widths = map(lambda lane: lane['width'] * lane['twin_factor'], lanes.values())
+    else:
+        widths = map(lambda lane: lane['width'], lanes.values())
+    total_width = sum(widths)
+    return total_width
+
+

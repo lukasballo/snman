@@ -1,5 +1,5 @@
 from . import osmnx_customized as oxc
-from . import geometry_tools, space_allocation, utils, street_graph
+from . import geometry_tools, space_allocation, utils, street_graph, street_graph_edge, street_graph_node, graph
 from .constants import *
 import geopandas as gpd
 import pandas as pd
@@ -41,7 +41,8 @@ def load_street_graph(edges_path, nodes_path, crs=DEFAULT_CRS, recreate_iterable
 
     if recreate_iterables:
         _iterable_columns_from_strings(edges_gdf, {'ln_desc', 'ln_desc_after', 'given_lanes'}, separator=' | ')
-        _iterable_columns_from_strings(edges_gdf, {'sensors_forward', 'sensors_backward', '_intermediate_nodes'}, method='str')
+        _iterable_columns_from_strings(edges_gdf, {'sensors_forward', 'sensors_backward', '_intermediate_nodes'},
+                                       method='str')
         _iterable_columns_from_strings(nodes_gdf, {'layers'}, separator=',')
 
     G = nx.MultiDiGraph(crs=crs)
@@ -171,7 +172,7 @@ def load_intersections(path, crs=DEFAULT_CRS):
     return intersections
 
 
-def load_rebuilding_regions(path, crs=DEFAULT_CRS, only_active=True):
+def load_rebuilding_regions(path, crs=DEFAULT_CRS, only_active=True, filter_ids=None):
     """
     Load a geofile (shp, gpkg, etc.) with rebuilding regions. These will be used to define areas where the streets
     should be rebuilt. In each rebuilding region, you can also specify which street hierarchies should be considered
@@ -198,10 +199,13 @@ def load_rebuilding_regions(path, crs=DEFAULT_CRS, only_active=True):
     gpd.GeoDataFrame
     """
 
-    rebuilding_regions = import_geofile_to_gdf(path, crs=crs)
+    rebuilding_regions = import_geofile_to_gdf(path, crs=crs, index='id')
 
     if only_active:
-        rebuilding_regions = rebuilding_regions[rebuilding_regions['active'] == True]
+        rebuilding_regions = rebuilding_regions.query(f"active == True")
+
+    if filter_ids:
+        rebuilding_regions = rebuilding_regions.loc[filter_ids]
 
     # convert strings into lists
     rebuilding_regions['hierarchies_to_include'] = \
@@ -216,28 +220,40 @@ def load_rebuilding_regions(path, crs=DEFAULT_CRS, only_active=True):
     return rebuilding_regions
 
 
-def load_measurement_regions(path, crs=DEFAULT_CRS, only_active=True):
-
-    measurement_regions = import_geofile_to_gdf(path, crs=crs)
+def load_measurement_regions(path, crs=DEFAULT_CRS, only_active=True, filter_names=None, set_filter=None):
+    measurement_regions = import_geofile_to_gdf(path, crs=crs, index='name')
+    if filter_names:
+        measurement_regions = measurement_regions.loc[filter_names]
     if only_active:
         measurement_regions = measurement_regions[measurement_regions['active'] == True]
+    if set_filter:
+        measurement_regions = measurement_regions[measurement_regions['set'] == set_filter]
     measurement_regions['area'] = measurement_regions.geometry.area
     return measurement_regions
 
 
 def load_poi(path, perimeter=None, crs=DEFAULT_CRS):
-
     poi = import_geofile_to_gdf(path, perimeter=perimeter, crs=crs)
     return poi
 
 
 def load_sensors(path):
-
     sensors = pd.read_csv(path).set_index('id')
     return sensors
 
 
 # - LOADING ENRICHMENT DATASETS ----------------------------------------------------------------------------------------
+
+
+def infer_parking_orientation(parking_spots):
+    res = utils.join_nearest_points(parking_spots, parking_spots)
+    res['orientation'] = res.apply(
+        lambda row:
+            LANETYPE_PARKING_PERPENDICULAR if row['distance_to_next_space'] < 3.25 else
+            LANETYPE_PARKING_PARALLEL if row['distance_to_next_space'] < 12.00 else None
+        , axis=1)
+    return res
+
 
 def load_parking_spots(path, crs=DEFAULT_CRS):
     """
@@ -256,6 +272,7 @@ def load_parking_spots(path, crs=DEFAULT_CRS):
     """
 
     parking_spots = import_geofile_to_gdf(path, crs=crs)
+    parking_spots = infer_parking_orientation(parking_spots)
     return parking_spots
 
 
@@ -270,7 +287,7 @@ def load_lane_edits(path, crs=DEFAULT_CRS):
     return lane_edits
 
 
-def load_public_transit_routes(path, crs=DEFAULT_CRS):
+def load_public_transit_routes(path, perimeter=None, crs=DEFAULT_CRS):
     """
     Load a geofile with public transit routes. Each route is represented by a (Multi)LineString.
     For Zurich, see this dataset: 'Linien des öffentlichen Verkehrs OGD (kantonaler Datensatz)'
@@ -286,8 +303,13 @@ def load_public_transit_routes(path, crs=DEFAULT_CRS):
     gpd.GeoDataFrame
     """
 
-    parking_spots = import_geofile_to_gdf(path, crs=crs)
-    return parking_spots
+    pt_routes = import_geofile_to_gdf(path, crs=crs)
+
+    if perimeter:
+        pt_routes.geometry = pt_routes.geometry.apply(lambda route: shapely.intersection(route, perimeter))
+        pt_routes = pt_routes[~shapely.is_empty(pt_routes.geometry)]
+
+    return pt_routes
 
 
 # - OTHER --------------------------------------------------------------------------------------------------------------
@@ -314,7 +336,10 @@ def _get_nodes_within_polygon(G, polygon):
     return set(nodes_gdf.index.values)
 
 
-def export_street_graph(G, path_edges, path_nodes, edge_columns=None, node_columns=None, crs=None):
+def export_street_graph(
+        G, path_edges, path_nodes, edge_columns=None, node_columns=None, cast_attr=True, crs=None,
+        lane_keys=(KEY_LANES_DESCRIPTION, KEY_LANES_DESCRIPTION_AFTER, KEY_GIVEN_LANES_DESCRIPTION)
+):
     """
     Export street graph as a geofile (shp, gpkg, etc.)
 
@@ -337,9 +362,17 @@ def export_street_graph(G, path_edges, path_nodes, edge_columns=None, node_colum
     None
     """
 
-    G = copy.deepcopy(G)
+    H = copy.deepcopy(G)
 
-    nodes, edges = oxc.graph_to_gdfs(G)
+    if cast_attr:
+        graph.apply_function_to_each_edge(
+            H, lambda H, uvk: street_graph_edge.cast_attributes_for_export(H, uvk, lane_keys)
+        )
+        graph.apply_function_to_each_node(
+            H, street_graph_node.cast_attributes_for_export
+        )
+
+    nodes, edges = oxc.graph_to_gdfs(H)
 
     if edge_columns:
         edges = edges[list(set(set(edges.columns) & set(edge_columns)).union({'geometry'}))]
@@ -351,20 +384,12 @@ def export_street_graph(G, path_edges, path_nodes, edge_columns=None, node_colum
     if path_edges.split()[-1] == 'shp':
         edges.columns = [column[0:10] for column in edges.columns]
 
-    # stringify iterable columns
-    _stringify_iterable_columns(
-        edges, {'ln_desc', 'ln_desc_after', 'ln_desc_no_cycling', 'ln_desc_year_x', 'given_lanes'},
-        separator=' | '
-    )
-    _stringify_iterable_columns(edges, {'sensors_forward', 'sensors_backward', '_intermediary_nodes'}, method='str')
-    _stringify_iterable_columns(nodes, {'layers'}, separator=',')
-
     # write files
     export_gdf(edges, path_edges, crs=crs)
     export_gdf(nodes, path_nodes, crs=crs)
 
 
-def export_street_graph_with_lanes(G, lanes_attribute, path, scaling=1, crs=None):
+def export_street_graph_with_lanes(G, lanes_attributes, path, scaling=1, crs=None):
     """
     Export a geofile with individual lane geometries. This is helpful for visualization purposes.
 
@@ -372,7 +397,7 @@ def export_street_graph_with_lanes(G, lanes_attribute, path, scaling=1, crs=None
     ----------
     G : nx.MultiGraph or nx.MultiDiGraph
         street graph
-    lanes_attribute : str
+    lanes_attributes : str, list
         which attribute should be used as a source of the lane configuration of each edge
     path : str
         where should the file be saved
@@ -386,51 +411,63 @@ def export_street_graph_with_lanes(G, lanes_attribute, path, scaling=1, crs=None
     """
     # TODO: Build on top of a lane graph
 
+    if type(lanes_attributes) == str:
+        lanes_attributes = [lanes_attributes]
+
     # Create empty list for the lanes
     lanes_list = []
 
-    for id, data in G.edges.items():
-        given_total_width = 0
+    for lanes_attribute in lanes_attributes:
 
-        # Reconstruct total width of given lanes
-        for lane in data.get(lanes_attribute, []):
-            lane_properties = space_allocation._lane_properties(lane)
-            given_total_width += lane_properties.width
+        for uvk, data in G.edges.items():
+            given_total_width = 0
 
-        offset = -given_total_width / 2
-        for lane in data.get(lanes_attribute, []):
-            lane_properties = space_allocation._lane_properties(lane)
+            # Reconstruct total width of given lanes
+            for lane in data.get(lanes_attribute, []):
+                lane_properties = space_allocation._lane_properties(lane)
+                given_total_width += lane_properties.width
 
-            centerline_offset = offset + lane_properties.width / 2
-            offset += lane_properties.width
-            geom = data.get('geometry')
+            offset = -given_total_width / 2
+            for lane in data.get(lanes_attribute, []):
+                lane_properties = space_allocation._lane_properties(lane)
 
-            if geom and round(centerline_offset, 1) != 0:
-                geom = geom.parallel_offset(centerline_offset * scaling, 'right')
-                # the above function reverses direction when the offset is positive, this steps reverses it back
-                if centerline_offset > 0 and not geom.is_empty:
-                    # geom.coords = list(geom.coords)[::-1]
-                    shapely.ops.substring(geom, 1, 0, normalized=True)
-                    pass
+                centerline_offset = offset + lane_properties.width / 2
+                offset += lane_properties.width
+                geom = data.get('geometry')
 
-            lanes_list.append({
-                'type': lane_properties.lanetype,
-                'direction': lane_properties.direction,
-                'descr': lane,
-                'width_m': lane_properties.width * scaling,
-                'layer': data.get('layer'),
-                'length': data.get('length'),
-                'geometry': geom
-            })
+                if geom and round(centerline_offset, 1) != 0:
+                    geom = geom.parallel_offset(centerline_offset * scaling, 'right')
+                    # the above function reverses direction when the offset is positive, this steps reverses it back
+                    if centerline_offset > 0 and not geom.is_empty:
+                        # geom.coords = list(geom.coords)[::-1]
+                        shapely.ops.substring(geom, 1, 0, normalized=True)
+                        pass
+
+                lanes_list.append({
+                    'lanes_key': lanes_attribute,
+                    'type': lane_properties.lanetype,
+                    'direction': lane_properties.direction,
+                    'descr': lane,
+                    'width_m': lane_properties.width * scaling,
+                    'layer': data.get('layer'),
+                    'length': data.get('length'),
+                    'geometry': geom
+                })
 
     lanes_gdf = gpd.GeoDataFrame(
         lanes_list,
-        columns=['type', 'direction', 'descr', 'width_m', 'layer', 'length', 'geometry'],
+        columns=['lanes_key', 'type', 'direction', 'descr', 'width_m', 'layer', 'length', 'geometry'],
         geometry='geometry',
         crs=G.graph['crs']
     )
 
     export_gdf(lanes_gdf, path, crs=crs)
+
+
+def export_lane_geometries(L, path, scaling=1, crs=None):
+    nodes, edges = oxc.graph_to_gdfs(L)
+    print(nodes.head())
+    print(edges.head())
 
 
 def export_gdf(gdf, path, columns=[], crs=None):
@@ -492,10 +529,17 @@ def export_osm_xml(
     None
     """
 
+    # keep only the relevant modes
+    H = street_graph.filter_lanes_by_modes(
+        G,
+        {MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_CYCLING},
+        lane_description_key=key_lanes_description
+    )
+
     if as_oneway_links:
-        H = street_graph.separate_edges_for_lane_directions(G)
+        H = street_graph.separate_edges_for_lane_directions(H, lanes_key=key_lanes_description)
     else:
-        H = copy.deepcopy(G)
+        H = copy.deepcopy(H)
 
     # initial ID value for new OSM objects, avoid duplicity with graph node ids
     max_node_id = max(list(H.nodes))
@@ -545,9 +589,9 @@ def export_osm_xml(
             if i in {0, 1}:
                 node_id = uvk[i]
                 # avoid id=0
-                node_points[node_id+1] = shapely.Point(H.nodes[node_id]['x'], H.nodes[node_id]['y'])
+                node_points[node_id + 1] = shapely.Point(H.nodes[node_id]['x'], H.nodes[node_id]['y'])
                 # add node along the way, use the existing node id
-                ET.SubElement(way, 'nd', attrib={'ref': str(node_id+1)})
+                ET.SubElement(way, 'nd', attrib={'ref': str(node_id + 1)})
 
             # intermediary nodes
             elif i == 'intermediary_nodes':
@@ -623,37 +667,3 @@ def _iterable_columns_from_strings(df, columns, method='separator', separator=',
                 df[column] = df[column].apply(lambda x: x.split(separator))
             elif method == 'str':
                 df[column] = df[column].apply(lambda x: json.loads(x) if x != 'nan' else [])
-
-
-def _stringify_iterable_columns(df, columns, method='separator', separator=','):
-    """
-    Convert iterables in selected columns into strings
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-    columns : list
-        column names
-    method : 'str'
-        how should the iterable be stringified
-            * 'separator' -> join the values with a separator
-            * 'str' -> stringify the iterable using str(x)
-    separator : 'str'
-        only used if method='separator'
-
-    Returns
-    -------
-    None
-    """
-
-    for column in columns:
-        if column in df:
-            if method == 'separator':
-                df[column] = df[column].apply(
-                    lambda x: separator.join(utils.convert_list_items_to_strings(x))
-                    if type(x) in {list, tuple, set}
-                    else ''
-                )
-            elif method == 'str':
-                df[column] = df[column].apply(lambda x: utils.safe_dumps(x))
-

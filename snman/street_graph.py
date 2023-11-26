@@ -1,5 +1,5 @@
 from . import osmnx_customized as oxc
-from . import graph_utils, space_allocation, _errors
+from . import graph, space_allocation, _errors
 from .constants import *
 import geopandas as gpd
 import networkx as nx
@@ -68,8 +68,9 @@ def organize_edge_directions(G, method='lower_to_higher_node_id', key_lanes_desc
         OSM graph
     method : str
         - lower_to_higher_node_id: each edge will be digitized from the lower to the higher node id
-        - by_osm_convention: one-way nodes will be digitized according to their lane direction
-        - heaviest_forward:
+        - by_osm_convention: one-way edges will be digitized according to their lane direction
+        - by_top_order_lanes: each edges will be digitized such that more >=50% of one-way lanes with the highest order
+        point forward
 
     Returns
     -------
@@ -394,6 +395,7 @@ def reverse_edge(
         if data.get(lane_description_key) is not None:
             data[lane_description_key] = space_allocation.reverse_lanes(data[lane_description_key])
 
+    # TODO: auto identify attributes to be reversed based on parts of their name, e.g, '>'/'<', or 'forward'/'backward'
     # reverse sensors
     sensors_forward = data.get('sensors_forward', [])
     sensors_backward = data.get('sensors_backward', [])
@@ -428,14 +430,16 @@ def delete_edges_without_lanes(G, lane_description_key=KEY_LANES_DESCRIPTION):
     G.remove_edges_from(edges_without_lanes)
 
 
-def filter_lanes_by_modes(G, modes, lane_description_key=KEY_LANES_DESCRIPTION):
+def filter_lanes_by_modes(G, modes, lane_description_key=KEY_LANES_DESCRIPTION, delete_empty_edges=True, **kwargs):
     H = copy.deepcopy(G)
 
     for uvk, data in H.edges.items():
         lanes = data.get(lane_description_key, [])
-        data[lane_description_key] = space_allocation.filter_lanes_by_modes(lanes, modes)
+        data[lane_description_key] = space_allocation.filter_lanes_by_modes(lanes, modes, **kwargs)
 
-    delete_edges_without_lanes(H, lane_description_key=lane_description_key)
+    if delete_empty_edges:
+        delete_edges_without_lanes(H, lane_description_key=lane_description_key)
+        graph.remove_isolated_nodes(H)
 
     return H
 
@@ -445,7 +449,7 @@ def filter_by_hierarchy(G, hierarchy_levels):
     return G.edge_subgraph(edges).copy()
 
 
-def calculate_edge_cost(G, u, v, k, direction, mode, lanes_description=KEY_LANES_DESCRIPTION):
+def calculate_edge_cost(G, u, v, k, direction, mode, lanes_description=KEY_LANES_DESCRIPTION, include_tentative=False):
 
     cost_list = []
     uvk = (u, v, k)
@@ -453,10 +457,13 @@ def calculate_edge_cost(G, u, v, k, direction, mode, lanes_description=KEY_LANES
     for lane in data[lanes_description]:
         lp = space_allocation._lane_properties(lane)
         length = data['length']
-        cost = space_allocation._calculate_lane_cost(lane, length, mode, direction)
+        slope = data['grade']
+        cost = space_allocation._calculate_lane_cost(
+            lane, length, slope, mode, direction, include_tentative=include_tentative
+        )
         cost_list.append(cost)
 
-    return min(cost_list)
+    return min(cost_list) if len(cost_list) > 0 else np.inf
 
 
 def add_edge_costs(G, lanes_description=KEY_LANES_DESCRIPTION):
@@ -495,19 +502,19 @@ def clone(G, edges=True):
 
     if edges:
         for uvk, data in G.edges.items():
-            H.add_edge(*uvk, **data)
+            H.add_edge(*uvk, **copy.deepcopy(data))
 
     return H
 
 
-def separate_edges_for_lane_directions(G):
+def separate_edges_for_lane_directions(G, lanes_key=KEY_LANES_DESCRIPTION):
 
     H = clone(G, edges=False)
 
     for uvk, data in G.edges.items():
 
         u, v, k = uvk
-        lanes = data[KEY_LANES_DESCRIPTION]
+        lanes = data[lanes_key]
         lanes_forward = []
         lanes_backward = []
 
@@ -527,26 +534,28 @@ def separate_edges_for_lane_directions(G):
                 lanes_backward.append(str(lp_backward))
 
         new_data = copy.deepcopy(data)
-        del new_data[KEY_LANES_DESCRIPTION]
+        del new_data[lanes_key]
         del new_data['sensors_forward'], new_data['sensors_backward']
 
         if len(lanes_forward) > 0:
             H.add_edge(
                 u, v, **new_data,
-                **{KEY_LANES_DESCRIPTION: lanes_forward},
+                **{lanes_key: lanes_forward},
                 sensors_forward=data['sensors_forward'],
                 sensors_backward=[]
             )
 
         if len(lanes_backward) > 0:
-            H.add_edge(
+            k = H.add_edge(
                 u, v, **new_data,
-                **{KEY_LANES_DESCRIPTION: lanes_backward},
+                **{lanes_key: lanes_backward},
                 sensors_forward=[],
                 sensors_backward=data['sensors_backward']
             )
+            reverse_edge(H, u, v, k)
 
-    space_allocation.update_osm_tags(G, lanes_description_key=KEY_LANES_DESCRIPTION)
-    organize_edge_directions(G)
+    organize_edge_directions(H, method='by_osm_convention')
+    space_allocation.update_osm_tags(H, lanes_description_key=lanes_key)
+    add_edge_costs(H)
 
     return H

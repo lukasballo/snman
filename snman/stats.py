@@ -1,5 +1,5 @@
 from .constants import *
-from . import space_allocation, street_graph, graph_utils, lane_graph
+from . import space_allocation, street_graph, graph, lane_graph
 from . import osmnx_customized as oxc
 import copy
 import networkx as nx
@@ -52,6 +52,18 @@ def network_metrics_for_all_measurement_regions(G, measurement_regions_gdf, plot
 
 
 def network_metrics(G, plot_scc=False):
+    """
+    Generates a set of standard metrics for a given street graph
+
+    Parameters
+    ----------
+    G
+    plot_scc
+
+    Returns
+    -------
+
+    """
 
     if len(G.edges) == 0:
         return pd.DataFrame()
@@ -103,11 +115,26 @@ def network_metrics(G, plot_scc=False):
 
 
 def _generate_metrics_for_one_config(G, label, lanes_key, mode, plot_scc):
+    """
+    Generates a set of standard metrics for a given configuration
+
+    Parameters
+    ----------
+    G
+    label
+    lanes_key
+    mode
+    plot_scc
+
+    Returns
+    -------
+
+    """
     L = street_graph.to_lane_graph(
         street_graph.filter_lanes_by_modes(G.copy(), {mode}, lane_description_key=lanes_key),
         lanes_attribute=lanes_key
     )
-    L_lcc = graph_utils.keep_only_the_largest_connected_component(L)
+    L_lcc = graph.keep_only_the_largest_connected_component(L)
     stats = lane_graph.calculate_stats(L_lcc, mode)
     stats['N_nodes_full'] = len(L.nodes)
     stats['N_edges_full'] = len(L.edges)
@@ -116,5 +143,5 @@ def _generate_metrics_for_one_config(G, label, lanes_key, mode, plot_scc):
     stats['label'] = label
     if plot_scc:
         print(label, 'N deleted =', stats['N_nodes_deleted'], 'E deleted =', stats['N_edges_deleted'])
-        graph_utils.plot_scc(L)
+        graph.plot_scc(L)
     return stats

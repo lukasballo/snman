@@ -1,6 +1,10 @@
 from typing import Iterable
 import json
 import shapely as shp
+import numpy as np
+from scipy.spatial import cKDTree
+import pandas as pd
+import geopandas as gpd
 
 
 def flatten_list(items):
@@ -75,3 +79,61 @@ def multilinestring_to_linestring(geom):
 
 def safe_division(dividend, divisor, if_division_by_zero=float('inf')):
     return dividend / divisor if divisor != 0 else if_division_by_zero
+
+
+def join_nearest_points(gdA, gdB):
+    """
+    Joins two GeoDataFrames with points such that each point gets joined with its nearest neighbor
+
+    Copied from here:
+    https://gis.stackexchange.com/questions/222315/finding-nearest-point-in-other-geodataframe-using-geopandas
+
+    Parameters
+    ----------
+    gdA : gpd.GeoDataFrame
+    gdB : gpd.GeoDataFrame
+
+    Returns
+    -------
+    gpd.GeoDataFrame
+
+    """
+    nA = np.array(list(gdA.geometry.apply(lambda x: (x.x, x.y))))
+    nB = np.array(list(gdB.geometry.apply(lambda x: (x.x, x.y))))
+    btree = cKDTree(nB)
+    dist, idx = btree.query(nA, k=2)
+    dist = np.array(list(map(lambda x: x[1], dist)))
+    idx = np.array(list(map(lambda x: x[1], idx)))
+    gdB_nearest = gdB.iloc[idx].drop(columns="geometry").reset_index(drop=True)
+    gdf = pd.concat(
+        [
+            gdA.reset_index(drop=True),
+            pd.Series(dist, name='distance_to_next_space')
+        ],
+        axis=1)
+
+    return gdf
+
+
+def object_from_string(string):
+    return json.loads(string) if string != 'nan' else []
+
+
+def get_nth_element_of_list(my_list, n):
+    """
+    A safe way to get nth element of a list. Returns None if that element does not exist.
+
+    Parameters
+    ----------
+    my_list: list
+    n: int
+
+    Returns
+    -------
+    Any
+
+    """
+    if n < len(my_list):
+        return my_list[n]
+    else:
+        return None

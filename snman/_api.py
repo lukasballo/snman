@@ -16,11 +16,13 @@ from . import hierarchy
 from . import enrichment
 from . import simplification
 from . import merge_edges
-from . import graph_utils
+from . import graph
 from . import distribution
 from . import rebuilding
 from . import space_allocation
 from . import stats
+from . import street_graph_node
+from . import street_graph_edge
 
 
 def get_street_graph(
@@ -139,7 +141,7 @@ def get_street_graph(
     simplification.simplify_edge_geometries(G, 35)
 
     print('Keep only the largest weakly connected component')
-    G = graph_utils.keep_only_the_largest_connected_component(G, weak=True)
+    G = graph.keep_only_the_largest_connected_component(G, weak=True)
 
     print('Add lane stats to edges')
     space_allocation.generate_lane_stats(G)

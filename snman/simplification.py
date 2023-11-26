@@ -2,7 +2,7 @@ import geopandas as gpd
 import pandas as pd
 import shapely as shp
 from . import osmnx_customized as oxc
-from . import io, geometry_tools, graph_utils, street_graph
+from . import io, geometry_tools, graph, street_graph
 from .constants import *
 import networkx as nx
 import itertools as it
@@ -11,7 +11,7 @@ import copy
 
 def simplify_edge_geometries(G, radius=DEFAULT_SIMPLIFICATION_RADIUS):
     for uvk, edge in G.edges.items():
-        if edge.get('geometry') is not None:
+        if edge.get('geometry') is not None and edge.get('_include_in_simplification', True):
             edge['geometry'] = edge['geometry'].simplify(radius, preserve_topology=False)
 
 
@@ -51,7 +51,15 @@ def merge_nodes_geometric(Gc, tolerance=DEFAULT_INTERSECTION_TOLERANCE, given_in
         # buffer nodes GeoSeries then get unary union to merge overlaps
         auto_intersections = (
             G_gdf["geometry"]
-                .buffer(list(map(lambda n_streets: 1 if n_streets<3 else tolerance,G_gdf.street_count)))
+                .buffer(
+                    list(
+                        G_gdf.apply(
+                            lambda row:
+                                1 if row['street_count'] < 3 and len(row.get('layers', [])) == 1 else tolerance,
+                            axis=1
+                        )
+                    )
+                )
                 .unary_union
         )
     else:
@@ -107,7 +115,7 @@ def merge_nodes_geometric(Gc, tolerance=DEFAULT_INTERSECTION_TOLERANCE, given_in
     return intersections_gdf
 
 
-def consolidate_intersections(Gc, intersections_gdf, reconnect_edges=True):
+def consolidate_intersections(G, intersections_gdf, reconnect_edges=True):
     """
     Merge nodes into larger intersections using intersection geometries.
 
@@ -115,7 +123,7 @@ def consolidate_intersections(Gc, intersections_gdf, reconnect_edges=True):
 
     Parameters
     ----------
-    Gc : nx.MultiGraph
+    G : nx.MultiGraph
         centerline graph
     intersections_gdf : gpd.GeoSeries
         intersection geometries
@@ -132,11 +140,10 @@ def consolidate_intersections(Gc, intersections_gdf, reconnect_edges=True):
         edge geometries
     """
 
-    Gc = copy.deepcopy(Gc)
+    G = copy.deepcopy(G)
 
     # STEP 1
-    # buffer nodes to passed-in distance and merge overlaps. turn merged nodes
-    # into gdf and get centroids of each cluster as x, y
+    # prepare the provided intersection polygons
     node_clusters = intersections_gdf
     centroids = node_clusters.centroid
     node_clusters["x"] = centroids.x
@@ -147,11 +154,18 @@ def consolidate_intersections(Gc, intersections_gdf, reconnect_edges=True):
     # attach each node to its cluster of merged nodes. first get the original
     # graph's node points then spatial join to give each node the label of
     # cluster it's within
-    node_points = oxc.utils_graph.graph_to_gdfs(Gc, edges=False)[
-        ["geometry", "street_count", "highway", "traffic_signals"]
+    node_points = oxc.utils_graph.graph_to_gdfs(G, edges=False)[
+        ["geometry", "street_count", "highway", "traffic_signals", "_include_in_simplification"]
     ]
     gdf = gpd.sjoin(node_points, node_clusters, how="left", predicate="within")
     gdf = gdf.drop(columns="geometry").rename(columns={"index_right": "cluster"})
+    # shift the cluster ids to avoid collision with node ids
+    gdf['cluster'] = gdf['cluster'] + max(G.nodes)
+
+    gdf['osmid_temp'] = gdf.index
+    # overwrite cluster ids with the normal ids in case of nodes that are excluded from simplification
+    gdf['cluster'] = gdf.apply(lambda row: row['cluster'] if row['_include_in_simplification'] else row['osmid_temp'], axis=1)
+    gdf.drop(columns='osmid_temp')
 
     # STEP 3
     # if a cluster contains multiple components (i.e., it's not connected)
@@ -162,7 +176,7 @@ def consolidate_intersections(Gc, intersections_gdf, reconnect_edges=True):
     groups = gdf.groupby("cluster")
     for cluster_label, nodes_subset in groups:
         if len(nodes_subset) > 1:
-            Gsub = Gc.subgraph(nodes_subset.index).copy()
+            Gsub = G.subgraph(nodes_subset.index).copy()
             # Ignore pedestrian links for the detection of weakly connected components
             #for id, edge in Gs.copy().edges.items():
             #    if edge.get('highway') in {'path', 'footway', 'steps'}:
@@ -187,8 +201,8 @@ def consolidate_intersections(Gc, intersections_gdf, reconnect_edges=True):
 
     # STEP 4
     # create new empty graph and copy over misc graph data
-    Hc = nx.MultiDiGraph()
-    Hc.graph = Gc.graph
+    H = nx.MultiDiGraph()
+    H.graph = G.graph
 
     # STEP 5
     # create a new node for each cluster of merged nodes
@@ -204,41 +218,43 @@ def consolidate_intersections(Gc, intersections_gdf, reconnect_edges=True):
         if len(osmids) == 1:
             # if cluster is a single node, add that node to new graph
             osmid = osmids[0]
-            Hc.add_node(
+            H.add_node(
                 cluster_label,
                 osmid_original=osmid,
                 traffic_signals=traffic_signals,
-                highway=Gc.nodes[osmid].get('highway'),
-                x=Gc.nodes[osmid].get('x'),
-                y=Gc.nodes[osmid].get('y')
+                highway=G.nodes[osmid].get('highway'),
+                _include_in_simplification=G.nodes[osmid].get('_include_in_simplification'),
+                x=G.nodes[osmid].get('x'),
+                y=G.nodes[osmid].get('y')
             )
 
         else:
             # if cluster is multiple merged nodes, create one new node to
             # represent them
-            Hc.add_node(
+            H.add_node(
                 cluster_label,
                 osmid_original=str(osmids),
                 traffic_signals=traffic_signals,
                 highway=str(highway_tags),
+                _include_in_simplification=True,
                 x=nodes_subset["x"].iloc[0],
                 y=nodes_subset["y"].iloc[0],
             )
 
     # calculate street_count attribute for all nodes lacking it
-    null_nodes = [n for n, sc in Hc.nodes(data="street_count") if sc is None]
-    street_count = oxc.stats.count_streets_per_node(Hc, nodes=null_nodes)
-    nx.set_node_attributes(Hc, street_count, name="street_count")
+    null_nodes = [n for n, sc in H.nodes(data="street_count") if sc is None]
+    street_count = oxc.stats.count_streets_per_node(H, nodes=null_nodes)
+    nx.set_node_attributes(H, street_count, name="street_count")
 
-    if not Gc.edges or not reconnect_edges:
+    if not G.edges or not reconnect_edges:
         # if reconnect_edges is False or there are no edges in original graph
         # (after dead-end removed), then skip edges and return new graph as-is
-        return Hc
+        return H
 
     # STEP 6
     # create new edge from cluster to cluster for each edge in original graph
-    gdf_edges = oxc.utils_graph.graph_to_gdfs(Gc, nodes=False)
-    for u, v, k, data in Gc.edges(keys=True, data=True):
+    gdf_edges = oxc.utils_graph.graph_to_gdfs(G, nodes=False)
+    for u, v, k, data in G.edges(keys=True, data=True):
         u2 = gdf.loc[u, "cluster"]
         v2 = gdf.loc[v, "cluster"]
 
@@ -249,11 +265,11 @@ def consolidate_intersections(Gc, intersections_gdf, reconnect_edges=True):
             data["v_original"] = v
             if "geometry" not in data:
                 data["geometry"] = gdf_edges.loc[(u, v, k), "geometry"]
-            key2 = Hc.add_edge(u2, v2, **data)
+            key2 = H.add_edge(u2, v2, **data)
 
             # reverse the edge attributes if its topological direction has changed
             #if u2 > v2:
-            #    street_graph.reverse_edge(Hc, u2, v2, key2, reverse_topology=True)
+            #    street_graph.reverse_edge(H, u2, v2, key2, reverse_topology=True)
 
     # STEP 7
     # for every group of merged nodes with more than 1 node in it, extend the
@@ -266,16 +282,16 @@ def consolidate_intersections(Gc, intersections_gdf, reconnect_edges=True):
 
             # get coords of merged nodes point centroid to prepend or
             # append to the old edge geom's coords
-            x = Hc.nodes[cluster_label]["x"]
-            y = Hc.nodes[cluster_label]["y"]
+            x = H.nodes[cluster_label]["x"]
+            y = H.nodes[cluster_label]["y"]
             xy = [(x, y)]
 
             # for each edge incident on this new merged node, update its
             # geometry to extend to/from the new node's point coords
-            in_edges = set(Hc.in_edges(cluster_label, keys=True))
-            out_edges = set(Hc.out_edges(cluster_label, keys=True))
+            in_edges = set(H.in_edges(cluster_label, keys=True))
+            out_edges = set(H.out_edges(cluster_label, keys=True))
             for u, v, k in in_edges | out_edges:
-                geometry = Hc.edges[u, v, k]["geometry"]
+                geometry = H.edges[u, v, k]["geometry"]
 
                 # for longer geometries, strip a part of the edge geometry before connecting it to the new node
                 if geometry.length > 40:
@@ -293,13 +309,13 @@ def consolidate_intersections(Gc, intersections_gdf, reconnect_edges=True):
                     new_coords = xy + [old_coords[-1]] if cluster_label == u else [old_coords[0]] + xy
 
                 new_geom = shp.ops.LineString(new_coords)
-                Hc.edges[u, v, k]["geometry"] = new_geom
-                Hc.edges[u, v, k]["_extension"] = str([u, v, k])
+                H.edges[u, v, k]["geometry"] = new_geom
+                H.edges[u, v, k]["_extension"] = str([u, v, k])
 
                 # update the edge length attribute, given the new geometry
-                Hc.edges[u, v, k]["length"] = new_geom.length
+                H.edges[u, v, k]["length"] = new_geom.length
 
-    return Hc
+    return H
 
 
 def split_through_edges_in_intersections(Gc, intersections_gdf):
@@ -328,6 +344,7 @@ def split_through_edges_in_intersections(Gc, intersections_gdf):
     intersections_gdf['ix_geometry'] = intersections_gdf['geometry']
 
     edges = oxc.graph_to_gdfs(Gc, nodes=False)
+    edges = edges[edges['_include_in_simplification'] == True]
     # retain the edge geometry in a separate attribute for later joining
     edges['e_geometry'] = edges['geometry']
 
@@ -401,13 +418,20 @@ def connect_components_in_intersections(Gc, intersections_gdf, separate_layers=T
     """
 
     # get the nodes as a geodataframe
-    node_points = oxc.graph_to_gdfs(Gc, edges=False)[["geometry", "street_count", "highway"]]
+    node_points = oxc.graph_to_gdfs(Gc, edges=False)[["geometry", "street_count", "highway", '_include_in_simplification']]
     # eliminate dead ends from the process to keep them as they are
     node_points = node_points.query('street_count != 1')
     # assign each node to an intersection (polygon)
     gdf = gpd.sjoin(node_points, intersections_gdf, how="left", predicate="within")
     # clean up the columns of the resulting geodataframe (cluster=id of the intersection geometry)
     gdf = gdf.drop(columns="geometry").rename(columns={"index_right": "cluster"})
+    # shift the cluster ids to avoid collision with node ids
+    gdf['cluster'] = gdf['cluster'] + max(Gc.nodes)
+
+    gdf['osmid_temp'] = gdf.index
+    # overwrite cluster ids with the normal ids in case of nodes that are excluded from simplification
+    gdf['cluster'] = gdf.apply(lambda row: row['cluster'] if row['_include_in_simplification'] else row['osmid_temp'], axis=1)
+    gdf.drop(columns='osmid_temp')
 
     groups = gdf.groupby("cluster")
     for cluster_label, nodes_subset in groups:

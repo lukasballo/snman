@@ -111,3 +111,55 @@ def plot_scc(G):
 
     # Draw the graph with nodes colored by component
     oxc.plot_graph(G, node_color=[colors[node] for node in G.nodes()])
+
+
+def remove_isolated_nodes(G):
+    """
+    Removes all nodes that are not connected to any other nodes
+
+    Parameters
+    ----------
+    G: nx.Graph
+
+    Returns
+    -------
+    None
+    """
+
+    G.remove_nodes_from(list(nx.isolates(G)))
+
+
+def apply_function_to_each_edge(G, function):
+    """
+    Applies the given function to each edge
+
+    Parameters
+    ----------
+    G: nx.Graph
+    function: function
+
+    Returns
+    -------
+    None
+    """
+
+    for uvk, data in G.edges.items():
+        function(G, uvk)
+
+
+def apply_function_to_each_node(G, function):
+    """
+    Applies the given function to each node
+
+    Parameters
+    ----------
+    G: nx.Graph
+    function: function
+
+    Returns
+    -------
+    None
+    """
+
+    for n, data in G.nodes.items():
+        function(G, n)

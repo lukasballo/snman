@@ -96,14 +96,33 @@ def ensure_multipolygon(geometry):
 
     Parameters
     ----------
-    geometry : shp.geometry.Polygon or shp.geometry.MultiPolygon
+    geometry : shp.Polygon, shp.MultiPolygon
 
     Returns
     -------
-    geometry : shp.geometry.MultiPolygon
+    geometry : shp.MultiPolygon
     """
 
     if isinstance(geometry, shp.geometry.MultiPolygon):
         return geometry
     else:
         return shp.geometry.MultiPolygon([geometry])
+
+
+def ensure_multilinestring(geometry):
+    """
+    Converts linestrings into multilinestrings if necessary
+
+    Parameters
+    ----------
+    geometry : shp.LineString, shp.MultiLineString
+
+    Returns
+    -------
+    geometry : shp.MultiLineString
+    """
+
+    if isinstance(geometry, shp.geometry.MultiLineString):
+        return geometry
+    else:
+        return shp.geometry.MultiLineString([geometry])

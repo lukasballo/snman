@@ -8,7 +8,6 @@ OTHER_HIERARCHY = '9_other'
 
 HIERARCHIES = {HIGHWAY, MAIN_ROAD, LOCAL_ROAD, DEAD_END, PATHWAY, OTHER_HIERARCHY}
 
-
 def add_hierarchy(G, iterations=20):
     """
     Label all streets with hierarchy levels

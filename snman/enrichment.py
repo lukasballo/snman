@@ -10,15 +10,17 @@ import pandas as pd
 import geopandas as gpd
 import networkx as nx
 import warnings
-from . import utils, space_allocation, street_graph
+from . import utils, space_allocation, street_graph, io
 from .constants import *
 
 
 def match_linestrings(
         G, source, column_configs,
         remove_short_overlaps=True, max_dist2=None,
+        remove_sidetrips=True,
         lanes_key = KEY_LANES_DESCRIPTION,
         modes = None,
+        _save_map=None,
         **distance_matcher_args
 ):
     """
@@ -67,6 +69,10 @@ def match_linestrings(
     else:
         H = G
 
+    if _save_map:
+        I = copy.deepcopy(G)
+        I.remove_edges_from(G.edges())
+
     # add edges to the in-memory map
     for uvk, data in H.edges.items():
         u = int(uvk[0])
@@ -75,11 +81,25 @@ def match_linestrings(
         map_con.add_edge(u, v)
         map_con.add_edge(v, u)
 
+        if _save_map:
+            I.add_edge(u, v)
+            I.add_edge(v, u)
+
+    if _save_map:
+        io.export_street_graph(I, *_save_map)
+
     # create a matcher
     matcher = DistanceMatcher(map_con, **distance_matcher_args)
 
     # submit all source linestrings to the matcher
-    source['node_pairs'] = source.apply(lambda x: _submit_linestring_to_matcher(matcher, x['geometry'], remove_short_overlaps, max_dist2), axis=1)
+    source['node_pairs'] = source.apply(
+        lambda x: _submit_linestring_to_matcher(
+            matcher,
+            x['geometry'],
+            remove_short_overlaps,
+            remove_sidetrips,
+            max_dist2
+        ), axis=1)
 
     # transfer the attributes as specified in "column_configs"
     # note that there may be multiple values that will be transferred to a single target edge,
@@ -111,8 +131,8 @@ def match_linestrings(
                 data[config['target_column'] + '_forward']  = len(edge_values.get(uvk[:2], []))
                 data[config['target_column'] + '_backward'] = len(edge_values.get(uvk[:2][::-1], []))
             if config['agg'] == 'list':
-                data[config['target_column'] + '_forward']  = str(edge_values.get(uvk[:2]))
-                data[config['target_column'] + '_backward'] = str(edge_values.get(uvk[:2][::-1]))
+                data[config['target_column'] + '_forward']  = str(edge_values.get(uvk[:2], []))
+                data[config['target_column'] + '_backward'] = str(edge_values.get(uvk[:2][::-1], []))
             if config['agg'] == 'add_lanes':
                 forward = utils.flatten_list(edge_values.get(uvk[:2], []))
                 data[config['target_column']].extend(forward)
@@ -128,7 +148,7 @@ def match_linestrings(
                     #print(data[config['target_column']])
 
 
-def _submit_linestring_to_matcher(matcher, geom, remove_short_overlaps, max_distance):
+def _submit_linestring_to_matcher(matcher, geom, remove_short_overlaps, remove_sidetrips, max_distance):
     """
     Matches one linestring, respecting the specialties of lvmapmatching,
     e.g., reversed coordinates
@@ -159,11 +179,16 @@ def _submit_linestring_to_matcher(matcher, geom, remove_short_overlaps, max_dist
 
     # remove first/last node from target path if the overlap is short
     if remove_short_overlaps:
-        for ij in [(0,1), (-1,-2)]:
+        for ij in [(0, 1), (-1, -2)]:
+
+            if len(matched_nodes) < 2:
+                return []
             # i: first/last node
             # j: second/second-last node
             i, j = ij
-            source_i= shp.Point(geom.coords[i])
+            # first/last point of the source (to be matched)
+            source_i = shp.Point(geom.coords[i])
+            # first/last matched node on the target network
             target_i = shp.Point(
                 matcher.map.node_coordinates(
                     matched_nodes[i]
@@ -178,6 +203,7 @@ def _submit_linestring_to_matcher(matcher, geom, remove_short_overlaps, max_dist
             dist_source_i_target_j = source_i.distance(target_j)
 
             if dist_source_i_target_i > dist_source_i_target_j:
+                # delete the point
                 del matched_nodes[i]
 
     if max_distance:
@@ -186,25 +212,37 @@ def _submit_linestring_to_matcher(matcher, geom, remove_short_overlaps, max_dist
 
     matched_node_pairs = [(matched_nodes[i], matched_nodes[i + 1]) for i in range(len(matched_nodes) - 1)]
 
+    # see the german term 'stichfahrt' for sidetrips
+    if remove_sidetrips and len(matched_node_pairs) >= 2:
+        matched_node_pairs_filtered = []
+        # iterate over all pairs except the last one
+        for i, node_pair in enumerate(matched_node_pairs[:-2]):
+            next_node_pair = matched_node_pairs[i+1]
+            # check if the next pair is a reverse of this one which would make it a sidetrip
+            if node_pair[::-1] != next_node_pair:
+                matched_node_pairs_filtered.append(node_pair)
+        # write the result back into the original list
+        matched_node_pairs = matched_node_pairs_filtered
+
     return matched_node_pairs
 
 
-def match_lane_edits(G, lane_edits, **mapmatching_arguments):
+def match_lane_edits(G, lane_edits, lanes_key=KEY_LANES_DESCRIPTION, **mapmatching_arguments):
     column_configs = [
-        {'source_column': 'add_lanes', 'target_column': 'ln_desc', 'agg': 'add_lanes'},
-        {'source_column': 'replace_lanes', 'target_column': 'ln_desc', 'agg': 'replace_lanes'},
-        {'source_column': 'payload', 'target_column': '_lane_edits_payload', 'agg': 'list'},
+        {'source_column': 'add_lanes', 'target_column': lanes_key, 'agg': 'add_lanes'}
     ]
 
-    return match_linestrings(
-        G, lane_edits, column_configs,
-        **mapmatching_arguments
-    )
+    return match_linestrings(G, lane_edits, column_configs, lanes_key=lanes_key, **mapmatching_arguments)
 
 
-def match_parking_spots(G, parking_spots, parking_space_length=6):
+def match_parking_spots(
+        G, parking_spots,
+        parking_space_length=7, parking_space_length_for_one_lane=24,
+        remove_previous_parking=True
+):
 
-    # copy the parking spaces dataset and convert the points into linestrings that can be matched onto the edges
+    # copy the parking spaces dataset and convert the points into zero-length linestrings
+    # that can be matched onto the edges
     parking_spots = copy.deepcopy(parking_spots)
     parking_spots.geometry = parking_spots.geometry.apply(lambda x: shp.LineString([x, x]))
 
@@ -213,23 +251,48 @@ def match_parking_spots(G, parking_spots, parking_space_length=6):
         {'source_column': 'id1', 'target_column': parking_count_key, 'agg': 'count'}
     ]
 
+    # create a copy of the street graph that only contains ground-level edges
+    H = copy.deepcopy(G)
+    for uvk, data in G.edges.items():
+        if data.get('layer') != 0:
+            H.remove_edge(*uvk)
+
+    # match on the ground-level street graph
     match_linestrings(
-        G, parking_spots, column_configs, remove_short_overlaps=False,
+        H, parking_spots, column_configs, remove_short_overlaps=False,
+        modes=[MODE_PRIVATE_CARS, MODE_TRANSIT],
         max_dist=30, max_dist_init=30, max_lattice_width=5
     )
 
+    # copy the matched attributes into the original street graph
+    for _direction in ['_forward', '_backward']:
+        nx.set_edge_attributes(
+            G,
+            nx.get_edge_attributes(H, parking_count_key + _direction),
+            parking_count_key + _direction
+        )
+
     for uvk, data in G.edges.items():
         # please note that the forward/backward distinction is meaningless and completely random in this case
-        parking_count = data[parking_count_key + '_forward'] + data[parking_count_key + '_backward']
+        parking_count = data.get(parking_count_key + '_forward', 0) + data.get(parking_count_key + '_backward', 0)
+        data['n_parking_spots'] = parking_count
         length = data['length']
         parking_space_density = utils.safe_division(parking_count, length)
         # estimating the number of parking lanes based on the number of parking spots that have been matched
         n_parking_lanes = round(parking_space_density / (1 / parking_space_length))
+        if n_parking_lanes == 0 and parking_space_density > 1 / parking_space_length_for_one_lane:
+            n_parking_lanes = 1
+
+        if remove_previous_parking:
+            data[KEY_LANES_DESCRIPTION] = space_allocation.filter_lanes_by_modes(
+                data[KEY_LANES_DESCRIPTION],
+                MODES.difference({MODE_CAR_PARKING})
+            )
 
         data[KEY_LANES_DESCRIPTION].extend([LANETYPE_PARKING_PARALLEL + DIRECTION_BOTH] * n_parking_lanes)
 
 
-def match_public_transit(G, routes):
+def match_public_transit(G, pt_routes):
     """
     Match public transit routes onto the street graph using mapmatching.
 
@@ -245,16 +308,24 @@ def match_public_transit(G, routes):
 
     """
 
+    pt_routes = pt_routes.explode(ignore_index=True)
+
     column_configs = [
         {'source_column': 'LINIENNUMM', 'target_column': '_pt_routes', 'agg': 'list'},
         {'source_column': 'RICHTUNG', 'target_column': '_pt_directions', 'agg': 'list'},
     ]
 
     match_linestrings(
-        G, routes, column_configs, remove_short_overlaps=False,
+        G, pt_routes, column_configs, remove_short_overlaps=False,
         modes=(MODE_TRANSIT, MODE_PRIVATE_CARS),
-        max_dist=100, max_dist_init=100, max_lattice_width=5
+        max_dist=200, max_dist_init=500, max_lattice_width=5
     )
+
+    for uvk, data in G.edges.items():
+        data['pt_forward'] = data['_pt_routes_forward'] != '[]'
+        data['pt_backward'] = data['_pt_routes_backward'] != '[]'
+        # for backward compatibility, to be removed later
+        data['pt_bus'] = data['pt_forward'] or data['pt_backward']
 
 
 def match_sensors(G, sensors_df):

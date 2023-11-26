@@ -1,5 +1,5 @@
 import networkx as nx
-from . import graph_utils, geometry_tools, utils, street_graph, space_allocation
+from . import graph, geometry_tools, utils, street_graph, space_allocation
 from. constants import *
 from shapely import geometry, ops
 import shapely
@@ -25,6 +25,10 @@ def merge_parallel_edges(G):
 
     edge_lists = {}
     for edge in G.edges(data=True, keys=True):
+        data = edge[3]
+        # skip this edge if it's not included in the simplification
+        if not data.get('_include_in_simplification', True):
+            continue
         # group edges by start/end nodes and layer (uvl = u, v, layer)
         uvl = (min(edge[0:2]), max(edge[0:2]), edge[3].get('layer'))
         # initialize empty edge list if necessary
@@ -75,9 +79,9 @@ def _merge_given_parallel_edges(G, u, v, l, edges):
     # sort the edges geometrically from left to the right
     edges_sorted_by_go = sorted(edges, key=lambda x: x[3].get('_geometry_offset'), reverse=True)
 
-    # take the edge with the highest hierarchy as a parent edge
+    # take the edge with the highest osm highway tag level
     i_parent_edge = 0
-    edges_sorted_by_hierarchy = sorted(edges, key=lambda x: x[3].get('hierarchy'))
+    edges_sorted_by_hierarchy = sorted(edges, key=lambda x: OSM_HIGHWAY_VALUES[x[3]['highway']]['level'])
     parent_edge = edges_sorted_by_hierarchy[i_parent_edge]
 
     # merge the lanes from all
@@ -103,23 +107,25 @@ def _merge_given_parallel_edges(G, u, v, l, edges):
     maxspeed = max(maxspeeds) if len(maxspeeds) > 0 else None
     parent_edge_data['maxspeed'] = maxspeed
 
-    # Take the highest hierarchy level from all source edges
-    parent_edge_data['hierarchy'] = min([edge[3].get('hierarchy') for edge in edges])
-
     for index, edge in enumerate(edges_sorted_by_hierarchy):
         # remove edge, except if it's the parent edge
         if index != i_parent_edge:
-            graph_utils.safe_remove_edge(G, *edge[0:3])
+            graph.safe_remove_edge(G, *edge[0:3])
 
 
 def merge_consecutive_edges(G, distinction_attributes=set()):
 
-    # create a subgraph that only contains degree=2 nodes
+    # create a subgraph that only contains nodes that are all of these
+    # - degree=2
+    # - included in the simplification
+    # - have only one layer
     H = G.copy()
     degrees = dict(H.degree)
-    for node in list(H.nodes()):
-        if degrees[node] != 2:
-            H.remove_node(node)
+    for n, data in G.nodes.items():
+        if degrees[n] == 2 and data.get('_include_in_simplification', True) and len(data.get('layers', [])) == 1:
+            pass
+        else:
+            H.remove_node(n)
 
     # identify weakly connected components as clusters to be merged
     wccs = list(nx.weakly_connected_components(H))
@@ -260,7 +266,7 @@ def _merge_given_consecutive_edges(G, edge_chain, distinction_attributes):
 
         # Delete the old edges
         for edge in edge_subchain:
-            graph_utils.safe_remove_edge(G, *edge[0:3])
+            graph.safe_remove_edge(G, *edge[0:3])
 
 
 def reconstruct_consecutive_edges(G):
@@ -275,7 +281,7 @@ def reconstruct_consecutive_edges(G):
 
     Parameters
     ----------
-    G : MultiDiGraph
+    G : nx.MultiDiGraph
         street graph
 
     Returns
