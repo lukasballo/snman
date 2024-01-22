@@ -39,7 +39,7 @@ def network_metrics_for_all_measurement_regions(G, measurement_regions_gdf, plot
 
     metrics = measurement_regions_gdf.apply(
         lambda row: (
-            row['name'],
+            row.name,
             network_metrics(
                 oxc.truncate.truncate_graph_polygon(G, row['geometry'], quadrat_width=100, retain_all=True),
                 plot_scc=plot_scc
@@ -130,7 +130,7 @@ def _generate_metrics_for_one_config(G, label, lanes_key, mode, plot_scc):
     -------
 
     """
-    L = street_graph.to_lane_graph(
+    L = lane_graph.create_lane_graph(
         street_graph.filter_lanes_by_modes(G.copy(), {mode}, lane_description_key=lanes_key),
         lanes_attribute=lanes_key
     )

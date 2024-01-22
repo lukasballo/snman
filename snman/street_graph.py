@@ -1,5 +1,5 @@
 from . import osmnx_customized as oxc
-from . import graph, space_allocation, _errors
+from . import graph, space_allocation, _errors, geometry_tools
 from .constants import *
 import geopandas as gpd
 import networkx as nx
@@ -405,7 +405,7 @@ def reverse_edge(
     # reverse geometry
     if data.get('geometry') and data.get('geometry') != shapely.ops.LineString():
         try:
-            data['geometry'] = shapely.ops.substring(data['geometry'], 1, 0, normalized=True)
+            data['geometry'] = geometry_tools.reverse_linestring(data['geometry'])
         except AttributeError:
             pass
 
@@ -522,10 +522,10 @@ def separate_edges_for_lane_directions(G, lanes_key=KEY_LANES_DESCRIPTION):
             lp = space_allocation._lane_properties(lane)
             if lp.direction == DIRECTION_FORWARD:
                 lanes_forward.append(lane)
-            if lp.direction == DIRECTION_BACKWARD:
+            elif lp.direction == DIRECTION_BACKWARD:
                 lanes_backward.append(lane)
             # convert bidirectional lanes into two separate oneway lanes
-            if lp.direction == DIRECTION_BOTH:
+            elif lp.direction == DIRECTION_BOTH:
                 lp_forward = space_allocation._lane_properties(lane)
                 lp_forward.direction = DIRECTION_FORWARD
                 lanes_forward.append(str(lp_forward))
@@ -556,6 +556,6 @@ def separate_edges_for_lane_directions(G, lanes_key=KEY_LANES_DESCRIPTION):
 
     organize_edge_directions(H, method='by_osm_convention')
     space_allocation.update_osm_tags(H, lanes_description_key=lanes_key)
-    add_edge_costs(H)
+    add_edge_costs(H, lanes_description=lanes_key)
 
     return H

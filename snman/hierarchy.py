@@ -8,6 +8,8 @@ OTHER_HIERARCHY = '9_other'
 
 HIERARCHIES = {HIGHWAY, MAIN_ROAD, LOCAL_ROAD, DEAD_END, PATHWAY, OTHER_HIERARCHY}
 
+HIGHWAY_OSM = {'motorway', 'motorway_link', 'trunk', 'trunk_link'}
+
 def add_hierarchy(G, iterations=20):
     """
     Label all streets with hierarchy levels
@@ -64,7 +66,7 @@ def _add_edge_hierarchy(edge):
     if edge_data.get('dead_end'):
         edge_data['hierarchy'] = DEAD_END
 
-    if edge_data.get('highway') in {'motorway', 'motorway_link', 'trunk', 'trunk_link'}:
+    if edge_data.get('highway') in HIGHWAY_OSM:
         edge_data['hierarchy'] = HIGHWAY
 
 

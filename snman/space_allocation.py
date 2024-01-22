@@ -1,7 +1,7 @@
 from .constants import *
 import math
 import networkx as nx
-from . import utils
+from . import utils, hierarchy
 import numpy as np
 import copy
 
@@ -66,7 +66,7 @@ def _generate_lanes_for_edge(edge):
         _DIRECTION_BACKWARD = DIRECTION_BACKWARD
 
     # motorized lanes: replace with highway lanes if the road is a highway (motorway in osm terminology)
-    if edge.get('highway') in {'motorway', 'motorway_link'}:
+    if edge.get('highway') in hierarchy.HIGHWAY_OSM:
         _LANETYPE_MOTORIZED = LANETYPE_HIGHWAY
     else:
         _LANETYPE_MOTORIZED = LANETYPE_MOTORIZED
@@ -695,6 +695,12 @@ def _update_osm_tags_for_edge(edge, lanes_description_key):
         # set to path
         data['highway'] = 'path'
 
+    # Clean the tags before updating
+    data['bus:lanes:backward'] = None
+    data['bus:lanes:forward'] = None
+    data['vehicle:lanes:backward'] = None
+    data['vehicle:lanes:forward'] = None
+
     # Motorized lanes
     if lane_stats.n_lanes_motorized > 0:
 
@@ -717,12 +723,6 @@ def _update_osm_tags_for_edge(edge, lanes_description_key):
             data['oneway'] = '-1'
         else:
             data['oneway'] = 'no'
-
-        # Clean the tags before updating
-        data['bus:lanes:backward'] = None
-        data['bus:lanes:forward'] = None
-        data['vehicle:lanes:backward'] = None
-        data['vehicle:lanes:forward'] = None
 
         # PT lanes
         if lane_stats.n_lanes_dedicated_pt_both_ways > 0 or lane_stats.n_lanes_dedicated_pt_backward > 0:

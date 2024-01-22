@@ -34,7 +34,9 @@ def get_street_graph(
         intersection_tolerance=10,
         simplification_iterations=3,
         osm_filter=OSM_FILTER,
-        perimeter_crs=None
+        perimeter_crs=None,
+        elevation_file=None,
+        export_raw_streetgraph=None,
 ):
     """
     Create a snman street graph from OpenStreetMap
@@ -76,6 +78,16 @@ def get_street_graph(
         custom_filter=osm_filter,
         simplify=True, simplify_strict=False, retain_all=True, one_edge_per_direction=False
     )
+
+    if export_raw_streetgraph:
+        print('Export raw street graph')
+        # each street is one edge, the lanes are saved as an attribute
+        io.export_street_graph(
+            G,
+            export_raw_streetgraph + '_edges.gpkg',
+            export_raw_streetgraph + '_nodes.gpkg',
+            crs=CRS_for_export
+        )
 
     print('Prepare graph')
     street_graph.prepare_graph(G)
@@ -153,6 +165,10 @@ def get_street_graph(
     print('Update street counts per node')
     spn = oxc.stats.count_streets_per_node(G, nodes=G.nodes)
     nx.set_node_attributes(G, values=spn, name="street_count")
+
+    if elevation_file:
+        print('Add elevation')
+        G = add_elevation(G, elevation_file)
 
     return G
 

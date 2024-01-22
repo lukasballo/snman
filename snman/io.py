@@ -501,9 +501,11 @@ def export_gdf(gdf, path, columns=[], crs=None):
 def export_osm_xml(
         G, path, tags,
         uv_tags=False,
+        lanes_tag=False,
         tag_all_nodes=False,
         key_lanes_description=KEY_LANES_DESCRIPTION,
-        as_oneway_links=False
+        as_oneway_links=False,
+        modes=(MODE_TRANSIT, MODE_CYCLING, MODE_PRIVATE_CARS)
 ):
     """
     Generates an OSM file from the street graph
@@ -532,7 +534,7 @@ def export_osm_xml(
     # keep only the relevant modes
     H = street_graph.filter_lanes_by_modes(
         G,
-        {MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_CYCLING},
+        modes,
         lane_description_key=key_lanes_description
     )
 
@@ -617,6 +619,15 @@ def export_osm_xml(
             ET.SubElement(way, 'tag', attrib={'k': '_u', 'v': str(uvk[0])})
             ET.SubElement(way, 'tag', attrib={'k': '_v', 'v': str(uvk[1])})
             ET.SubElement(way, 'tag', attrib={'k': '_key', 'v': str(uvk[2])})
+
+        if lanes_tag:
+            ET.SubElement(way, 'tag', attrib={'k': 'lanes', 'v': str(data.get(key_lanes_description))})
+
+        for mode in modes:
+            for direction in [DIRECTION_BACKWARD, DIRECTION_FORWARD]:
+                tag = 'cost_' + mode + '_' + direction
+                value = str(data.get('cost_' + key_lanes_description + '_' + mode + '_' + direction, ''))
+                ET.SubElement(way, 'tag', attrib={'k': tag, 'v': value})
 
     # add nodes
     for node_id, point in node_points.items():

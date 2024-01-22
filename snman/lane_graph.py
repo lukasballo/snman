@@ -1,7 +1,7 @@
 import copy
 
 from . import osmnx_customized as oxc
-from . import space_allocation
+from . import space_allocation, geometry_tools
 from .constants import *
 import networkx as nx
 
@@ -82,17 +82,26 @@ def create_lane_graph(G, lanes_attribute=KEY_LANES_DESCRIPTION):
             ]
 
             if not reverse:
-                L.add_edge(u, v, lane_id, **attributes, lane=lane, backward=0, twin_factor=1, instance=1)
+                L.add_edge(
+                    u, v, lane_id, **attributes, lane=lane, backward=0, twin_factor=1, instance=1,
+                    geometry=data.get('geometry')
+                )
             if reverse:
-                L.add_edge(v, u, lane_id, **attributes, lane=lane, backward=1, twin_factor=1, instance=1)
+                L.add_edge(
+                    v, u, lane_id, **attributes, lane=lane, backward=1, twin_factor=1, instance=1,
+                    geometry=geometry_tools.reverse_linestring(data.get('geometry'))
+                )
             if lp.direction in [
                 DIRECTION_BOTH, DIRECTION_BOTH_OPTIONAL, DIRECTION_TBD, DIRECTION_TBD_OPTIONAL
             ]:
-                L.add_edge(u, v, lane_id, **attributes, lane=lane, backward=0, twin_factor=0.5, instance=1)
+                L.add_edge(
+                    u, v, lane_id, **attributes, lane=lane, backward=0, twin_factor=0.5, instance=1,
+                    geometry=data.get('geometry')
+                )
                 L.add_edge(
                     v, u, lane_id, **attributes,
-                    lane=space_allocation.reverse_lane(lane), backward=1, twin_factor=0.5,
-                    instance=2
+                    lane=space_allocation.reverse_lane(lane), backward=1, twin_factor=0.5, instance=2,
+                    geometry=geometry_tools.reverse_linestring(data.get('geometry'))
                 )
 
             filled_width += lp.width
@@ -150,6 +159,8 @@ def calculate_stats(L, mode):
     nx.set_edge_attributes(L, nx.edge_betweenness_centrality(L, normalized=True, weight='cost_'+mode), 'bc')
 
     return {
+        '_L': copy.deepcopy(L),
+        '_mode': mode,
         'usable_N_nodes': len(L.nodes),
         'usable_N_edges':
             round(

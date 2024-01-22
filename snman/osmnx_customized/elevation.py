@@ -8,6 +8,7 @@ from pathlib import Path
 import networkx as nx
 import numpy as np
 import pandas as pd
+import geopandas as gpd
 import requests
 
 from . import downloader
@@ -47,7 +48,7 @@ def _query_raster(nodes, filepath, band):
         return zip(nodes.index, values)
 
 
-def add_node_elevations_raster(G, filepath, band=1, cpus=None):
+def add_node_elevations_raster(G, filepath, band=1, cpus=None, graph_crs=2056, raster_crs=4326):
     """
     Add `elevation` attribute to each node from local raster file(s).
 
@@ -55,6 +56,8 @@ def add_node_elevations_raster(G, filepath, band=1, cpus=None):
     composed of the files at those paths as an intermediate step.
 
     See also the `add_edge_grades` function.
+
+    snman.oxc: added custom raster_crs
 
     Parameters
     ----------
@@ -66,6 +69,10 @@ def add_node_elevations_raster(G, filepath, band=1, cpus=None):
         which raster band to query
     cpus : int
         how many CPU cores to use; if None, use all available
+    graph_crs : int
+        CRS of the graph geometries
+    raster_crs : int
+        CRS of the raster file
 
     Returns
     -------
@@ -88,7 +95,17 @@ def add_node_elevations_raster(G, filepath, band=1, cpus=None):
         filepath = f"./.osmnx_{sha}.vrt"
         gdal.BuildVRT(filepath, filepaths).FlushCache()
 
-    nodes = utils_graph.graph_to_gdfs(G, edges=False, node_geometry=False)[["x", "y"]]
+    # convert the x and y coordinates of the nodes to match the raster image and then extract them
+    nodes = utils_graph.graph_to_gdfs(G, edges=False, node_geometry=False)
+    nodes = gpd.GeoDataFrame(
+        nodes, geometry=gpd.points_from_xy(nodes.x, nodes.y), crs=graph_crs
+    )
+    nodes = nodes.to_crs(raster_crs)
+    nodes.x = nodes.geometry.x
+    nodes.y = nodes.geometry.y
+    nodes = nodes[["x", "y"]]
+    print(nodes)
+
     if cpus == 1:
         elevs = dict(_query_raster(nodes, filepath, band))
     else:

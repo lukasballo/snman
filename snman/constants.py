@@ -332,6 +332,5 @@ EXPORT_OSM_TAGS = {
     'cycleway', 'cycleway:lane', 'cycleway:left', 'cycleway:left:lane', 'cycleway:right', 'cycleway:right:lane',
     'bus:lanes:backward', 'bus:lanes:forward', 'vehicle:lanes:backward', 'vehicle:lanes:forward',
     '_connected_component', 'sensors_forward', 'sensors_backward',
-    'cost_ln_desc_cycling_>', 'cost_ln_desc_cycling_<', 'cost_ln_desc_private_cars_>', 'cost_ln_desc_private_cars_<',
     'length'
 }

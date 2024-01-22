@@ -8,7 +8,7 @@ import itertools as it
 import copy
 
 
-def merge_parallel_edges(G):
+def merge_parallel_edges(G, max_hausdorff_distance=50):
     """
     Detect and merge all sets of edges sharing the same start/end nodes, incl. their attributes
     TODO: Avoid merging edges that are too far apart, e.g. parallel streets
@@ -26,7 +26,7 @@ def merge_parallel_edges(G):
     edge_lists = {}
     for edge in G.edges(data=True, keys=True):
         data = edge[3]
-        # skip this edge if it's not included in the simplification
+        # skip this edge if it should not be included in simplification
         if not data.get('_include_in_simplification', True):
             continue
         # group edges by start/end nodes and layer (uvl = u, v, layer)
@@ -39,11 +39,11 @@ def merge_parallel_edges(G):
     # Merge each set of grouped edges
     for uvl, edge_list in edge_lists.items():
         if len(edge_list) > 1:
-            _merge_given_parallel_edges(G, *uvl, edge_list)
+            _merge_given_parallel_edges(G, *uvl, edge_list, max_hausdorff_distance)
             pass
 
 
-def _merge_given_parallel_edges(G, u, v, l, edges):
+def _merge_given_parallel_edges(G, u, v, l, edges, max_hausdorff_distance):
     """
     Merge the parallel edges given in a list
 

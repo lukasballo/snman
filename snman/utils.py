@@ -1,5 +1,7 @@
 from typing import Iterable
 import json
+
+import shapely
 import shapely as shp
 import numpy as np
 from scipy.spatial import cKDTree
@@ -71,10 +73,36 @@ def safe_dumps(data):
         return 'NULL'
 
 
-def multilinestring_to_linestring(geom):
+def multilinestring_to_linestring(geom, how='only_first'):
+    """
+    Converts a shapely.MultiLineString to shapely.LineString,
+    using the selected method.
+
+    Parameters
+    ----------
+    geom : shp.MultiLineString
+        the multilinestring geometry
+    how : str
+        - only_first: only first element will be kept
+        - merge: all elements will be merged into one
+
+    Returns
+    -------
+
+    """
     if isinstance(geom, shp.geometry.MultiLineString):
-        geom = geom.geoms[0]
-    return geom
+        if how == 'only_first':
+            return geom.geoms[0]
+        elif how == 'merge':
+            points = []
+            for single_geom in list(geom.geoms):
+                points += list(single_geom.coords)
+            return shapely.LineString(points)
+        else:
+            return None
+    else:
+        return geom
+
 
 
 def safe_division(dividend, divisor, if_division_by_zero=float('inf')):
