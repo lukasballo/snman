@@ -915,6 +915,8 @@ def multi_rebuild(
         print('---- adjusting non-traffic spaces ------')
     _adjust_non_traffic(L, L_existing, G, width_attribute, verbose)
 
+    return L
+
 
 def rebuild_streets_based_on_lane_graph(
         G,
@@ -1061,7 +1063,7 @@ def multi_rebuild_regions(
                 io.export_street_graph(H, export_H[0], export_H[1])
 
         # execute the multi rebuilding function
-        rebuilding_function(L, None, H, width_attribute, verbose=verbose)
+        L = rebuilding_function(L, None, H, width_attribute, verbose=verbose)
 
         # use the resulting lane graph (with edges that have not been removed) to rebuild the street graph
         rebuild_streets_based_on_lane_graph(
