@@ -1,4 +1,5 @@
 import networkx as nx
+import numpy as np
 from . import osmnx_customized as oxc
 from . import utils
 
@@ -19,6 +20,52 @@ def weak_neighbors(G, node):
 
     edges = list(G.in_edges(node)) + list(G.out_edges(node))
     return set(utils.flatten_list(edges)).difference({node})
+
+
+def cost_increase_by_edge_removal(G, u, v, k, weight):
+    """
+    Returns the increase of cost between u and v if the (u,v,k) edge is removed.
+
+    Parameters
+    ----------
+    G : nx.MultiDiGraph
+        graph, this function works only for a MultiDiGraph
+    u : int
+    v : int
+    k : int
+    weight : str
+        which attribute should be used as weight
+
+    Returns
+    -------
+
+    """
+
+    H = G.edge_subgraph(
+        filter(
+            lambda candidate_uvk:
+                not set(candidate_uvk[0:2]).isdisjoint({u, v}),
+            G.edges
+        )
+    )
+
+    cost_before_removal = nx.shortest_path_length(
+        H,
+        u, v, weight=weight
+    )
+
+    if not H.has_edge(u, v, k):
+        return np.nan
+
+    try:
+        cost_after_removal = nx.shortest_path_length(
+            H.edge_subgraph(set(G.edges).difference({(u, v, k)})),
+            u, v, weight=weight
+        )
+    except (nx.NetworkXNoPath, nx.NodeNotFound):
+        cost_after_removal = np.inf
+
+    return cost_after_removal - cost_before_removal
 
 
 def keep_only_the_largest_connected_component(G, weak=False):
@@ -163,3 +210,17 @@ def apply_function_to_each_node(G, function):
 
     for n, data in G.nodes.items():
         function(G, n)
+
+
+class SNManGenericGraph:
+
+    def apply_to_edges(self, fn):
+        """
+        apply a function fn(u, v, k, data) to all edges
+        """
+        pass
+
+
+class SNManMultiDiGraph(nx.MultiDiGraph, SNManGenericGraph):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)

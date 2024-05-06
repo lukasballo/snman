@@ -8,7 +8,7 @@ import itertools as it
 import copy
 
 
-def merge_parallel_edges(G, max_hausdorff_distance=50):
+def merge_parallel_edges(G, max_hausdorff_distance=30):
     """
     Detect and merge all sets of edges sharing the same start/end nodes, incl. their attributes
     TODO: Avoid merging edges that are too far apart, e.g. parallel streets
@@ -70,6 +70,11 @@ def _merge_given_parallel_edges(G, u, v, l, edges, max_hausdorff_distance):
 
     edges = edges_normalized
 
+    if len(edges) == 2:
+        hd = shapely.hausdorff_distance(edges[0][3]['geometry'], edges[1][3]['geometry'], densify=0.5)
+        if hd > max_hausdorff_distance:
+            return
+
     geometries = [edge[3].get('geometry') for edge in edges]
     offsets = np.array(geometry_tools._offset_distance(geometries))
 
@@ -83,11 +88,37 @@ def _merge_given_parallel_edges(G, u, v, l, edges, max_hausdorff_distance):
     i_parent_edge = 0
     edges_sorted_by_hierarchy = sorted(edges, key=lambda x: OSM_HIGHWAY_VALUES[x[3]['highway']]['level'])
     parent_edge = edges_sorted_by_hierarchy[i_parent_edge]
+    parent_edge_uvk = parent_edge[0:3]
 
     # merge the lanes from all
-    parent_edge_data = G.edges[parent_edge[0:3]]
-    parent_edge_data['_merge_parallel_src_ln_desc'] = str([edge[3].get('ln_desc') for edge in edges_sorted_by_go])
-    parent_edge_data['ln_desc'] = list(it.chain(*[edge[3].get('ln_desc') for edge in edges_sorted_by_go]))
+    parent_edge_data = G.edges[parent_edge_uvk]
+    #parent_edge_data['_merge_parallel_src_ln_desc'] = str([edge[3].get('ln_desc') for edge in edges_sorted_by_go])
+    #parent_edge_data['ln_desc'] = list(it.chain(*[edge[3].get('ln_desc') for edge in edges_sorted_by_go]))
+    allocation = parent_edge_data['ln_desc']
+    #print('allocation', str(allocation))
+    for edge in edges_sorted_by_go:
+        if edge[0:3] == parent_edge_uvk:
+            continue
+        allocation.extend(edge[3].get('ln_desc'))
+        #print(str(allocation))
+
+    # average geometries
+    geoms = [edge[3].get('geometry') for edge in edges]
+    geoms = list(filter(lambda x: type(x) == shapely.LineString, geoms))
+    length = geoms[0].length
+
+    if length > 10:
+        steps = np.array(
+            list(range(0, round(length), 5)) + [round(length)]
+        ) / round(length)
+
+        def get_axis_point(step):
+            points = [geom.interpolate(step, normalized=True) for geom in geoms]
+            points = shapely.MultiPoint(points)
+            return points.centroid
+
+        axis = [get_axis_point(step) for step in steps]
+        parent_edge_data['geometry'] = shapely.LineString(axis)
 
     # merge sensors
     parent_edge_data['sensors_forward'] = list(set(
@@ -113,13 +144,13 @@ def _merge_given_parallel_edges(G, u, v, l, edges, max_hausdorff_distance):
             graph.safe_remove_edge(G, *edge[0:3])
 
 
-def merge_consecutive_edges(G, distinction_attributes=set()):
+def merge_consecutive_edges(G, distinction_attributes=set(), min_width=False):
 
     # create a subgraph that only contains nodes that are all of these
     # - degree=2
     # - included in the simplification
     # - have only one layer
-    H = G.copy()
+    H = copy.deepcopy(G)
     degrees = dict(H.degree)
     for n, data in G.nodes.items():
         if degrees[n] == 2 and data.get('_include_in_simplification', True) and len(data.get('layers', [])) == 1:
@@ -169,10 +200,10 @@ def merge_consecutive_edges(G, distinction_attributes=set()):
                 )
 
         # merge the edges
-        _merge_given_consecutive_edges(G, edges_to_merge, distinction_attributes)
+        _merge_given_consecutive_edges(G, edges_to_merge, distinction_attributes, min_width=min_width)
 
 
-def _merge_given_consecutive_edges(G, edge_chain, distinction_attributes):
+def _merge_given_consecutive_edges(G, edge_chain, distinction_attributes, min_width=False):
     """
     Merge the consecutive edges in a given list
 
@@ -244,7 +275,14 @@ def _merge_given_consecutive_edges(G, edge_chain, distinction_attributes):
         # Update length
         merged_data['length'] = merged_line.length
 
-        # Merge other attributes
+        # merge width: keep the smallest value,
+        # this will ensure that the available space for allocation is determined based on the narrowest section
+        if min_width:
+            merged_data['width'] = min(
+                [edge[3].get('width', 0) for edge in edge_subchain]
+            )
+
+        # merge sensors
         merged_data['sensors_forward'] = list(set(
             utils.flatten_list(
                 [edge[3].get('sensors_forward', []) for edge in edge_subchain]
@@ -311,7 +349,7 @@ def reconstruct_consecutive_edges(G):
             G.add_node(nodes[i], x=point.x, y=point.y)
 
         for i in nodes_i[0:-1]:
-            this_data = copy.copy(data)
+            this_data = copy.deepcopy(data)
             this_data['geometry'] = shapely.LineString((points[i], points[i+1]))
             this_data['length'] = None
             G.add_edge(nodes[i], nodes[i+1], **this_data)

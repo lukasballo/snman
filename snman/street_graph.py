@@ -25,38 +25,6 @@ def get_subgraph_with_empty_geometries(G):
     return nx.Graph(filtered_edges)
 
 
-def prepare_graph(G):
-    """
-    A set of operations needed to make the street graph created by osmnx ready for snman operations
-
-    Parameters
-    ----------
-    G : nx.MultiDiGraph
-        OSM Graph
-
-    Returns
-    -------
-    None
-    """
-
-    for uvk, data in G.edges.items():
-
-        # ensure consistent data types: maxspeed
-        maxspeed = data.get('maxspeed', '')
-        data['maxspeed'] = int(maxspeed) if maxspeed.isdigit() else -1
-
-        # ensure consistent data types: layer
-        layer = data.get('layer', '')
-        # isdigit only supports positive numbers, so we need to remove any '-' first
-        data['layer'] = int(layer) if layer.lstrip('-').isdigit() else 0
-
-    for i, data in G.nodes.items():
-        # prepare traffic_signals attribute
-        data['traffic_signals'] = 1 * (data.get('highway') == 'traffic_signals')
-
-    surrogate_missing_edge_geometries(G)
-
-
 def organize_edge_directions(G, method='lower_to_higher_node_id', key_lanes_description=KEY_LANES_DESCRIPTION):
     """
     Ensure that all edges in a street graph have the direction from the lower to the higher node id.
@@ -386,14 +354,11 @@ def reverse_edge(
     # don't reverse topology if the graph is not directed
     reverse_topology = reverse_topology and nx.is_directed(G)
 
-    # remove the old edge
-    if reverse_topology:
-        G.remove_edge(u, v, key)
-
     # reverse lanes
     for lane_description_key in lane_description_keys:
-        if data.get(lane_description_key) is not None:
-            data[lane_description_key] = space_allocation.reverse_lanes(data[lane_description_key])
+        allocation = data.get(lane_description_key)
+        if allocation is not None:
+            allocation.reverse_allocation()
 
     # TODO: auto identify attributes to be reversed based on parts of their name, e.g, '>'/'<', or 'forward'/'backward'
     # reverse sensors
@@ -412,6 +377,10 @@ def reverse_edge(
     # flip the reversed flag
     data[KEY_REVERSED] = not data.get(KEY_REVERSED, False)
 
+    # remove the old edge
+    if reverse_topology:
+        G.remove_edge(u, v, key)
+
     # add the new edge
     if reverse_topology:
         key = G.add_edge(v, u, **data)
@@ -426,22 +395,21 @@ def reverse_edge(
 
 
 def delete_edges_without_lanes(G, lane_description_key=KEY_LANES_DESCRIPTION):
-    edges_without_lanes = dict(filter(lambda x: x[1] == [], nx.get_edge_attributes(G, lane_description_key).items()))
+    edges_without_lanes = dict(filter(lambda x: len(x[1]) == 0, nx.get_edge_attributes(G, lane_description_key).items()))
     G.remove_edges_from(edges_without_lanes)
 
 
 def filter_lanes_by_modes(G, modes, lane_description_key=KEY_LANES_DESCRIPTION, delete_empty_edges=True, **kwargs):
-    H = copy.deepcopy(G)
 
-    for uvk, data in H.edges.items():
+    for uvk, data in G.edges.items():
         lanes = data.get(lane_description_key, [])
         data[lane_description_key] = space_allocation.filter_lanes_by_modes(lanes, modes, **kwargs)
 
     if delete_empty_edges:
-        delete_edges_without_lanes(H, lane_description_key=lane_description_key)
-        graph.remove_isolated_nodes(H)
+        delete_edges_without_lanes(G, lane_description_key=lane_description_key)
+        graph.remove_isolated_nodes(G)
 
-    return H
+    return G
 
 
 def filter_by_hierarchy(G, hierarchy_levels):
@@ -455,7 +423,6 @@ def calculate_edge_cost(G, u, v, k, direction, mode, lanes_description=KEY_LANES
     uvk = (u, v, k)
     data = G.edges[uvk]
     for lane in data[lanes_description]:
-        lp = space_allocation._lane_properties(lane)
         length = data['length']
         slope = data['grade']
         cost = space_allocation._calculate_lane_cost(
@@ -480,7 +447,7 @@ def add_pseudo_cycling_lanes(G, lanes_description=KEY_LANES_DESCRIPTION):
 
     for uvk, data in G.edges.items():
         lanes = data[lanes_description]
-        lane_types = [space_allocation._lane_properties(lane).lanetype for lane in lanes]
+        lane_types = [lane.lanetype for lane in lanes]
         has_m_lanes = LANETYPE_MOTORIZED in lane_types
 
         # ignore if there are no lanes for private cars
@@ -559,3 +526,8 @@ def separate_edges_for_lane_directions(G, lanes_key=KEY_LANES_DESCRIPTION):
     add_edge_costs(H, lanes_description=lanes_key)
 
     return H
+
+
+class StreetGraph(graph.SNManMultiDiGraph):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)

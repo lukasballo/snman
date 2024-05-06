@@ -1,9 +1,10 @@
 import copy
 
 from . import osmnx_customized as oxc
-from . import space_allocation, geometry_tools
+from . import space_allocation, geometry_tools, graph, street_graph
 from .constants import *
 import networkx as nx
+import numpy as np
 
 
 def create_lane_graph(G, lanes_attribute=KEY_LANES_DESCRIPTION):
@@ -11,8 +12,7 @@ def create_lane_graph(G, lanes_attribute=KEY_LANES_DESCRIPTION):
     Creates a new lane graph, derived from the street graph
     Parameters
     ----------
-    G : nx.MultiDiGraph
-        street graph
+    G : street_graph.StreetGraph
     lanes_attribute : str
         which attribute should be used for the lane description
 
@@ -21,29 +21,28 @@ def create_lane_graph(G, lanes_attribute=KEY_LANES_DESCRIPTION):
 
     """
 
-    # initialize and copy graph attributes
-    L = nx.MultiDiGraph()
+    G = copy.deepcopy(G)
+
+    # initialize lane graph and copy attributes from street graph
+    L = LaneGraph()
     L.graph = G.graph
 
     for uvk, data in G.edges.items():
         u, v, k = uvk
 
-        lanes_list = data.get(lanes_attribute)
-        # Reconstruct total width of the lanes
-        total_width = 0
-        for lane in data.get(lanes_attribute, []):
-            lp = space_allocation._lane_properties(lane)
-            total_width += lp.width
+        lanes_list = data.get(lanes_attribute, space_allocation.SpaceAllocation([]))
 
-        filled_width = 0
         for i, lane in enumerate(lanes_list):
 
-            lp = space_allocation._lane_properties(lane)
-            reverse = lp.direction in {DIRECTION_BACKWARD, DIRECTION_BACKWARD_OPTIONAL}
+            lane = copy.deepcopy(lane)
+
+            if lane == '':
+                continue
+
+            reverse = lane.direction in {DIRECTION_BACKWARD, DIRECTION_BACKWARD_OPTIONAL}
 
             if reverse:
-                lane = space_allocation.reverse_lane(lane)
-                lp = space_allocation._lane_properties(lane)
+                lane.reverse_direction()
 
             attributes = {}
             length = data['length']
@@ -51,60 +50,61 @@ def create_lane_graph(G, lanes_attribute=KEY_LANES_DESCRIPTION):
             lane_id = '-'.join([str(u), str(v), str(k), str(i)])
             attributes['length'] = length
 
-            for mode in MODES:
-                cost = space_allocation._calculate_lane_cost(lane, length, slope, mode)
-                attributes['cost_' + mode] = cost
-
             attributes['u_G'] = u
             attributes['v_G'] = v
             attributes['k_G'] = k
             attributes['lane_id_within_street'] = i
-            attributes['horizontal_position'] = filled_width + lp.width/2 - total_width/2
 
-            attributes['primary_mode'] = lp.primary_mode
+            attributes['primary_mode'] = lane.get_primary_mode()
             attributes['lane_id'] = lane_id
-            attributes['lanetype'] = lp.lanetype
-            attributes['direction'] = lp.direction
-            attributes['width'] = lp.width
+            attributes['lanetype'] = lane.lanetype
+            #attributes['direction'] = lane.direction
+            attributes['width'] = lane.width
             attributes['osm_highway'] = data.get('highway')
             attributes['maxspeed'] = data.get('maxspeed')
 
-            attributes['fixed'] = lp.direction not in [
-                DIRECTION_BACKWARD_OPTIONAL, DIRECTION_FORWARD_OPTIONAL,
-                DIRECTION_TBD, DIRECTION_TBD_OPTIONAL, DIRECTION_BOTH_OPTIONAL
-            ]
-            attributes['mandatory_lane'] = lp.direction not in [
-                DIRECTION_BACKWARD_OPTIONAL, DIRECTION_FORWARD_OPTIONAL,
-                DIRECTION_TBD_OPTIONAL, DIRECTION_BOTH_OPTIONAL
-            ]
-            attributes['coupled_with_opposite_direction'] = lp.direction in [
-                DIRECTION_BOTH, DIRECTION_BOTH_OPTIONAL
-            ]
-
+            #attributes['status'] = lane.status
+            #attributes['fixed'] = lane.status == STATUS_FIXED
+            #attributes['mandatory_lane'] = lane.status == STATUS_ONE_DIRECTION_MANDATORY
+            #attributes['coupled_with_opposite_direction'] = lane.direction == DIRECTION_BOTH
             if not reverse:
+                costs = {}
+                for mode in MODES:
+                    cost = space_allocation._calculate_lane_cost(lane, length, slope, mode)
+                    costs['cost_' + mode] = cost
                 L.add_edge(
-                    u, v, lane_id, **attributes, lane=lane, backward=0, twin_factor=1, instance=1,
+                    u, v, lane_id, **{**attributes, **costs}, lane=lane, backward=0, twin_factor=1, instance=1,
                     geometry=data.get('geometry')
                 )
             if reverse:
+                costs = {}
+                for mode in MODES:
+                    cost = space_allocation._calculate_lane_cost(lane, length, -slope, mode)
+                    costs['cost_' + mode] = cost
                 L.add_edge(
-                    v, u, lane_id, **attributes, lane=lane, backward=1, twin_factor=1, instance=1,
+                    v, u, lane_id, **{**attributes, **costs}, lane=lane, backward=1, twin_factor=1, instance=1,
                     geometry=geometry_tools.reverse_linestring(data.get('geometry'))
                 )
-            if lp.direction in [
-                DIRECTION_BOTH, DIRECTION_BOTH_OPTIONAL, DIRECTION_TBD, DIRECTION_TBD_OPTIONAL
-            ]:
+            if lane.direction in [DIRECTION_BOTH, DIRECTION_TBD]:
+                costs = {}
+                for mode in MODES:
+                    cost = space_allocation._calculate_lane_cost(lane, length, slope, mode)
+                    costs['cost_' + mode] = cost
                 L.add_edge(
-                    u, v, lane_id, **attributes, lane=lane, backward=0, twin_factor=0.5, instance=1,
+                    u, v, lane_id, **{**attributes, **costs},
+                    lane=lane, backward=0, twin_factor=0.5, instance=1,
                     geometry=data.get('geometry')
                 )
+                costs = {}
+                for mode in MODES:
+                    cost = space_allocation._calculate_lane_cost(lane, length, -slope, mode)
+                    costs['cost_' + mode] = cost
+                opposite_lane = copy.copy(lane)
                 L.add_edge(
-                    v, u, lane_id, **attributes,
-                    lane=space_allocation.reverse_lane(lane), backward=1, twin_factor=0.5, instance=2,
+                    v, u, lane_id, **{**attributes, **costs},
+                    lane=opposite_lane, backward=1, twin_factor=0.5, instance=2,
                     geometry=geometry_tools.reverse_linestring(data.get('geometry'))
                 )
-
-            filled_width += lp.width
 
     # take over the node attributes from the street graph
     nx.set_node_attributes(L, dict(G.nodes))
@@ -332,4 +332,124 @@ def calculate_street_width(L, u_G, v_G, k_G, use_twin_factor=True):
     total_width = sum(widths)
     return total_width
 
+
+def get_horizontal_position_of_lane(L, u, v, k):
+
+    data = L.edges[(u, v, k)]
+
+    lanes = get_street_lanes(L, data['u_G'], data['v_G'], data['k_G'])
+    lanes = {uvk[2]: lane for uvk, lane in lanes.items()}
+    lanes = {k: lane for k, lane in sorted(lanes.items())}
+    widths = [lane['width'] for lane in lanes.values()]
+    widths = np.cumsum(widths) - np.array(widths)/2 - sum(widths) / 2
+    widths = dict(zip(lanes.keys(), widths))
+
+    return widths[k]
+
+
+def get_modes_of_street(L, u_G, v_G, k_G):
+    M = L.subgraph([u_G, v_G])
+    M = M.edge_subgraph([uvk for uvk, data in M.edges.items() if data['k_G'] == k_G])
+    modes_M = [data['lane'].get_modes() for uvk, data in M.edges.items()]
+    modes_M = set.union(*modes_M) if len(modes_M) > 0 else set()
+    return modes_M
+
+
+def get_lanes_by_mode(L, u_G, v_G, k_G, mode):
+    M = L.subgraph([u_G, v_G])
+    M = M.edge_subgraph(
+        [uvk for uvk, data in M.edges.items() if (data['k_G'] == k_G and mode in data['lane'].get_modes())]
+    )
+    return dict(M.edges.items())
+
+
+def get_lanes_by_filter(L, u_G, v_G, k_G, filter=lambda x: True, direction=DIRECTION_BOTH):
+
+    M = L.subgraph([u_G, v_G])
+
+    if direction == DIRECTION_FORWARD:
+        M = M.edge_subgraph(
+            [uvk for uvk, data in M.edges.items() if uvk[0:2] == (u_G, v_G)]
+        )
+    if direction == DIRECTION_BACKWARD:
+        # exclude cyclical edges so that they are not double counted
+        M = M.edge_subgraph(
+            [uvk for uvk, data in M.edges.items() if uvk[0:2] == (v_G, u_G) and v_G != u_G]
+        )
+
+    M = M.edge_subgraph(
+        [uvk for uvk, data in M.edges.items() if (data['k_G'] == k_G and filter(data))]
+    )
+
+    return dict(M.edges.items())
+
+
+def get_dependent_parking_lanes(L, u, v, k):
+    # u, v, k = (2253,2248,'2253-2248-0-3')
+    data = L.edges[(u, v, k)]
+    u_G = data['u_G']
+    v_G = data['v_G']
+    k_G = data['k_G']
+
+    # reduce the graph to the necessary size
+    M = L.subgraph([u_G, v_G])
+
+    modes_M = get_modes_of_street(M, u_G, v_G, k_G)
+
+    # create another subgraph with the chosen lane removed
+    N = L.edge_subgraph(
+        [uvk for uvk, data in M.edges.items() if uvk != (u, v, k)]
+    )
+
+    modes_N = get_modes_of_street(N, u_G, v_G, k_G)
+
+    if (
+            MODE_CAR_PARKING in modes_M and MODE_PRIVATE_CARS in modes_M and
+            MODE_CAR_PARKING in modes_N and MODE_PRIVATE_CARS not in modes_N
+    ):
+        return get_lanes_by_mode(M, u_G, v_G, k_G, MODE_CAR_PARKING)
+
+    else:
+        return dict()
+
+
+def merge_lanes_and_equalize_widths(L, u_G, v_G, k_G, filter=lambda lane: True):
+    """
+    Gathers all lanes that satisfy the filter.
+    Then deletes all duplicate lanes in the same direction and equalizes the widths of the remaining lanes.
+
+    Example usage: Keep only one cycling lane in each direction and make the resulting lanes equally wide.
+
+    Parameters
+    ----------
+    L: lane_graph.LaneGraph
+    u_G: int
+    v_G: int
+    k_G: int
+    filter: function
+    """
+    lanes_by_direction = {}
+    total_width = 0
+    for direction in [DIRECTION_BACKWARD, DIRECTION_FORWARD]:
+        lanes = get_lanes_by_filter(
+            L, u_G, v_G, k_G,
+            filter=filter,
+            direction=direction
+        )
+        if len(lanes) > 0:
+            lanes_by_direction[direction] = lanes
+            total_width += sum([data['lane'].width for uvk, data in lanes.items()])
+
+    for direction, lanes in lanes_by_direction.items():
+        new_width = total_width / len(lanes_by_direction)
+        lanes[list(lanes.keys())[0]]['lane'].width = new_width
+        lanes[list(lanes.keys())[0]]['width'] = new_width
+        for uvk in list(lanes.keys())[1:]:
+            L.remove_edge(*uvk)
+            print('removed', uvk)
+
+
+class LaneGraph(graph.SNManMultiDiGraph):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 

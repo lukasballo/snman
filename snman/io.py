@@ -1,5 +1,5 @@
 from . import osmnx_customized as oxc
-from . import geometry_tools, space_allocation, utils, street_graph, street_graph_edge, street_graph_node, graph
+from . import geometry_tools, space_allocation, utils, street_graph, lane_graph
 from .constants import *
 import geopandas as gpd
 import pandas as pd
@@ -13,11 +13,80 @@ import networkx as nx
 import copy
 import numpy as np
 import json
+import ast
+
+# - CREATING BASIC DATASETS --------------------------------------------------------------------------------------------
+
+
+def create_street_graph_from_OSM(perimeter_geometry, CRS_internal, return_raw=False):
+    """
+    Download OSM data and create a street graph from it. A typical SNMan project will start with this function.
+
+    Parameters
+    ----------
+    perimeter_geometry: shapely.Polygon
+    CRS_internal: int
+        Which projected crs should be used for the street graph
+    return_raw: bool
+        If true this function will return a tuple of (G_raw, G) where G_raw is the raw street graph directly
+        after the OSM import and G is the processed street graph
+
+
+    Returns
+    -------
+    G: street_graph.StreetGraph
+    """
+
+    G = oxc.graph_from_polygon(
+        perimeter_geometry,
+        custom_filter=OSM_FILTER,
+        simplify=True, simplify_strict=False, retain_all=True, one_edge_per_direction=False
+    )
+
+    G = street_graph.StreetGraph(G)
+
+    if return_raw:
+        G_raw = copy.deepcopy(G)
+    else:
+        G_raw = None
+
+    # operations to prepare the imported street graph
+    for uvk, data in G.edges.items():
+        # ensure consistent data types: maxspeed
+        maxspeed = data.get('maxspeed', '')
+        data['maxspeed'] = int(maxspeed) if maxspeed.isdigit() else -1
+
+        # ensure consistent data types: layer
+        layer = data.get('layer', '')
+        # isdigit only supports positive numbers, so we need to remove any '-' first
+        data['layer'] = int(layer) if layer.lstrip('-').isdigit() else 0
+
+    for i, data in G.nodes.items():
+        # prepare traffic_signals attribute
+        data['traffic_signals'] = 1 * (data.get('highway') == 'traffic_signals')
+
+    street_graph.convert_crs(G, CRS_internal)
+    space_allocation.generate_lanes(G)
+    street_graph.filter_lanes_by_modes(G, {MODE_TRANSIT, MODE_PRIVATE_CARS, MODE_CYCLING, MODE_CAR_PARKING})
+
+    if return_raw:
+        return G_raw, G
+    else:
+        return G
 
 
 # - LOADING BASIC DATASETS ---------------------------------------------------------------------------------------------
 
-def load_street_graph(edges_path, nodes_path, crs=DEFAULT_CRS, recreate_iterables=True):
+
+def load_street_graph(
+        edges_path, nodes_path, crs=DEFAULT_CRS,
+        unstringify_attributes={
+            KEY_LANES_DESCRIPTION: space_allocation.space_allocation_from_string,
+            KEY_LANES_DESCRIPTION_AFTER: space_allocation.space_allocation_from_string,
+            KEY_GIVEN_LANES_DESCRIPTION: space_allocation.space_allocation_from_string,
+            'layers': ast.literal_eval
+        }
+):
     """
     Load a pre-generated street graph that has been saved as geofile (shp, gpkg, etc.)
 
@@ -27,25 +96,33 @@ def load_street_graph(edges_path, nodes_path, crs=DEFAULT_CRS, recreate_iterable
         path to the file containing the edges
     nodes_path : string
         path to the file containing the nodes
+    unstringify_attributes : dict
+        defines which function should be applied to each attribute to unstringify it
     crs : int
         target coordinate reference system of the imported street graph
 
     Returns
     -------
-    G : nx.MultiGraph
-        street graph
+    G : street_graph.StreetGraph
     """
 
-    edges_gdf = import_geofile_to_gdf(edges_path, index=['u', 'v', 'key'], crs=crs).replace(np.nan, None)
-    nodes_gdf = import_geofile_to_gdf(nodes_path, index='osmid', crs=crs).replace(np.nan, None)
+    edges_gdf = import_geofile_to_gdf(edges_path, crs=crs).replace(np.nan, None)
+    edges_gdf['u'] = edges_gdf['u'].astype(int)
+    edges_gdf['v'] = edges_gdf['v'].astype(int)
+    edges_gdf['key'] = edges_gdf['key'].astype(int)
+    edges_gdf.set_index(['u', 'v', 'key'], inplace=True)
 
-    if recreate_iterables:
-        _iterable_columns_from_strings(edges_gdf, {'ln_desc', 'ln_desc_after', 'given_lanes'}, separator=' | ')
-        _iterable_columns_from_strings(edges_gdf, {'sensors_forward', 'sensors_backward', '_intermediate_nodes'},
-                                       method='str')
-        _iterable_columns_from_strings(nodes_gdf, {'layers'}, separator=',')
+    nodes_gdf = import_geofile_to_gdf(nodes_path, crs=crs).replace(np.nan, None)
+    nodes_gdf['osmid'] = nodes_gdf['osmid'].astype(int)
+    nodes_gdf.set_index('osmid', inplace=True)
 
-    G = nx.MultiDiGraph(crs=crs)
+    for key, fn in unstringify_attributes.items():
+        if key in edges_gdf:
+            edges_gdf[key] = edges_gdf[key].apply(fn)
+        if key in nodes_gdf:
+            nodes_gdf[key] = nodes_gdf[key].apply(fn)
+
+    G = street_graph.StreetGraph(crs=crs)
     nodes_gdf.apply(lambda n: G.add_node(n.name, **n), axis=1)
     edges_gdf.apply(lambda e: G.add_edge(*e.name, **e), axis=1)
 
@@ -169,10 +246,11 @@ def load_intersections(path, crs=DEFAULT_CRS):
     polygons = import_geofile_to_gdf(path, crs=crs)
     # Duplicate the point geometries so that they get taken along after the spatial join
     intersections = polygons
+    intersections['simplify'] = intersections['simplify'].fillna(1)
     return intersections
 
 
-def load_rebuilding_regions(path, crs=DEFAULT_CRS, only_active=True, filter_ids=None):
+def load_rebuilding_regions(path, crs=DEFAULT_CRS, only_active=False, filter_ids=None):
     """
     Load a geofile (shp, gpkg, etc.) with rebuilding regions. These will be used to define areas where the streets
     should be rebuilt. In each rebuilding region, you can also specify which street hierarchies should be considered
@@ -287,7 +365,7 @@ def load_lane_edits(path, crs=DEFAULT_CRS):
     return lane_edits
 
 
-def load_public_transit_routes(path, perimeter=None, crs=DEFAULT_CRS):
+def load_public_transit_routes_zvv(path, perimeter=None, crs=DEFAULT_CRS):
     """
     Load a geofile with public transit routes. Each route is represented by a (Multi)LineString.
     For Zurich, see this dataset: 'Linien des öffentlichen Verkehrs OGD (kantonaler Datensatz)'
@@ -310,6 +388,71 @@ def load_public_transit_routes(path, perimeter=None, crs=DEFAULT_CRS):
         pt_routes = pt_routes[~shapely.is_empty(pt_routes.geometry)]
 
     return pt_routes
+
+
+def load_traffic_counts_npvm(path, crs=DEFAULT_CRS):
+    return gpd.read_file(path).to_crs(crs)
+
+
+def load_street_polygons_zurich(path, crs=DEFAULT_CRS, only_roads=True):
+    """
+    Load the street polygon geometries from the official land surveying data of Canton Zurich:
+    https://www.stadt-zuerich.ch/geodaten/download/10016,
+    layer 'Bodenbedeckung_BoFlaeche_Area'
+
+    Parameters
+    ----------
+    path: str
+    crs: int
+    only_roads: bool
+        if False, all polygon geometries will be loaded (not recommended)
+
+    Returns
+    -------
+    gpd.GeoDataFrame
+    """
+
+    street_polygons = gpd.read_file(path).to_crs(crs).set_index('OBJECTID')
+    if only_roads:
+        street_polygons = street_polygons.query('Art == 8')
+    return street_polygons
+
+
+def load_access_needs(path, crs=DEFAULT_CRS):
+    """
+    Load the dataset with access_needs.
+
+    Parameters
+    ----------
+    path: str
+    crs: int
+
+    Returns
+    -------
+    gpd.GeoDataFrame
+    """
+
+    access_needs = gpd.read_file(path).to_crs(crs)
+    return access_needs
+
+
+def load_statpop(path, crs=DEFAULT_CRS):
+    """
+    Load the statpop dataset
+
+    Parameters
+    ----------
+    path: str
+    crs: int
+
+    Returns
+    -------
+    gpd.GeoDataFrame
+    """
+
+    statpop = gpd.read_file(path).to_crs(crs)
+    return statpop
+
 
 
 # - OTHER --------------------------------------------------------------------------------------------------------------
@@ -336,138 +479,166 @@ def _get_nodes_within_polygon(G, polygon):
     return set(nodes_gdf.index.values)
 
 
-def export_street_graph(
-        G, path_edges, path_nodes, edge_columns=None, node_columns=None, cast_attr=True, crs=None,
-        lane_keys=(KEY_LANES_DESCRIPTION, KEY_LANES_DESCRIPTION_AFTER, KEY_GIVEN_LANES_DESCRIPTION)
+def export_graph(
+        G, path_edges, path_nodes, edge_columns=None, node_columns=None,
+        stringify_attributes=[], reset_index=False, crs=4326
 ):
     """
-    Export street graph as a geofile (shp, gpkg, etc.)
+    Export a graph as geofiles of nodes and edges
 
     Parameters
     ----------
-    G : nx.MultiGraph or nx.MultiDiGraph
-        street graph
-    path_edges : str
-        where should the edges file be saved
-    path_nodes : str
-        where should the nodes file be saved
-    edge_columns : list
-        which columns should be included in the edges file (None -> include all columns)
-    node_columns : list
-        dito for nodes file
-    crs : int
-
-    Returns
-    -------
-    None
+    G: nx.Graph, nx.MultiGraph, nx.DiGraph, nx.MultiDiGraph
+    path_edges: str
+    path_nodes: str
+    edge_columns: list
+        which columns should be included, if None, all will be included
+    node_columns: list
+        dito
+    stringify_attributes: list
+        The attributes in this list will be converted to strings both in edges and nodes.
+        This is useful if they have types that are incompatible with geofiles, such as lists.
+    crs: int
     """
+
+    if len(G.edges) == 0:
+        return
 
     H = copy.deepcopy(G)
 
-    if cast_attr:
-        graph.apply_function_to_each_edge(
-            H, lambda H, uvk: street_graph_edge.cast_attributes_for_export(H, uvk, lane_keys)
-        )
-        graph.apply_function_to_each_node(
-            H, street_graph_node.cast_attributes_for_export
-        )
+    # stringify node ids
+    nx.relabel_nodes(H, {i: str(i) for i in list(H.nodes)}, copy=False)
 
+    # convert the graph to geodataframes
     nodes, edges = oxc.graph_to_gdfs(H)
 
+    # remove columns
     if edge_columns:
         edges = edges[list(set(set(edges.columns) & set(edge_columns)).union({'geometry'}))]
-
     if node_columns:
         nodes = edges[list(set(set(nodes.columns) & set(node_columns)).union({'geometry'}))]
 
-    # Limit every attribute to 10 characters to match the SHP format restrictions
-    if path_edges.split()[-1] == 'shp':
-        edges.columns = [column[0:10] for column in edges.columns]
+    if reset_index:
+        edges.reset_index(inplace=True)
+        nodes.reset_index(inplace=True)
+
+    # stringify attributes
+    for attr in stringify_attributes:
+        if attr in edges:
+            edges[attr] = edges[attr].apply(lambda x: str(x))
+        if attr in nodes:
+            nodes[attr] = nodes[attr].apply(lambda x: str(x))
 
     # write files
     export_gdf(edges, path_edges, crs=crs)
     export_gdf(nodes, path_nodes, crs=crs)
 
 
-def export_street_graph_with_lanes(G, lanes_attributes, path, scaling=1, crs=None):
+def export_street_graph(
+    G, path_edges, path_nodes, edge_columns=None, node_columns=None,
+    stringify_attributes=(
+            KEY_LANES_DESCRIPTION, KEY_LANES_DESCRIPTION_AFTER, KEY_GIVEN_LANES_DESCRIPTION,
+            KEY_SENSORS_FORWARD, KEY_SENSORS_BACKWARD,
+            '_extension', '_intermediary_nodes', 'highway', 'layers'
+    ),
+    stringify_additional_attributes=(),
+    crs=4326
+):
+    """
+    Exports a street graph to geofile. See `export_graph()` for details.
+    Parameters
+    ----------
+    G: street_graph.StreetGraph
+    path_edges: str
+    path_nodes: str
+    edge_columns: list
+    node_columns: list
+    stringify_attributes: list
+    crs: int
+    """
+    export_graph(
+        G, path_edges, path_nodes, edge_columns=edge_columns, node_columns=node_columns,
+        stringify_attributes=list(stringify_attributes) + list(stringify_additional_attributes),
+        crs=crs
+    )
+
+
+def export_lane_graph(
+    L, path_edges, path_nodes, edge_columns=None, node_columns=None,
+    stringify_attributes=('lane', 'highway', 'layers'),
+    crs=4326
+):
+    """
+    Exports a lane graph to geofile. See `export_graph()` for details.
+    Parameters
+    ----------
+    L: lane_graph.LaneGraph
+    path_edges: str
+    path_nodes: str
+    edge_columns: list
+    node_columns: list
+    stringify_attributes: list
+    crs: int
+    """
+    export_graph(
+        L, path_edges, path_nodes, edge_columns=edge_columns, node_columns=node_columns,
+        stringify_attributes=stringify_attributes, crs=crs
+    )
+
+
+def export_access_graph(A, path_edges, path_nodes, stringify_attributes=[]):
+    pass
+
+
+def export_lane_geometries(L, path_edges, path_nodes, scaling=1, include_opposite_direction=True, crs=4326):
     """
     Export a geofile with individual lane geometries. This is helpful for visualization purposes.
 
     Parameters
     ----------
-    G : nx.MultiGraph or nx.MultiDiGraph
-        street graph
-    lanes_attributes : str, list
-        which attribute should be used as a source of the lane configuration of each edge
-    path : str
-        where should the file be saved
-    scaling : float
-        optional scaling of the lane width, for an optimized visualization
-    crs : int
-
-    Returns
-    -------
-    None
+    L: lane_graph.LaneGraph
+    path_edges: str
+    path_nodes: str
+    scaling: float
+    include_opposite_direction: bool
+        if True bidirectional lanes will be included with both directions
+    crs: int
     """
-    # TODO: Build on top of a lane graph
 
-    if type(lanes_attributes) == str:
-        lanes_attributes = [lanes_attributes]
+    M = copy.deepcopy(L)
 
-    # Create empty list for the lanes
-    lanes_list = []
+    # remove opposite direction edges of bidirectional lanes
+    for uvk, data in L.edges.items():
+        if data['instance'] != 1 and not include_opposite_direction:
+            M.remove_edge(*uvk)
 
-    for lanes_attribute in lanes_attributes:
+    for uvk, data in M.edges.items():
 
-        for uvk, data in G.edges.items():
-            given_total_width = 0
+        lane = data['lane']
 
-            # Reconstruct total width of given lanes
-            for lane in data.get(lanes_attribute, []):
-                lane_properties = space_allocation._lane_properties(lane)
-                given_total_width += lane_properties.width
+        # create attributes for easy visualization
+        data['width'] = lane.width
+        data['lanetype'] = lane.lanetype
+        data['direction'] = lane.direction
+        data['status'] = lane.status
+        data['horizontal_position'] = lane_graph.get_horizontal_position_of_lane(M, *uvk)
 
-            offset = -given_total_width / 2
-            for lane in data.get(lanes_attribute, []):
-                lane_properties = space_allocation._lane_properties(lane)
+        # scale widths
+        data['width_scaled'] = data['width'] * scaling
+        data['horizontal_position_scaled'] = data['horizontal_position'] * scaling
 
-                centerline_offset = offset + lane_properties.width / 2
-                offset += lane_properties.width
-                geom = data.get('geometry')
-
-                if geom and round(centerline_offset, 1) != 0:
-                    geom = geom.parallel_offset(centerline_offset * scaling, 'right')
-                    # the above function reverses direction when the offset is positive, this steps reverses it back
-                    if centerline_offset > 0 and not geom.is_empty:
-                        # geom.coords = list(geom.coords)[::-1]
-                        shapely.ops.substring(geom, 1, 0, normalized=True)
-                        pass
-
-                lanes_list.append({
-                    'lanes_key': lanes_attribute,
-                    'type': lane_properties.lanetype,
-                    'direction': lane_properties.direction,
-                    'descr': lane,
-                    'width_m': lane_properties.width * scaling,
-                    'layer': data.get('layer'),
-                    'length': data.get('length'),
-                    'geometry': geom
-                })
-
-    lanes_gdf = gpd.GeoDataFrame(
-        lanes_list,
-        columns=['lanes_key', 'type', 'direction', 'descr', 'width_m', 'layer', 'length', 'geometry'],
-        geometry='geometry',
-        crs=G.graph['crs']
-    )
-
-    export_gdf(lanes_gdf, path, crs=crs)
+        if data['horizontal_position_scaled'] != 0:
+            if data['backward'] == 1:
+                offset = data['horizontal_position_scaled']
+            else:
+                offset = -data['horizontal_position_scaled']
+            try:
+                data['geometry'] = data['geometry'].offset_curve(offset)
+            except shapely.errors.GEOSException:
+                print(uvk, 'geometry offset failed')
 
 
-def export_lane_geometries(L, path, scaling=1, crs=None):
-    nodes, edges = oxc.graph_to_gdfs(L)
-    print(nodes.head())
-    print(edges.head())
+    export_lane_graph(M, path_edges, path_nodes, crs=crs)
 
 
 def export_gdf(gdf, path, columns=[], crs=None):
@@ -512,8 +683,7 @@ def export_osm_xml(
 
     Parameters
     ----------
-    G : nx.MultiDiGraph
-        street graph
+    G : street_graph.StreetGraph
     path : str
     tags : list
         which OSM tags should be included

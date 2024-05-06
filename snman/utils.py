@@ -58,6 +58,13 @@ def safe_int(s, fallback_value=None):
         return fallback_value
 
 
+def safe_float(s, fallback_value=None):
+    try:
+        return float(s)
+    except ValueError:
+        return fallback_value
+
+
 def _is_json_serializable(obj):
     try:
         json.dumps(obj)

@@ -10,8 +10,46 @@ import pandas as pd
 import geopandas as gpd
 import networkx as nx
 import warnings
-from . import utils, space_allocation, street_graph, io
+from . import utils, space_allocation, street_graph, io, enrichment
+from . import osmnx_customized as oxc
 from .constants import *
+
+
+def aggregate_points_to_nearest_nodes(G, points, attribute, aggregation, max_distance=100, fillna_value=0):
+    """
+    Matches points to nearest nodes and adds an attribute with an aggregated value from the points.
+
+    Parameters
+    ----------
+    G: street_graph.StreetGraph
+    points: gpd.GeoDataFrame
+    attribute: str
+        which attribute from the points geodataframe should be aggregated into the nodes
+    aggregation: str
+        see pandas.core.groupby.generic.DataFrameGroupBy for a complete list of aggregation functions,
+        e.g., 'sum'
+    max_distance: int
+    fillna_value: any
+        a value that will be written if the aggregation does not return anything
+    """
+
+    nodes = oxc.graph_to_gdfs(G, edges=False)
+    nodes['id'] = nodes.index
+
+    points = gpd.sjoin_nearest(
+        points,
+        nodes, how='inner', max_distance=max_distance, distance_col='dist')
+    points.rename(columns={'index_right': 'node_id'}, inplace=True)
+    points = points.groupby('node_id').agg({attribute: aggregation})
+
+    nodes = nodes.merge(points, how='left', left_on='id', right_on='node_id')
+    nodes.set_index('id', inplace=True)
+    nodes[attribute].fillna(fillna_value, inplace=True)
+
+    a = dict(nodes[attribute])
+    attribute_name = attribute + '_' + aggregation
+    nx.set_node_attributes(G, fillna_value, name=attribute_name)
+    nx.set_node_attributes(G, a, name=attribute_name)
 
 
 def match_linestrings(
@@ -65,9 +103,8 @@ def match_linestrings(
 
     # keep only edges accessible to at least one of the provided modes
     if modes:
-        H = street_graph.filter_lanes_by_modes(G, modes, lane_description_key=lanes_key)
-    else:
-        H = G
+        H = copy.deepcopy(G)
+        street_graph.filter_lanes_by_modes(H, modes, lane_description_key=lanes_key)
 
     if _save_map:
         I = copy.deepcopy(G)
@@ -289,12 +326,13 @@ def match_parking_spots(
                 MODES.difference({MODE_CAR_PARKING})
             )
 
-        data[KEY_LANES_DESCRIPTION].extend([LANETYPE_PARKING_PARALLEL + DIRECTION_BOTH] * n_parking_lanes)
+        for i in range(n_parking_lanes):
+            data[KEY_LANES_DESCRIPTION].append(space_allocation.Lane(LANETYPE_PARKING_PARALLEL, DIRECTION_FORWARD))
 
 
-def match_public_transit(G, pt_routes):
+def match_public_transit_zvv(G, pt_routes, max_dist=400, max_dist_init=500, max_lattice_width=5):
     """
-    Match public transit routes onto the street graph using mapmatching.
+    Match ZVV public transit routes onto the street graph using mapmatching.
 
     Parameters
     ----------
@@ -318,7 +356,7 @@ def match_public_transit(G, pt_routes):
     match_linestrings(
         G, pt_routes, column_configs, remove_short_overlaps=False,
         modes=(MODE_TRANSIT, MODE_PRIVATE_CARS),
-        max_dist=200, max_dist_init=500, max_lattice_width=5
+        max_dist=max_dist, max_dist_init=max_dist_init, max_lattice_width=max_lattice_width
     )
 
     for uvk, data in G.edges.items():
@@ -364,58 +402,29 @@ def match_sensors(G, sensors_df):
             data['sensors_backward'] = []
 
 
-def match_public_transit_by_buffers(G, pt_network):
+def match_traffic_counts_npvm(G, traffic_counts_gpd):
     """
-    Matches the public transport network onto the street network using simple buffers and spatial join.
-
-    DEPRECATED: Use match_public_transit() instead.
+    Map match traffic counts from the Swiss NPVM to the street graph.
 
     Parameters
     ----------
-    G: nx.MultiGraph
+    G: nx.MultiDiGraph
         street graph
-    pt_network: gpd.GeoDataFrame
-        Linestrings of public transport routes, based on the open dataset of ZVV
-        "Linien des öffentlichen Verkehrs (OGD) (kantonaler Datensatz)"
-        https://data.stadt-zuerich.ch/dataset/ktzh_linien_des_oeffentlichen_verkehrs__ogd_,
-        with following additional columns:
-            * TYPE (Tram, Bus, Nightbus, Microbus)
-            * ALIGNMENT (tunnel, <None>)
+    traffic_counts_gpd: gpd.GeoDataFrame
+        dataset with the traffic flows, must follow the data structure of the Swiss NPVM 2017
+
+    Returns
+    -------
+
     """
 
-    # Add buffers around the pt routes
-    pt_network_buffers = pt_network.copy()
-    pt_network_buffers.geometry = pt_network_buffers.geometry.buffer(15, resolution=16)
+    # remove links with zero traffic (otherwise they will distort the averages on the matched links)
+    traffic_counts_gpd = traffic_counts_gpd[traffic_counts_gpd['DTV_ALLE'] > 0]
 
-    for edge in G.edges(data=True, keys=True):
-
-        edge_geometry = edge[3]['geometry']
-
-        # Get all pt routes whose buffers intersect with this edge
-        pt_routes = pt_network_buffers[
-            pt_network_buffers.intersects(edge_geometry).tolist()
-            and pt_network_buffers['ALIGNMENT'] != 'tunnel'
-        ].copy()
-
-        if len(pt_routes) == 0:
-            continue
-
-        # Calculate the overlapping length
-        with warnings.catch_warnings():
-            # we suppress warnings due to a known issue in the intersection function
-            # see here: https://github.com/shapely/shapely/issues/1345
-            warnings.simplefilter("ignore")
-            pt_routes['intersection_length_prop'] = [
-                edge_geometry.intersection(pt_route).length / edge_geometry.length if edge_geometry.length != 0 else 0
-                for pt_route in pt_routes.geometry
-            ]
-
-        # Keep only those that overlap over a substantial part
-        pt_routes = pt_routes[pt_routes['intersection_length_prop'] > 0.7]
-
-        edge[3]['pt_routes'] = str(pt_routes.LINIENNUMM.tolist())
-        # TODO: Distinguish directions of pt lines
-        edge[3]['pt_tram'] = pt_routes['TYPE'].eq('Tram').any() * 1
-        edge[3]['pt_bus'] = pt_routes['TYPE'].eq('Bus').any() * 1
-        edge[3]['pt_mcrbus'] = pt_routes['TYPE'].eq('Microbus').any() * 1
-
+    # match
+    enrichment.match_linestrings(G, traffic_counts_gpd, [
+        {'source_column': 'DTV_ALLE',   'target_column': 'adt_avg',         'agg': 'avg' },
+        {'source_column': 'DTV_ALLE',   'target_column': 'adt_max',         'agg': 'max' },
+        {'source_column': 'FROMNODENO', 'target_column': 'npvm_fromnodeno', 'agg': 'list'},
+        {'source_column': 'TONODENO',   'target_column': 'npvm_tonodeno',   'agg': 'list'}
+    ])

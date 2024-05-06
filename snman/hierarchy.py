@@ -4,9 +4,10 @@ MAIN_ROAD = '1_main_road'
 LOCAL_ROAD = '2_local_road'
 DEAD_END = '3_dead_end'
 PATHWAY = '4_path'
+SERVICE = '5_service'
 OTHER_HIERARCHY = '9_other'
 
-HIERARCHIES = {HIGHWAY, MAIN_ROAD, LOCAL_ROAD, DEAD_END, PATHWAY, OTHER_HIERARCHY}
+HIERARCHIES = {HIGHWAY, MAIN_ROAD, LOCAL_ROAD, DEAD_END, PATHWAY, OTHER_HIERARCHY, SERVICE}
 
 HIGHWAY_OSM = {'motorway', 'motorway_link', 'trunk', 'trunk_link'}
 
@@ -49,26 +50,22 @@ def _add_edge_hierarchy(edge):
 
     edge_data = edge[3]
 
-    edge_data['hierarchy'] = OTHER_HIERARCHY
-
     if edge_data.get('highway') in {'primary', 'primary_link', 'secondary', 'secondary_link', 'tertiary', 'tertiary_link'}:
         edge_data['hierarchy'] = MAIN_ROAD
-
-    if edge_data.get('highway') in {'residential', 'living_street', 'unclassified', 'service'}:
+    elif edge_data.get('highway') in {'residential', 'living_street', 'unclassified'}:
         edge_data['hierarchy'] = LOCAL_ROAD
-
-    if edge_data.get('highway') in {'path', 'footway', 'cycleway'}:
+    elif edge_data.get('highway') in {'path', 'footway', 'cycleway'}:
         edge_data['hierarchy'] = PATHWAY
-
-    if edge_data.get('highway') in {'construction', 'track'}:
+    elif edge_data.get('highway') in {'construction', 'track'}:
         edge_data['hierarchy'] = OTHER_HIERARCHY
-
-    if edge_data.get('dead_end'):
+    elif edge_data.get('dead_end'):
         edge_data['hierarchy'] = DEAD_END
-
-    if edge_data.get('highway') in HIGHWAY_OSM:
+    elif edge_data.get('highway') in HIGHWAY_OSM:
         edge_data['hierarchy'] = HIGHWAY
-
+    elif edge_data.get('highway') == 'service':
+        edge_data['hierarchy'] = SERVICE
+    else:
+        edge_data['hierarchy'] = OTHER_HIERARCHY
 
 def _identify_dead_ends(G, iterations):
     """

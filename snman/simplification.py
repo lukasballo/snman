@@ -2,7 +2,7 @@ import geopandas as gpd
 import pandas as pd
 import shapely as shp
 from . import osmnx_customized as oxc
-from . import io, geometry_tools, graph, street_graph
+from . import io, geometry_tools, graph, street_graph, merge_edges, street_graph_node
 from .constants import *
 import networkx as nx
 import itertools as it
@@ -148,6 +148,8 @@ def consolidate_intersections(G, intersections_gdf, reconnect_edges=True):
     centroids = node_clusters.centroid
     node_clusters["x"] = centroids.x
     node_clusters["y"] = centroids.y
+    # shift the cluster ids to avoid collision with node ids
+    node_clusters['cluster'] = node_clusters.index + max(G.nodes)
 
 
     # STEP 2
@@ -158,14 +160,14 @@ def consolidate_intersections(G, intersections_gdf, reconnect_edges=True):
         ["geometry", "street_count", "highway", "traffic_signals", "_include_in_simplification"]
     ]
     gdf = gpd.sjoin(node_points, node_clusters, how="left", predicate="within")
-    gdf = gdf.drop(columns="geometry").rename(columns={"index_right": "cluster"})
-    # shift the cluster ids to avoid collision with node ids
-    gdf['cluster'] = gdf['cluster'] + max(G.nodes)
+    gdf = gdf.drop(columns="geometry")
 
     gdf['osmid_temp'] = gdf.index
     # overwrite cluster ids with the normal ids in case of nodes that are excluded from simplification
     gdf['cluster'] = gdf.apply(lambda row: row['cluster'] if row['_include_in_simplification'] else row['osmid_temp'], axis=1)
     gdf.drop(columns='osmid_temp')
+
+    gdf['intersection_index'] = gdf['index_right']
 
     # STEP 3
     # if a cluster contains multiple components (i.e., it's not connected)
@@ -197,7 +199,7 @@ def consolidate_intersections(G, intersections_gdf, reconnect_edges=True):
                     suffix += 1
 
     # give nodes unique integer IDs (subclusters with suffixes are strings)
-    gdf["cluster"] = gdf["cluster"].factorize()[0]
+    gdf['cluster'] = gdf['cluster'].factorize()[0]
 
     # STEP 4
     # create new empty graph and copy over misc graph data
@@ -212,6 +214,7 @@ def consolidate_intersections(G, intersections_gdf, reconnect_edges=True):
 
         osmids = nodes_subset.index.to_list()
         highway_tags = set(nodes_subset['highway'].to_list())
+        intersection_index = list(nodes_subset['intersection_index'])[0]
 
         traffic_signals = 1 * (1 in set(nodes_subset.get('traffic_signals').to_list()))
 
@@ -236,7 +239,7 @@ def consolidate_intersections(G, intersections_gdf, reconnect_edges=True):
                 osmid_original=str(osmids),
                 traffic_signals=traffic_signals,
                 highway=str(highway_tags),
-                _include_in_simplification=True,
+                _include_in_simplification=node_clusters['simplify'][intersection_index],
                 x=nodes_subset["x"].iloc[0],
                 y=nodes_subset["y"].iloc[0],
             )
@@ -315,7 +318,7 @@ def consolidate_intersections(G, intersections_gdf, reconnect_edges=True):
                 # update the edge length attribute, given the new geometry
                 H.edges[u, v, k]["length"] = new_geom.length
 
-    return H
+    return street_graph.StreetGraph(H)
 
 
 def split_through_edges_in_intersections(Gc, intersections_gdf):
@@ -504,3 +507,89 @@ def add_layers_to_nodes(G):
         edges = list(G.in_edges(i, keys=True, data=True)) + list(G.out_edges(i, keys=True, data=True))
         layers = set([edge[3].get('layer', 0) for edge in edges])
         data['layers'] = layers
+
+
+def simplify_street_graph(
+        G,
+        given_intersections_gdf,
+        exclude_edge_hierarchies_from_simplification=[],
+        edge_geometries_simplification_radius=None,
+        iterations=4,
+        verbose=False
+):
+
+    #print('Light simplification of edge geometries')
+    simplify_edge_geometries(G, radius=2)
+
+    for i in range(iterations):
+        if verbose:
+            print('ITERATION', i)
+
+        # here, you can choose whether some roads should be excluded from the simplification
+        def add_include_in_simplification_to_edge(G, uvk):
+            data = G.edges[uvk]
+            data['_include_in_simplification'] = (
+                    data.get('hierarchy') not in exclude_edge_hierarchies_from_simplification
+            )
+
+        graph.apply_function_to_each_edge(G, add_include_in_simplification_to_edge)
+
+        def add_include_in_simplification_to_node(G, n):
+            uvks = set(G.in_edges(n, keys=True)).union(set(G.out_edges(n, keys=True)))
+            edges_included_in_simplification = [G.edges[uvk].get('_include_in_simplification') for uvk in uvks]
+            # include node in simplification only if all of its edges are also included in simplification
+            G.nodes[n]['_include_in_simplification'] = (
+                    G.nodes[n].get('_include_in_simplification', True)
+                    and False not in edges_included_in_simplification
+            )
+
+        graph.apply_function_to_each_node(G, add_include_in_simplification_to_node)
+
+        #print('Detect intersections')
+        add_layers_to_nodes(G)
+        intersections_gdf = merge_nodes_geometric(
+            G,
+            given_intersections_gdf=given_intersections_gdf
+        )
+
+        #print('Split through edges in intersections')
+        split_through_edges_in_intersections(G, intersections_gdf)
+
+        #print('Detect intersections (repeat to ensure that no points are outside of intersections)')
+        add_layers_to_nodes(G)
+        intersections_gdf = merge_nodes_geometric(
+            G,
+            given_intersections_gdf=given_intersections_gdf
+        )
+
+        #print('Add layers and hierarchies to nodes')
+        add_layers_to_nodes(G)
+        graph.apply_function_to_each_node(G, street_graph_node.add_hierarchies)
+
+        #print('Add connections between components in intersections')
+        connect_components_in_intersections(G, intersections_gdf, separate_layers=True)
+
+        #print('Consolidate intersections')
+        G = consolidate_intersections(
+            G, intersections_gdf,
+            reconnect_edges=True
+        )
+
+        #print('Merge consecutive edges')
+        add_layers_to_nodes(G)
+        merge_edges.merge_consecutive_edges(G)
+
+        #print('Merge parallel edges')
+        merge_edges.merge_parallel_edges(G)
+
+        #print('Update precalculated attributes')
+        street_graph.update_precalculated_attributes(G)
+
+    #print('Heavy simplification of edge geometries')
+    if edge_geometries_simplification_radius:
+        simplify_edge_geometries(G, radius=edge_geometries_simplification_radius)
+
+    #print('Keep only the largest connected component')
+    G = graph.keep_only_the_largest_connected_component(G, weak=True)
+
+    return G, intersections_gdf

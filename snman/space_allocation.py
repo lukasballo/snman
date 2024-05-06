@@ -4,6 +4,7 @@ import networkx as nx
 from . import utils, hierarchy
 import numpy as np
 import copy
+import itertools as it
 
 
 def generate_lanes(G, attr=KEY_LANES_DESCRIPTION):
@@ -144,28 +145,28 @@ def _generate_lanes_for_edge(edge):
         if edge.get('foot') in {'yes', 'designated'} and edge.get('segregated') != 'yes':
             # oneway for cyclists
             if edge.get('oneway') in {'yes', 1} or edge.get('oneway:bicycle') in {'yes', 1}:
-                both_dir_lanes_list.extend([LANETYPE_FOOT_CYCLING_MIXED + _DIRECTION_FORWARD])
+                both_dir_lanes_list.append(Lane(LANETYPE_FOOT_CYCLING_MIXED, _DIRECTION_FORWARD))
             # both ways for cyclists
             else:
-                both_dir_lanes_list.extend([LANETYPE_FOOT_CYCLING_MIXED + DIRECTION_BOTH])
+                both_dir_lanes_list.append(Lane(LANETYPE_FOOT_CYCLING_MIXED, DIRECTION_BOTH))
         # walking allowed with segregation
         elif edge.get('foot') in {'yes', 'designated'} and edge.get('segregated') == 'yes':
             # oneway for cyclists
             if edge.get('oneway') in {'yes', 1} or edge.get('oneway:bicycle') in {'yes', 1}:
-                both_dir_lanes_list.extend([LANETYPE_FOOT + DIRECTION_BOTH])
-                forward_lanes_list.extend([LANETYPE_CYCLING_TRACK + _DIRECTION_FORWARD])
+                both_dir_lanes_list.append(Lane(LANETYPE_FOOT, DIRECTION_BOTH))
+                forward_lanes_list.append(Lane(LANETYPE_CYCLING_TRACK, _DIRECTION_FORWARD))
             # both ways for cyclists
             else:
-                both_dir_lanes_list.extend([LANETYPE_FOOT + DIRECTION_BOTH])
-                both_dir_lanes_list.extend([LANETYPE_CYCLING_TRACK + DIRECTION_BOTH])
+                both_dir_lanes_list.append(Lane(LANETYPE_FOOT, DIRECTION_BOTH))
+                both_dir_lanes_list.append(Lane(LANETYPE_CYCLING_TRACK, DIRECTION_BOTH))
         # walking not allowed
         else:
             # oneway for cyclists
             if edge.get('oneway') in {'yes', 1}:
-                forward_lanes_list.extend([LANETYPE_CYCLING_TRACK + _DIRECTION_FORWARD])
+                forward_lanes_list.append(Lane(LANETYPE_CYCLING_TRACK, _DIRECTION_FORWARD))
             # both ways for cyclists
             else:
-                both_dir_lanes_list.extend([LANETYPE_CYCLING_TRACK + DIRECTION_BOTH])
+                both_dir_lanes_list.append(Lane(LANETYPE_CYCLING_TRACK, DIRECTION_BOTH))
 
     # Walkway [with cycling]
     elif edge.get('highway') in PEDESTRIAN_HIGHWAY_VALUES:
@@ -174,24 +175,24 @@ def _generate_lanes_for_edge(edge):
                 and edge.get('segregated') != 'yes':
             # oneway for cyclists
             if edge.get('oneway') in {'yes', 1} or edge.get('oneway:bicycle') in {'yes', 1}:
-                both_dir_lanes_list.extend([LANETYPE_FOOT_CYCLING_MIXED + _DIRECTION_FORWARD])
+                both_dir_lanes_list.append(Lane(LANETYPE_FOOT_CYCLING_MIXED, _DIRECTION_FORWARD))
             # both ways for cyclists
             else:
-                both_dir_lanes_list.extend([LANETYPE_FOOT_CYCLING_MIXED + DIRECTION_BOTH])
+                both_dir_lanes_list.append(Lane(LANETYPE_FOOT_CYCLING_MIXED, DIRECTION_BOTH))
         # cycling allowed with segregation
         elif (edge.get('bicycle') in {'yes', 'designated'} or edge.get('bicycle:conditional')) \
                 and edge.get('segregated') == 'yes':
             # oneway for cyclists
             if edge.get('oneway') in {'yes', 1} or edge.get('oneway:bicycle') in {'yes', 1}:
-                both_dir_lanes_list.extend([LANETYPE_FOOT + DIRECTION_BOTH])
-                forward_lanes_list.extend([LANETYPE_CYCLING_TRACK + _DIRECTION_FORWARD])
+                both_dir_lanes_list.append(Lane(LANETYPE_FOOT + DIRECTION_BOTH))
+                forward_lanes_list.append(Lane(LANETYPE_CYCLING_TRACK + _DIRECTION_FORWARD))
             # both ways for cyclists
             else:
-                both_dir_lanes_list.extend([LANETYPE_FOOT + DIRECTION_BOTH])
-                both_dir_lanes_list.extend([LANETYPE_CYCLING_TRACK + DIRECTION_BOTH])
+                both_dir_lanes_list.append(Lane(LANETYPE_FOOT, DIRECTION_BOTH))
+                both_dir_lanes_list.append(Lane(LANETYPE_CYCLING_TRACK, DIRECTION_BOTH))
         # cycling not allowed
         else:
-            both_dir_lanes_list.extend([LANETYPE_FOOT + DIRECTION_BOTH])
+            both_dir_lanes_list.append(Lane(LANETYPE_FOOT, DIRECTION_BOTH))
 
     # Normal road
     elif edge.get('highway') not in {'platform'}:
@@ -202,50 +203,62 @@ def _generate_lanes_for_edge(edge):
         if edge.get('cycleway:left') == 'lane' \
                 or edge.get('cycleway:both') == 'lane' \
                 or edge.get('cycleway') == 'lane':
-            left_lanes_list.extend([LANETYPE_CYCLING_LANE + _DIRECTION_BACKWARD])
+            left_lanes_list.append(Lane(LANETYPE_CYCLING_LANE, _DIRECTION_BACKWARD))
 
         # Add cycling lane right
         if edge.get('cycleway:right') == 'lane' \
                 or edge.get('cycleway:both') == 'lane' \
                 or edge.get('cycleway') == 'lane':
-            right_lanes_list.extend([LANETYPE_CYCLING_LANE + _DIRECTION_FORWARD])
+            right_lanes_list.append(Lane(LANETYPE_CYCLING_LANE, _DIRECTION_FORWARD))
 
         # Add cycling track left
         if edge.get('cycleway:left') == 'track' \
                 or edge.get('cycleway:both') == 'track' \
                 or edge.get('cycleway') == 'track':
-            left_lanes_list.extend([LANETYPE_CYCLING_TRACK + _DIRECTION_BACKWARD])
+            left_lanes_list.append(Lane(LANETYPE_CYCLING_TRACK, _DIRECTION_BACKWARD))
 
         # Add cycling track right
         if edge.get('cycleway:right') == 'track' \
                 or edge.get('cycleway:both') == 'track' \
                 or edge.get('cycleway') == 'track':
-            right_lanes_list.extend([LANETYPE_CYCLING_TRACK + _DIRECTION_FORWARD])
+            right_lanes_list.append(Lane(LANETYPE_CYCLING_TRACK, _DIRECTION_FORWARD))
 
         # Add cycling allowed in opposite direction
         if edge.get('cycleway') == 'opposite':
-            left_lanes_list.extend([LANETYPE_CYCLING_PSEUDO + _DIRECTION_BACKWARD])
+            left_lanes_list.append(Lane(LANETYPE_CYCLING_PSEUDO, _DIRECTION_BACKWARD))
 
         # add parking lanes
         if edge.get('parking:left') == 'lane' or edge.get('parking:both') == 'lane':
-            left_lanes_list.extend([LANETYPE_PARKING_PARALLEL + DIRECTION_BOTH])
+            left_lanes_list.append(Lane(LANETYPE_PARKING_PARALLEL, DIRECTION_BOTH))
         if edge.get('parking:right') == 'lane' or edge.get('parking:both') == 'lane':
-            right_lanes_list.extend([LANETYPE_PARKING_PARALLEL + DIRECTION_BOTH])
+            right_lanes_list.append(Lane(LANETYPE_PARKING_PARALLEL, DIRECTION_BOTH))
 
         # Add sidewalk right
         # if edge.get('sidewalk') in {'right', 'both'}:
         #    right_lanes_list.extend([LANETYPE_FOOT + DIRECTION_BOTH])
 
-        backward_lanes_list.extend([_LANETYPE_MOTORIZED + _DIRECTION_BACKWARD] * n_lanes_motorized_backward)
-        backward_lanes_list.extend([LANETYPE_DEDICATED_PT + _DIRECTION_BACKWARD] * n_lanes_dedicated_pt_backward)
+        backward_lanes_list.extend(
+            [Lane(_LANETYPE_MOTORIZED, _DIRECTION_BACKWARD) for i in range(n_lanes_motorized_backward)]
+        )
+        backward_lanes_list.extend(
+            [Lane(LANETYPE_DEDICATED_PT, _DIRECTION_BACKWARD) for i in range(n_lanes_dedicated_pt_backward)]
+        )
 
         start_both_dir_lanes = len(backward_lanes_list)
-        both_dir_lanes_list.extend([LANETYPE_DEDICATED_PT + DIRECTION_BOTH] * n_lanes_dedicated_pt_both)
-        both_dir_lanes_list.extend([_LANETYPE_MOTORIZED + DIRECTION_BOTH] * n_lanes_motorized_both)
+        both_dir_lanes_list.extend(
+            [Lane(LANETYPE_DEDICATED_PT, DIRECTION_BOTH) for i in range(n_lanes_dedicated_pt_both)]
+        )
+        both_dir_lanes_list.extend(
+            [Lane(_LANETYPE_MOTORIZED, DIRECTION_BOTH) for i in range(n_lanes_motorized_both)]
+        )
 
         start_forward_lanes = start_both_dir_lanes + len(both_dir_lanes_list)
-        forward_lanes_list.extend([LANETYPE_DEDICATED_PT + _DIRECTION_FORWARD] * n_lanes_dedicated_pt_forward)
-        forward_lanes_list.extend([_LANETYPE_MOTORIZED + _DIRECTION_FORWARD] * n_lanes_motorized_forward)
+        forward_lanes_list.extend(
+            [Lane(LANETYPE_DEDICATED_PT, _DIRECTION_FORWARD) for i in range(n_lanes_dedicated_pt_forward)]
+        )
+        forward_lanes_list.extend(
+            [Lane(_LANETYPE_MOTORIZED, _DIRECTION_FORWARD) for i in range(n_lanes_motorized_forward)]
+        )
 
     # Everything else
     else:
@@ -260,36 +273,36 @@ def _generate_lanes_for_edge(edge):
         osm_bus_lanes = edge.get('bus:lanes', '').split('|')
         for i, lane in enumerate(osm_bus_lanes):
             if lane == 'designated' and i < len(backward_lanes_list):
-                backward_lanes_list[i] = LANETYPE_DEDICATED_PT + _DIRECTION_BACKWARD
+                backward_lanes_list[i] = Lane(LANETYPE_DEDICATED_PT, _DIRECTION_BACKWARD)
             elif lane == 'designated' and i < start_forward_lanes:
-                both_dir_lanes_list[i-start_both_dir_lanes] = LANETYPE_DEDICATED_PT + DIRECTION_BOTH
+                both_dir_lanes_list[i-start_both_dir_lanes] = Lane(LANETYPE_DEDICATED_PT, DIRECTION_BOTH)
             elif lane == 'designated' and i < start_forward_lanes + len(forward_lanes_list):
-                forward_lanes_list[i-start_forward_lanes] = LANETYPE_DEDICATED_PT + _DIRECTION_FORWARD
+                forward_lanes_list[i-start_forward_lanes] = Lane(LANETYPE_DEDICATED_PT, _DIRECTION_FORWARD)
 
     elif edge.get('vehicle:lanes'):
         osm_bus_lanes = edge.get('vehicle:lanes', '').split('|')
         for i, lane in enumerate(osm_bus_lanes):
             if lane == 'no' and i < len(backward_lanes_list):
-                backward_lanes_list[i] = LANETYPE_DEDICATED_PT + _DIRECTION_BACKWARD
+                backward_lanes_list[i] = Lane(LANETYPE_DEDICATED_PT, _DIRECTION_BACKWARD)
             elif lane == 'no' and i < start_forward_lanes:
-                both_dir_lanes_list[i-start_both_dir_lanes] = LANETYPE_DEDICATED_PT + DIRECTION_BOTH
+                both_dir_lanes_list[i-start_both_dir_lanes] = Lane(LANETYPE_DEDICATED_PT, DIRECTION_BOTH)
             elif lane == 'no' and i < start_forward_lanes + len(forward_lanes_list):
-                forward_lanes_list[i-start_forward_lanes] = LANETYPE_DEDICATED_PT + _DIRECTION_FORWARD
+                forward_lanes_list[i-start_forward_lanes] = Lane(LANETYPE_DEDICATED_PT, _DIRECTION_FORWARD)
 
     if edge.get('bus:lanes:forward'):
         osm_bus_lanes_forward = edge.get('bus:lanes:forward', '').split('|')
         for i, lane in enumerate(osm_bus_lanes_forward):
             if lane == 'designated' and i < len(forward_lanes_list):
-                forward_lanes_list[i] = LANETYPE_DEDICATED_PT + _DIRECTION_FORWARD
+                forward_lanes_list[i] = Lane(LANETYPE_DEDICATED_PT, _DIRECTION_FORWARD)
 
     elif edge.get('vehicle:lanes:forward'):
         osm_vehicle_lanes_forward = edge.get('vehicle:lanes:forward', '').split('|')
         for i, lane in enumerate(osm_vehicle_lanes_forward):
             if lane == 'no' and i < len(forward_lanes_list):
-                forward_lanes_list[i] = LANETYPE_DEDICATED_PT + _DIRECTION_FORWARD
+                forward_lanes_list[i] = Lane(LANETYPE_DEDICATED_PT, _DIRECTION_FORWARD)
 
     elif edge.get('busway:right') or edge.get('busway:both') or edge.get('busway'):
-        utils.set_last_or_append(forward_lanes_list, LANETYPE_DEDICATED_PT + _DIRECTION_FORWARD)
+        utils.set_last_or_append(forward_lanes_list, Lane(LANETYPE_DEDICATED_PT, _DIRECTION_FORWARD))
 
     # do the same in backward direction
     if edge.get('bus:lanes:backward'):
@@ -298,7 +311,7 @@ def _generate_lanes_for_edge(edge):
         osm_bus_lanes_backward.reverse()
         for i, lane in enumerate(osm_bus_lanes_backward):
             if lane == 'designated' and i < len(backward_lanes_list):
-                backward_lanes_list[i] = LANETYPE_DEDICATED_PT + _DIRECTION_BACKWARD
+                backward_lanes_list[i] = Lane(LANETYPE_DEDICATED_PT, _DIRECTION_BACKWARD)
 
     elif edge.get('vehicle:lanes:backward'):
         osm_vehicle_lanes_backward = edge.get('vehicle:lanes:backward', '').split('|')
@@ -306,60 +319,16 @@ def _generate_lanes_for_edge(edge):
         osm_vehicle_lanes_backward.reverse()
         for i, lane in enumerate(osm_vehicle_lanes_backward):
             if lane == 'no' and i < len(backward_lanes_list):
-                backward_lanes_list[i] = LANETYPE_DEDICATED_PT + _DIRECTION_BACKWARD
+                backward_lanes_list[i] = Lane(LANETYPE_DEDICATED_PT, _DIRECTION_BACKWARD)
 
     elif edge.get('busway:left') or edge.get('busway:both') or edge.get('busway'):
-        utils.set_last_or_append(backward_lanes_list, LANETYPE_DEDICATED_PT + _DIRECTION_BACKWARD)
+        utils.set_last_or_append(backward_lanes_list, Lane(LANETYPE_DEDICATED_PT, _DIRECTION_BACKWARD))
 
     # PART 5: RETURN
 
     # merge all pars of the road section
-    return left_lanes_list + backward_lanes_list + both_dir_lanes_list + forward_lanes_list + right_lanes_list
-
-
-def reverse_lanes(lanes):
-    """
-    Reverse the order and direction of all lanes of an edge
-
-    Parameters
-    ----------
-    lanes : list
-        a list of lanes, following the format described under _generate_lanes_for_edge
-
-    Returns
-    -------
-    reversed_lanes : list
-        lanes, with reversed order and directions
-    """
-    reversed_lanes = lanes
-    # We use >> and << as temporary symbols during the process
-    reversed_lanes = [lane.replace(DIRECTION_FORWARD, '>>') for lane in reversed_lanes]
-    reversed_lanes = [lane.replace(DIRECTION_BACKWARD, '<<') for lane in reversed_lanes]
-    reversed_lanes = [lane.replace('>>', DIRECTION_BACKWARD) for lane in reversed_lanes]
-    reversed_lanes = [lane.replace('<<', DIRECTION_FORWARD) for lane in reversed_lanes]
-    reversed_lanes.reverse()
-    return reversed_lanes
-
-
-def reverse_lane(lane):
-    lp = _lane_properties(lane)
-    if lp.direction in ALTERNATIVE_DIRECTIONS[DIRECTION_FORWARD]:
-        return (lane
-                .replace(DIRECTION_FORWARD, DIRECTION_BACKWARD)
-                .replace(DIRECTION_FORWARD_OPTIONAL, DIRECTION_BACKWARD_OPTIONAL))
-    else:
-        return (lane
-                .replace(DIRECTION_BACKWARD, DIRECTION_FORWARD)
-                .replace(DIRECTION_BACKWARD_OPTIONAL, DIRECTION_FORWARD_OPTIONAL))
-
-
-def _reverse_direction(direction):
-    if direction == DIRECTION_FORWARD:
-        return DIRECTION_BACKWARD
-    elif direction == DIRECTION_BACKWARD:
-        return DIRECTION_FORWARD
-    else:
-        return direction
+    lanes_list = left_lanes_list + backward_lanes_list + both_dir_lanes_list + forward_lanes_list + right_lanes_list
+    return SpaceAllocation(lanes_list)
 
 
 def generate_lane_stats(G, lanes_attribute=KEY_LANES_DESCRIPTION):
@@ -414,12 +383,11 @@ def _generate_lane_stats_for_edge(edge, lanes_attribute=KEY_LANES_DESCRIPTION):
     width_total = 0
 
     for lane in lanes:
-        lane_properties = _lane_properties(lane)
-        if lane_properties.lanetype == LANETYPE_MOTORIZED:
-            width_motorized += lane_properties.width
-        if lane_properties.lanetype == LANETYPE_CYCLING_LANE:
-            width_cycling += lane_properties.width
-        width_total += lane_properties.width
+        if lane.lanetype == LANETYPE_MOTORIZED:
+            width_motorized += lane.width
+        if lane.lanetype == LANETYPE_CYCLING_LANE:
+            width_cycling += lane.width
+        width_total += lane.width
 
     try:
         proportion_cycling = width_cycling / width_total
@@ -440,64 +408,6 @@ def _generate_lane_stats_for_edge(edge, lanes_attribute=KEY_LANES_DESCRIPTION):
                 if lane_description in lanes:
                     edge[lanes_attribute + '_cycling_' + user_dir_name] = lane_description
                     break
-
-
-class _lane_properties:
-    """
-    A class for a standardized set of properties of a lane
-    """
-
-    valid = None
-    lanetype = None
-    direction = None
-    width = None
-    motorized = None
-    private_cars = None
-    dedicated_pt = None
-    dedicated_cycling = None
-    dedicated_cycling_lane = None
-    dedicated_cycling_track = None
-    cycling_vod = None
-    primary_mode = None
-    modes = None
-    order = None
-    is_cycling_infra = None
-    has_tentative_direction = None
-
-    def __init__(self, lane_description):
-        """
-        Decodes a lane into a set of standardized properties
-
-        Parameters
-        ----------
-        lane_description : str
-            description of a lane following the format described in _generate_lanes_for_edge
-        """
-
-        if lane_description[0:2] not in LANE_TYPES:
-            self.valid = False
-
-        else:
-            self.valid = True
-            self.lanetype = lane_description[0]
-            self.direction = lane_description[1]
-            self.width = float(lane_description[2:]) if len(lane_description) > 2\
-                else self.get_standard_width()
-            self.motorized = lane_description[0] in [LANETYPE_HIGHWAY, LANETYPE_MOTORIZED, LANETYPE_DEDICATED_PT]
-            self.private_cars = lane_description[0] in [LANETYPE_MOTORIZED, LANETYPE_HIGHWAY]
-            self.dedicated_pt = lane_description[0] == LANETYPE_DEDICATED_PT
-            self.dedicated_cycling = lane_description[0] in \
-                [LANETYPE_CYCLING_TRACK, LANETYPE_CYCLING_LANE, LANETYPE_FOOT_CYCLING_MIXED, LANETYPE_CYCLING_PSEUDO]
-            self.dedicated_cycling_lane = lane_description[0] == LANETYPE_CYCLING_LANE
-            self.dedicated_cycling_track = lane_description[0] == LANETYPE_CYCLING_TRACK
-            self.cycling_vod = LANE_TYPES[lane_description[0:2]]['cycling_vod']
-
-            self.modes = set(LANE_TYPES[lane_description[0:2]]['modes'])
-            self.primary_mode = utils.get_nth_element_of_list(LANE_TYPES[lane_description[0:2]]['modes'], 0)
-            self.order = LANE_TYPES[lane_description[0:2]]['order']
-            self.is_cycling_infra = self.lanetype in CYCLING_INFRA
-
-            self.has_tentative_direction = self.direction in TENTATIVE_DIRECTIONS
 
 
     def get_standard_width(self):
@@ -551,29 +461,28 @@ class _lane_stats:
 
     modes = ()
 
-    def __init__(self, lanes_description):
+    def __init__(self, lanes):
         """
         Decodes a list of lanes into a set of statistics
 
         Parameters
         ----------
-        lanes_description : list
+        lanes_description : SpaceAllocation
             a list of lanes following the format described in _generate_lanes_for_edge
         """
 
         self.modes = set()
-        for lane in lanes_description:
+        for lane in lanes:
 
             if lane == '':
                 continue
 
-            lane_properties = _lane_properties(lane)
-            direction = lane_properties.direction
+            direction = lane.direction
 
-            self.modes.update(lane_properties.modes)
+            self.modes.update(lane.get_modes())
 
             # Motorized Lanes
-            if lane_properties.motorized:
+            if lane.has_large_vehicles():
                 if direction == DIRECTION_FORWARD:
                     self.n_lanes_motorized_forward += 1
                 elif direction == DIRECTION_BACKWARD:
@@ -584,7 +493,7 @@ class _lane_stats:
                     self.n_lanes_motorized_direction_tbd += 1
 
             # Private cars
-            if lane_properties.private_cars:
+            if lane.has_mode(MODE_PRIVATE_CARS):
                 if direction == DIRECTION_FORWARD:
                     self.n_lanes_private_cars_forward += 1
                 elif direction == DIRECTION_BACKWARD:
@@ -595,7 +504,7 @@ class _lane_stats:
                     self.n_lanes_private_cars_direction_tbd += 1
 
             # PT lanes
-            if lane_properties.dedicated_pt:
+            if lane.lanetype == LANETYPE_DEDICATED_PT:
                 if direction == DIRECTION_FORWARD:
                     self.n_lanes_dedicated_pt_forward += 1
                 if direction == DIRECTION_BACKWARD:
@@ -606,7 +515,7 @@ class _lane_stats:
                     self.n_lanes_dedicated_pt_direction_tbd += 1
 
             # Cycling lanes
-            if lane_properties.dedicated_cycling_lane:
+            if lane.lanetype == LANETYPE_CYCLING_LANE:
                 if direction == DIRECTION_FORWARD:
                     self.n_lanes_dedicated_cycling_lanes_forward += 1
                 elif direction == DIRECTION_BACKWARD:
@@ -617,7 +526,7 @@ class _lane_stats:
                     self.n_lanes_dedicated_cycling_lanes_direction_tbd += 1
 
             # Cycling paths
-            if lane_properties.dedicated_cycling_track:
+            if lane.lanetype == LANETYPE_CYCLING_TRACK:
                 if direction == DIRECTION_FORWARD:
                     self.n_lanes_dedicated_cycling_tracks_forward += 1
                 elif direction == DIRECTION_BACKWARD:
@@ -638,6 +547,15 @@ class _lane_stats:
         self.n_lanes_dedicated_pt = \
             self.n_lanes_dedicated_pt_forward + self.n_lanes_dedicated_pt_backward \
             + self.n_lanes_dedicated_pt_both_ways + self.n_lanes_dedicated_pt_direction_tbd
+
+
+def _get_opposite_direction(direction):
+    if direction == DIRECTION_FORWARD:
+        return DIRECTION_BACKWARD
+    elif direction == DIRECTION_BACKWARD:
+        return DIRECTION_FORWARD
+    else:
+        return direction
 
 
 def update_osm_tags(G, lanes_description_key=KEY_LANES_DESCRIPTION):
@@ -830,8 +748,7 @@ def is_backward_by_top_order_lanes(lanes):
 
     Parameters
     ----------
-    lanes : list
-        a list of lanes following the format described in _generate_lanes_for_edge
+    lanes : SpaceAllocation
 
     Returns
     -------
@@ -840,9 +757,8 @@ def is_backward_by_top_order_lanes(lanes):
 
     lane_order_list = []
     for lane in lanes:
-        lp = _lane_properties(lane)
-        if lp.direction in (DIRECTION_FORWARD, DIRECTION_BACKWARD):
-            lane_order_list.append(lp.order)
+        if lane.direction in (DIRECTION_FORWARD, DIRECTION_BACKWARD):
+            lane_order_list.append(lane.get_order())
 
     if len(lane_order_list) == 0:
         return False
@@ -851,10 +767,9 @@ def is_backward_by_top_order_lanes(lanes):
 
     balance = 0
     for lane in lanes:
-        lp = _lane_properties(lane)
-        if lp.order != top_order:
+        if lane.get_order() != top_order:
             continue
-        if lp.direction == DIRECTION_FORWARD:
+        if lane.direction == DIRECTION_FORWARD:
             balance += 1
         else:
             balance -= 1
@@ -870,21 +785,20 @@ def add_pseudo_contraflow_cycling(G, lane_attribute=KEY_LANES_DESCRIPTION):
 
         # remove any existing S lanes
         for i, lane in enumerate(copy.copy(lanes)):
-            lp = _lane_properties(lane)
-            if lp.lanetype == LANETYPE_CYCLING_PSEUDO:
+            if lane.lanetype == LANETYPE_CYCLING_PSEUDO:
                 lanes.remove(i)
 
         # add contraflow S lanes if there are M lanes but no cycling infra
         has_m_lanes = False
         cycling_forward = False
         for i, lane in enumerate(copy.copy(lanes)):
-            if lp.primary_mode == MODE_PRIVATE_CARS:
+            if lane.get_primary_mode() == MODE_PRIVATE_CARS:
                 has_m_lanes = True
 
 
 
 
-def reorder_lanes(G, lanes_attribute=KEY_LANES_DESCRIPTION):
+def reorder_lanes(G, lanes_attribute=KEY_LANES_DESCRIPTION, **kwargs):
     """
     Reorder lanes in the street graph: Puts the lanes on each street into a consistent order and consolidates cycling
     infrastructure.
@@ -900,20 +814,20 @@ def reorder_lanes(G, lanes_attribute=KEY_LANES_DESCRIPTION):
     """
 
     for uvk, data in G.edges.items():
-        data[lanes_attribute] = _reorder_lanes_on_edge(data[lanes_attribute])
+        data[lanes_attribute] = _reorder_lanes_on_edge(data[lanes_attribute], **kwargs)
 
 
-def _reorder_lanes_on_edge(lanes):
+def _reorder_lanes_on_edge(lanes, how='standard'):
     """
     Reorder the lane list and consolidate cycling infrastructure of an edge
 
     Parameters
     ----------
-    lanes : list
+    lanes : SpaceAllocation
 
     Returns
     -------
-    list
+    SpaceAllocation
     """
 
     # prepare a structure of street parts
@@ -925,8 +839,11 @@ def _reorder_lanes_on_edge(lanes):
 
     # sort by primary mode and direction
     for i, l in enumerate(lanes):
-        lp = _lane_properties(l)
-        sorted_lanes[lp.primary_mode][lp.direction].append(lp)
+        sorted_lanes[l.get_primary_mode()][l.direction].append(l)
+
+    for mode in MODES:
+        for direction in DIRECTIONS:
+            sorted_lanes[mode][direction] = list(sorted(sorted_lanes[mode][direction]))
 
     # calculate stats
     cycling_lanes = list(utils.flatten_list(sorted_lanes[MODE_CYCLING].values()))
@@ -935,90 +852,71 @@ def _reorder_lanes_on_edge(lanes):
     n_mixed_total = len([l for l in cycling_lanes if l.lanetype == LANETYPE_FOOT_CYCLING_MIXED])
     n_cars = len(list(utils.flatten_list(sorted_lanes[MODE_PRIVATE_CARS])))
 
-    # merge and reorder cycling lanes
-    direction_preference = DIRECTION_FORWARD
-    if len(sorted_lanes[MODE_CYCLING][DIRECTION_BACKWARD]) == 0\
-            and len(sorted_lanes[MODE_CYCLING][DIRECTION_FORWARD]) > 0:
-        direction_preference = DIRECTION_FORWARD
-    elif len(sorted_lanes[MODE_CYCLING][DIRECTION_FORWARD]) == 0 \
-            and len(sorted_lanes[MODE_CYCLING][DIRECTION_BACKWARD]) > 0:
-        direction_preference = DIRECTION_BACKWARD
-
-    sorted_lanes[MODE_CYCLING][DIRECTION_BOTH] = []
-    sorted_lanes[MODE_CYCLING][DIRECTION_FORWARD] = []
-    sorted_lanes[MODE_CYCLING][DIRECTION_BACKWARD] = []
-    sorted_lanes[MODE_FOOT][DIRECTION_BOTH] = []
-
-    direction_preference_for_mixed = _reverse_direction(direction_preference)
-    for i in range(n_mixed_total):
-
-        new_footway = _lane_properties(LANETYPE_FOOT + DIRECTION_BOTH)
-        new_foot_cycling_mixed_path = _lane_properties(LANETYPE_FOOT_CYCLING_MIXED + direction_preference_for_mixed)
-        new_foot_cycling_mixed_path_both = _lane_properties(LANETYPE_FOOT_CYCLING_MIXED + DIRECTION_BOTH)
-
-        if width_cycling_total >= 3 + new_footway.width:
-            sorted_lanes[MODE_FOOT][DIRECTION_BOTH].append(new_footway)
-            width_cycling_total -= new_footway.width
-        elif width_cycling_total - new_foot_cycling_mixed_path.width >= 1.5:
-            sorted_lanes[MODE_CYCLING][direction_preference_for_mixed].append(new_foot_cycling_mixed_path)
-            width_cycling_total -= new_foot_cycling_mixed_path.width
-            direction_preference_for_mixed = _reverse_direction(direction_preference_for_mixed)
-        else:
-            sorted_lanes[MODE_CYCLING][DIRECTION_BOTH].append(new_foot_cycling_mixed_path_both)
-            width_cycling_total -= new_foot_cycling_mixed_path_both.width
-
-    width_cycling = {DIRECTION_BACKWARD: 0, DIRECTION_FORWARD: 0}
-    if width_cycling_total >= 3:
-        width_cycling[DIRECTION_BACKWARD] = width_cycling_total/2
-        width_cycling[DIRECTION_FORWARD] = width_cycling_total/2
-    elif width_cycling_total > 0:
-        width_cycling[direction_preference] = width_cycling_total
-
     # consolidate parking lanes, merge all parking lanes into a single with adjusted width
-    parking_lanes = sorted_lanes[MODE_CAR_PARKING][DIRECTION_BOTH]
+    parking_lanes = sorted_lanes[MODE_CAR_PARKING][DIRECTION_FORWARD]
     width = sum([lane.width for lane in parking_lanes])
     if width > 0:
-        consolidated_parking = _lane_properties(LANETYPE_PARKING_PARALLEL + DIRECTION_BOTH)
+        consolidated_parking = Lane(LANETYPE_PARKING_PARALLEL, DIRECTION_FORWARD)
         consolidated_parking.width = width
-        sorted_lanes[MODE_CAR_PARKING][DIRECTION_BOTH] = [str(consolidated_parking)]
+        sorted_lanes[MODE_CAR_PARKING][DIRECTION_FORWARD] = [consolidated_parking]
 
-    # choose the comfort level of cycling infra (lane or track)
-    for direction in [DIRECTION_BACKWARD, DIRECTION_FORWARD]:
-        # no cars or enough width => cycling track
-        if n_cars == 0 or width_cycling[direction] > 1.5:
-            sorted_lanes[MODE_CYCLING][direction].append(
-                _lane_properties(LANETYPE_CYCLING_TRACK + direction + str(width_cycling[direction]))
-            )
-        # otherwise => cycling lane
-        elif width_cycling[direction] > 0:
-            sorted_lanes[MODE_CYCLING][direction].append(
-                _lane_properties(LANETYPE_CYCLING_LANE + direction + str(width_cycling[direction]))
-            )
+    new_allocation = copy.copy(lanes)
+    new_allocation[:] = []
 
-    # merge the different parts of the street together
-    return list(utils.flatten_list([
+    if how == 'bidirectional_cycling':
 
-        [str(l) for l in sorted_lanes[MODE_FOOT][DIRECTION_BOTH][0::2]],
-        [str(l) for l in sorted_lanes[MODE_CYCLING][DIRECTION_BOTH][0::2]],
+        ordered_lanes = [
 
-        [str(l) for l in sorted_lanes[MODE_CYCLING][DIRECTION_BACKWARD]],
-        [str(l) for l in sorted_lanes[MODE_NON_TRAFFIC][DIRECTION_BACKWARD]],
-        [str(l) for l in sorted_lanes[MODE_PRIVATE_CARS][DIRECTION_BACKWARD]],
-        [str(l) for l in sorted_lanes[MODE_TRANSIT][DIRECTION_BACKWARD]],
+            sorted_lanes[MODE_FOOT][DIRECTION_BOTH][0::2],
 
-        [str(l) for l in sorted_lanes[MODE_TRANSIT][DIRECTION_BOTH]],
-        [str(l) for l in sorted_lanes[MODE_PRIVATE_CARS][DIRECTION_BOTH]],
+            sorted_lanes[MODE_NON_TRAFFIC][DIRECTION_BACKWARD],
+            sorted_lanes[MODE_NON_TRAFFIC][DIRECTION_FORWARD],
+            sorted_lanes[MODE_PRIVATE_CARS][DIRECTION_BACKWARD],
+            sorted_lanes[MODE_TRANSIT][DIRECTION_BACKWARD],
 
-        [str(l) for l in sorted_lanes[MODE_TRANSIT][DIRECTION_FORWARD]],
-        [str(l) for l in sorted_lanes[MODE_PRIVATE_CARS][DIRECTION_FORWARD]],
-        [str(l) for l in sorted_lanes[MODE_CAR_PARKING][DIRECTION_BOTH]],
-        [str(l) for l in sorted_lanes[MODE_NON_TRAFFIC][DIRECTION_FORWARD]],
-        [str(l) for l in sorted_lanes[MODE_CYCLING][DIRECTION_FORWARD]],
+            sorted_lanes[MODE_TRANSIT][DIRECTION_BOTH],
+            sorted_lanes[MODE_PRIVATE_CARS][DIRECTION_BOTH],
 
-        [str(l) for l in sorted_lanes[MODE_CYCLING][DIRECTION_BOTH][1::2]],
-        [str(l) for l in sorted_lanes[MODE_FOOT][DIRECTION_BOTH][1::2]]
+            sorted_lanes[MODE_TRANSIT][DIRECTION_FORWARD],
+            sorted_lanes[MODE_PRIVATE_CARS][DIRECTION_FORWARD],
+            sorted_lanes[MODE_CAR_PARKING][DIRECTION_FORWARD],
 
-    ]))
+            sorted_lanes[MODE_CYCLING][DIRECTION_BACKWARD],
+            sorted_lanes[MODE_CYCLING][DIRECTION_FORWARD],
+            sorted_lanes[MODE_CYCLING][DIRECTION_BOTH],
+            sorted_lanes[MODE_FOOT][DIRECTION_BOTH][1::2]
+
+        ]
+
+    else:
+
+        ordered_lanes = [
+
+            sorted_lanes[MODE_FOOT][DIRECTION_BOTH][0::2],
+            sorted_lanes[MODE_CYCLING][DIRECTION_BOTH][0::2],
+
+            sorted_lanes[MODE_CYCLING][DIRECTION_BACKWARD],
+            sorted_lanes[MODE_NON_TRAFFIC][DIRECTION_BACKWARD],
+            sorted_lanes[MODE_NON_TRAFFIC][DIRECTION_FORWARD],
+            sorted_lanes[MODE_PRIVATE_CARS][DIRECTION_BACKWARD],
+            sorted_lanes[MODE_TRANSIT][DIRECTION_BACKWARD],
+
+            sorted_lanes[MODE_TRANSIT][DIRECTION_BOTH],
+            sorted_lanes[MODE_PRIVATE_CARS][DIRECTION_BOTH],
+
+            sorted_lanes[MODE_TRANSIT][DIRECTION_FORWARD],
+            sorted_lanes[MODE_PRIVATE_CARS][DIRECTION_FORWARD],
+            sorted_lanes[MODE_CAR_PARKING][DIRECTION_FORWARD],
+            sorted_lanes[MODE_CYCLING][DIRECTION_FORWARD],
+
+            sorted_lanes[MODE_CYCLING][DIRECTION_BOTH][1::2],
+            sorted_lanes[MODE_FOOT][DIRECTION_BOTH][1::2]
+
+        ]
+
+    new_allocation.extend(it.chain.from_iterable(ordered_lanes))
+
+    return new_allocation
 
 
 def normalize_cycling_lanes(G, lanes_key=KEY_LANES_DESCRIPTION):
@@ -1037,10 +935,10 @@ def normalize_cycling_lanes(G, lanes_key=KEY_LANES_DESCRIPTION):
     for uvk, data in G.edges.items():
         lanes = data[lanes_key]
         for i, lane in enumerate(lanes):
-            lp = _lane_properties(lane)
-            if lp.lanetype == LANETYPE_CYCLING_TRACK:
-                lp.lanetype = LANETYPE_CYCLING_LANE
-                lanes[i] = str(lp)
+            lane
+            if lane.lanetype == LANETYPE_CYCLING_TRACK:
+                lane.lanetype = LANETYPE_CYCLING_LANE
+                lanes[i] = lane
 
 
 def _calculate_lane_cost(lane, length, slope, mode, direction=DIRECTION_FORWARD, include_tentative=False):
@@ -1051,8 +949,7 @@ def _calculate_lane_cost(lane, length, slope, mode, direction=DIRECTION_FORWARD,
 
     Parameters
     ----------
-    lane: str
-        lane description
+    lane: Lane
     length: float
         length in meters
     slope: float
@@ -1068,17 +965,17 @@ def _calculate_lane_cost(lane, length, slope, mode, direction=DIRECTION_FORWARD,
     float
     """
 
-    lp = _lane_properties(lane)
+    lane
 
-    if include_tentative and lp.has_tentative_direction:
+    if include_tentative and lane.status != STATUS_FIXED:
         return np.Inf
 
     # if this lane can not carry the specified mode, return infinity
-    if mode not in lp.modes:
+    if mode not in lane.get_modes():
         return np.Inf
 
     # if this lane is not accessible in the specified direction, return infinity
-    if lp.direction not in {direction}.union(ALTERNATIVE_DIRECTIONS.get(direction, set())):
+    if lane.direction not in {direction}.union(ALTERNATIVE_DIRECTIONS.get(direction, set())):
         return np.Inf
 
     # apply the cycling cost factor if the mode is cycling
@@ -1091,22 +988,24 @@ def _calculate_lane_cost(lane, length, slope, mode, direction=DIRECTION_FORWARD,
         else:
             # cannot calculate cycling cost if direction is unknown
             slope = math.inf
-        return length * (1 + lp.cycling_vod + CYCLING_SLOPE_VOD(slope))
+        return length * (1 + lane.get_cycling_vod_factor() + CYCLING_SLOPE_VOD(slope))
     # otherwise, return just the length
     else:
         return length
 
 
-def filter_lanes_by_modes(lanes, modes, exact=False, operator='or'):
+def filter_lanes_by_modes(lanes, modes, operator='or'):
     """
     Returns a subset of lanes given filter criteria
 
     Parameters
     ----------
-    lanes : list
+    lanes : SpaceAllocation
     modes : set
-    exact : bool
-        if True, the lanes must be accessible exactly for the same modes as provided
+    operator : str
+        - 'exact': modes must match the lane modes exactly
+        - 'or': at least one of the modes must match a lane mode
+        - 'and': all modes must match a lane mode
 
     Returns
     -------
@@ -1114,9 +1013,129 @@ def filter_lanes_by_modes(lanes, modes, exact=False, operator='or'):
 
     """
 
-    if operator == 'exact' or exact is True:
-        return [lane for lane in lanes if set(_lane_properties(lane).modes) == modes]
+    lanes_copy = copy.copy(lanes)
+
+    lanes_result = copy.copy(lanes)
+    lanes_result[:] = []
+
+    if operator == 'exact':
+        lanes_result += [lane for lane in lanes if lane.get_modes() == modes]
     elif operator == 'or':
-        return [lane for lane in lanes if not _lane_properties(lane).modes.isdisjoint(modes)]
+        lanes_result += [lane for lane in lanes if not lane.get_modes().isdisjoint(modes)]
     elif operator == 'and':
-        return [lane for lane in lanes if modes.issubset(_lane_properties(lane).modes)]
+        lanes_result += [lane for lane in lanes if modes.issubset(lane.get_modes())]
+
+    return lanes_result
+
+
+def space_allocation_from_string(sa_string):
+    lane_strings = sa_string.split(' | ')
+    lanes = [Lane(s[0], s[1], status=s[2], width=utils.safe_float(s[3:])) for s in lane_strings]
+    return SpaceAllocation(lanes)
+
+
+class Lane:
+    def __init__(self, lanetype, direction, status=STATUS_FIXED, width=None):
+        """
+        Create a new lane
+
+        Parameters
+        ----------
+        lanetype: str
+            See `snman.constants.LANETYPE_*` for options.
+        direction: str
+            See `snman.constants.DIRECTION_*` for options.
+        status: str
+            Denotes whether the lane is fixed or still negotiable. See `snman.constants.STATUS_*` for options.
+            This is used in the reallocation process.
+        width: float
+            Physical width of the street that can be allocated.
+            If None, the default width from `snman.constants` will be used
+        """
+
+        self.lanetype = lanetype
+        self.direction = direction
+        self.status = status
+        if width:
+            self.width = width
+        else:
+            self.width = LANE_TYPES[self.lanetype + direction]['width']
+        self.valid = True
+
+    def __str__(self):
+        return self.lanetype + self.direction + self.status + str(self.width)
+
+    def __eq__(self, other):
+        return str(self) == str(other)
+
+    def __lt__(self, other):
+        return str(self) < str(other)
+
+    def get_modes(self):
+        return set(LANE_TYPES[self.lanetype + self.direction]['modes'])
+
+    def get_modes_as_list(self):
+        return LANE_TYPES[self.lanetype + self.direction]['modes']
+
+    def has_mode(self, mode):
+        return mode in self.get_modes()
+
+    def get_primary_mode(self):
+        return utils.get_nth_element_of_list(list(self.get_modes_as_list()), 0)
+
+    def has_large_vehicles(self):
+        return not {MODE_PRIVATE_CARS, MODE_TRANSIT}.isdisjoint(self.get_modes())
+
+    def is_dedicated_for_cycling(self):
+        has_cycling = MODE_CYCLING in self.get_modes()
+        has_nothing_else_than_cycling_and_walking = self.get_modes().issubset({MODE_CYCLING, MODE_FOOT})
+        return has_cycling and has_nothing_else_than_cycling_and_walking
+
+    def is_cycling_infa(self):
+        self.lanetype in CYCLING_INFRA
+
+    def get_cycling_vod_factor(self):
+        return LANE_TYPES[self.lanetype + self.direction]['cycling_vod']
+
+    def get_order(self):
+        return LANE_TYPES[self.lanetype + self.direction]['order']
+
+    def reverse_direction(self):
+        self.direction = _get_opposite_direction(self.direction)
+
+
+class SpaceAllocation(list):
+    def __init__(self, lanes, maxspeed=None, hierarchy=None):
+        """
+        A space allocation
+
+        Parameters
+        ----------
+        lanes: list[Lane]
+        maxspeed: int
+        hierarchy: str
+        """
+
+        self.extend(lanes)
+        # TODO: Move hierarchy and maxspeed from StreetGraoph Edge into SpaceAllocation
+        self.maxspeed = maxspeed
+        self.hierarchy = hierarchy
+
+    def __str__(self):
+        stringified_lanes = list(
+            map(lambda item: str(item), self)
+        )
+        return ' | '.join(stringified_lanes)
+
+    def __eq__(self, other):
+        return (
+            type(other) is SpaceAllocation
+            and str(SpaceAllocation(sorted(self))) == str(SpaceAllocation(sorted(other)))
+        )
+
+    def reverse_allocation(self):
+        """
+        Reverse the order and direction of all lanes
+        """
+        self.reverse()
+        [lane.reverse_direction() for lane in self]

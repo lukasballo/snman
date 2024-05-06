@@ -54,6 +54,13 @@ LANETYPE_PARKING_PERPENDICULAR = 'N'    # On-street parking
 LANETYPE_PARKING_DIAGONAL = 'D'     # On-street parking
 LANETYPE_NON_TRAFFIC = 'Z'          # No traffic, e.g., greenery or community spaces
 
+PARALLEL_PARKING_CAR_LENGTH = 5
+
+STATUS_FIXED = '*'
+STATUS_ONE_DIRECTION_MANDATORY = '%'
+STATUS_OPTIONAL = '/'
+STATUS_BY_NEED = '!'
+
 # For assessing cycling quality, from best to worst
 # TODO: To be replaced with ranking according to cycling comfort factors
 CYCLING_QUALITY_HIERARCHY = [
@@ -79,6 +86,9 @@ KEY_LANES_DESCRIPTION = 'ln_desc'               # under which key is the existin
 KEY_LANES_DESCRIPTION_AFTER = 'ln_desc_after'   # under which key is the lane configuration after rebuilding
 KEY_GIVEN_LANES_DESCRIPTION = 'given_lanes'
 KEY_REVERSED = '_reversed'          # which key tells if the edge has been reversed
+
+KEY_SENSORS_FORWARD = 'sensors_forward'
+KEY_SENSORS_BACKWARD = 'sensors_backward'
 
 LANE_TYPES = {
 
@@ -110,7 +120,9 @@ LANE_TYPES = {
     LANETYPE_MOTORIZED + DIRECTION_BACKWARD_OPTIONAL:
         {'width': 3.0, 'order': 1, 'cycling_vod': 0,
          'modes': [MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_CYCLING, MODE_FOOT]},
-
+    LANETYPE_MOTORIZED + DIRECTION_BOTH_OPTIONAL:
+        {'width': 4.5, 'order': 1, 'cycling_vod': 0,
+         'modes': [MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_CYCLING, MODE_FOOT]},
     # optional lane with undecided direction
     LANETYPE_MOTORIZED + DIRECTION_TBD_OPTIONAL:
         {'width': 3.0, 'order': 1, 'cycling_vod': 0,
@@ -174,6 +186,10 @@ LANE_TYPES = {
         {'width': 4.5, 'order': 8, 'cycling_vod': 0, 'modes': [MODE_CAR_PARKING]},
     LANETYPE_PARKING_PERPENDICULAR + DIRECTION_BOTH:
         {'width': 6, 'order': 8, 'cycling_vod': 0, 'modes': [MODE_CAR_PARKING]},
+    LANETYPE_PARKING_PARALLEL + DIRECTION_FORWARD:
+        {'width': 2, 'order': 8, 'cycling_vod': 0, 'modes': [MODE_CAR_PARKING]},
+    LANETYPE_PARKING_PARALLEL + DIRECTION_BACKWARD:
+        {'width': 2, 'order': 8, 'cycling_vod': 0, 'modes': [MODE_CAR_PARKING]},
 
     LANETYPE_NON_TRAFFIC + DIRECTION_FORWARD:
         {'width': 0.0, 'order': 9, 'cycling_vod': 0, 'modes': [MODE_NON_TRAFFIC]},
@@ -193,7 +209,7 @@ def CYCLING_SLOPE_VOD(slope):
 
     Parameters
     ----------
-    slope: int
+    slope: float
 
     Returns
     -------
