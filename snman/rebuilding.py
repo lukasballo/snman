@@ -7,7 +7,12 @@ from .constants import *
 from . import osmnx_customized as oxc
 
 
-def multi_set_needed_node_access(G, source_lanes_attribute=KEY_LANES_DESCRIPTION):
+def multi_set_needed_node_access(
+        G,
+        source_lanes_attribute=KEY_LANES_DESCRIPTION,
+        method='maintain_access_to_nodes',
+        modes=MODES
+):
     """
     Assigns a set of attributes to every node defining whether it must remain accessible to each mode.
 
@@ -28,9 +33,21 @@ def multi_set_needed_node_access(G, source_lanes_attribute=KEY_LANES_DESCRIPTION
     -------
 
     """
-    for mode in MODES:
+    for mode in modes:
+
         H = copy.deepcopy(G)
-        H = street_graph.filter_lanes_by_modes(H, {mode}, source_lanes_attribute)
+        if method == 'maintain_access_to_nodes':
+            H = street_graph.filter_lanes_by_modes(H, {mode}, lane_description_key=source_lanes_attribute)
+
+        elif method == 'access_to_parking':
+            street_graph.filter_lanes_by_function(
+                H,
+                lambda lane: lane.status == STATUS_FIXED, lane_description_key=source_lanes_attribute
+            )
+
+        else:
+            pass
+
         for i, data in H.nodes.items():
             G.nodes[i]['needs_access_by_' + mode] = True
 
@@ -43,6 +60,7 @@ def multi_set_given_lanes(
         parking_mode='mandatory_like_existing',
         motorized_traffic_on_all_streets=False,
         motorized_traffic_road_hierarchies=(hierarchy.LOCAL_ROAD, hierarchy.MAIN_ROAD, hierarchy.HIGHWAY),
+        motorized_traffic_lane_mode='separate_lanes',
         cycling_infra_road_hierarchies=(hierarchy.LOCAL_ROAD, hierarchy.MAIN_ROAD),
         hierarchies_to_fix=(hierarchy.PATHWAY, hierarchy.SERVICE)
 ):
@@ -129,20 +147,27 @@ def multi_set_given_lanes(
                     G, *uvk, DIRECTION_BACKWARD, MODE_PRIVATE_CARS, lanes_description=target_lanes_attribute
                 )
 
+                if motorized_traffic_lane_mode == 'separate_lanes':
+                    use_direction = DIRECTION_TBD
+                elif motorized_traffic_lane_mode == 'bidirectional_lanes':
+                    use_direction = DIRECTION_BOTH
+                else:
+                    print('not implemented')
+
                 # motorized_traffic_on_all_streets=True: ensure every street is accessible to car traffic
                 # if it is not already
                 if motorized_traffic_on_all_streets:
                     if data.get('hierarchy') in motorized_traffic_road_hierarchies:
                         if math.inf in [car_cost_backward, car_cost_forward]:
                             target_lanes.append(
-                                space_allocation.Lane(LANETYPE_MOTORIZED, DIRECTION_TBD, status=STATUS_FIXED)
+                                space_allocation.Lane(LANETYPE_MOTORIZED, use_direction, status=STATUS_FIXED)
                             )
                 # motorized_traffic_on_all_streets=False: add optional lane to every street
                 else:
                     if data.get('hierarchy') in motorized_traffic_road_hierarchies:
                         if math.inf in [car_cost_backward, car_cost_forward]:
                             target_lanes.append(
-                                space_allocation.Lane(LANETYPE_MOTORIZED, DIRECTION_TBD, status=STATUS_OPTIONAL)
+                                space_allocation.Lane(LANETYPE_MOTORIZED, use_direction, status=STATUS_OPTIONAL)
                             )
 
             # -- Add cycling lanes --
@@ -207,7 +232,7 @@ def multi_set_given_lanes(
         data[target_lanes_attribute] = target_lanes
 
 
-def get_effective_subgraph(L, weight, node_inclusion):
+def get_effective_subgraph(L, weight=None, node_inclusion=None):
     """
     Returns a subgraph respecting the weights and relevant nodes.
     The resulting subgraph excludes all edges with data[weight] == inf
@@ -223,14 +248,21 @@ def get_effective_subgraph(L, weight, node_inclusion):
     -------
 
     """
-    # keep only the nodes to be included
-    M = L.subgraph(
-        [i for i, data in L.nodes.items() if data.get(node_inclusion)]
-    )
-    # keep only the edges without infinite weights
-    M = M.edge_subgraph(
-        [uvk for uvk, data in M.edges.items() if data.get(weight) != np.inf]
-    )
+
+    M = copy.deepcopy(L)
+
+    if node_inclusion:
+        # keep only the nodes to be included
+        M = M.subgraph(
+            [i for i, data in M.nodes.items() if data.get(node_inclusion)]
+        )
+
+    if weight:
+        # keep only the edges without infinite weights
+        M = M.edge_subgraph(
+            [uvk for uvk, data in M.edges.items() if data.get(weight) != np.inf]
+        )
+
     return M
 
 
@@ -259,7 +291,30 @@ def is_strongly_connected_plus(L, weight, node_inclusion, exclude_edges=()):
     return nx.is_strongly_connected(M)
 
 
-def check_if_edges_disconnect_graph(L, edges):
+def get_number_of_scc_with_inclusion_attribute(L, inclusion_attribute):
+
+    L = copy.deepcopy(L)
+
+    scc = list(nx.strongly_connected_components(L))
+
+    # Create a mapping from node to SCC ID
+    node_to_scc_id = {}
+    for idx, component in enumerate(scc):
+        for node in component:
+            node_to_scc_id[node] = idx
+
+    # Add SCC ID as a node attribute
+    nx.set_node_attributes(L, node_to_scc_id, name='scc_id')
+
+    scc_ids = set()
+    for i, data in L.nodes.items():
+        if data[inclusion_attribute] == True:
+            scc_ids.add(data['scc_id'])
+
+    #print(scc_ids)
+    return len(scc_ids)
+
+def check_if_edges_disconnect_graph(L, edges, inclusion_attribute=None):
     """
     Checks if removing a set of edges increases
     the number of strongly connected components.
@@ -278,8 +333,13 @@ def check_if_edges_disconnect_graph(L, edges):
         [uvk for uvk, data in L.edges.items() if uvk not in edges]
     )
 
-    scc_before = nx.number_strongly_connected_components(L)
-    scc_after = nx.number_strongly_connected_components(M)
+    if inclusion_attribute:
+        scc_before = get_number_of_scc_with_inclusion_attribute(L, inclusion_attribute)
+        scc_after = get_number_of_scc_with_inclusion_attribute(M, inclusion_attribute)
+
+    else:
+        scc_before = nx.number_strongly_connected_components(L)
+        scc_after = nx.number_strongly_connected_components(M)
 
     return scc_after > scc_before
 
@@ -343,27 +403,60 @@ def check_if_edge_breaks_transit(G, L, u, v, k):
     return breaks_transit
 
 
+def check_if_has_dependent_parking_lanes(L, u, v, k):
+    """
+    Returns true if the lane has at least one dependent parking lane,
+    i.e., being the last car lane with a parallel parking lane.
+    In that case, removing it would break access to the parking lane.
+
+    Parameters
+    ----------
+    L: lane_graph.LaneGraph
+    u: int
+    v: int
+    k: str
+
+    Returns
+    -------
+    bool
+
+    """
+
+    return len(lane_graph.get_dependent_parking_lanes(L, u, v, k)) > 0
+
+
 def _remove_car_lanes(
         L, L_existing,
         G, width_attribute,
         A,
+        mode='lowest_bc',
+        stop_at_step=np.inf,
         verbose=False
 ):
     """
     a helper for multi_rebuild(), takes care of the car lanes removal
+
+    Parameters
+    ----------
+    L: lane_graph.LaneGraph
+    L_existing: lane_graph.LaneGraph
+    G: street_graph.StreetGraph
+    width_attribute: str
+    A: access_graph.AccessGraph
+    mode: str
+    stop_at_step: int
+    verbose: bool
     """
 
     iteration_step = 1
     uv_changed = None
-    while True:
+    while iteration_step <= stop_at_step:
 
         if verbose:
             print('iteration', iteration_step)
 
         # calculate betweenness centrality
-        #print(uv_changed)
         if iteration_step == 1 or (uv_changed is not None):
-            #print('calculate bc')
 
             # create a subgraph that contains only car lanes, this is needed to reduce computing time
             # for betweenness centrality
@@ -372,16 +465,10 @@ def _remove_car_lanes(
                 if data['lanetype'] in {LANETYPE_MOTORIZED, LANETYPE_HIGHWAY}
             ])
 
-            #print(len(L.nodes), len(L.edges))
-            #print(len(M.nodes), len(M.edges))
-
-            weight = 'cost_' + MODE_PRIVATE_CARS
             n_nodes = len(M.nodes)
             k = int(n_nodes / 10) if n_nodes > 300 else n_nodes
-            bc = nx.edge_betweenness_centrality(M, k, weight=weight, seed=9)
+            bc = nx.edge_betweenness_centrality(M, k, weight='cost_' + MODE_PRIVATE_CARS, seed=9)
             nx.set_edge_attributes(L, bc, 'bc_' + MODE_PRIVATE_CARS)
-
-        #print('calculate_excess_width')
 
         # calculate excess width (how much wider are the new lanes than the old ones)
         for uvk, data in G.edges.items():
@@ -390,14 +477,12 @@ def _remove_car_lanes(
             data['_after_width_total_m'] = width_after
             data['_after_excess_width_m'] = width_after - width_before
 
-        #print('list of unfixed')
-
         # create a list of unfixed car edges, these are removal candidates
         removal_candidates_car = list(filter(
             lambda edge:
             (edge[1]['lane'].status != STATUS_FIXED or edge[1]['lane'].direction == DIRECTION_TBD)
             and edge[1]['lanetype'] in {LANETYPE_MOTORIZED, LANETYPE_HIGHWAY},
-            # and G.edges[(edge[1]['u_G'],edge[1]['v_G'],edge[1]['k_G'])]['_after_excess_width_m'] > 0,
+            #and G.edges[(edge[1]['u_G'], edge[1]['v_G'], edge[1]['k_G'])]['_after_excess_width_m'] > 0,
             L.edges.items()
         ))
 
@@ -405,96 +490,115 @@ def _remove_car_lanes(
         if len(removal_candidates_car) == 0:
             break
 
-        #print('sort')
+        # sort removal candidates
 
-        # sort by excess width
-        removal_candidates_car = sorted(
-            removal_candidates_car,
-            key=lambda x: (
-                G.edges[(x[1]['u_G'], x[1]['v_G'], x[1]['k_G'])]['_after_excess_width_m'],
-                1 - x[1]['bc_private_cars']
+        if mode == 'lowest_bc':
+            removal_candidates_car = sorted(
+                removal_candidates_car,
+                key=lambda x: (
+                    #G.edges[(x[1]['u_G'], x[1]['v_G'], x[1]['k_G'])]['_after_excess_width_m'] > 0,
+                    x[1]['bc_private_cars']
+                )
             )
-        )
 
-        removal_candidate_car = removal_candidates_car[-1]
+        elif mode == 'highest_bc':
+            removal_candidates_car = sorted(
+                removal_candidates_car,
+                key=lambda x: (
+                    #G.edges[(x[1]['u_G'], x[1]['v_G'], x[1]['k_G'])]['_after_excess_width_m'] > 0,
+                    -x[1]['bc_private_cars']
+                )
+            )
+
+        else:
+            raise NotImplementedError(f'Mode {mode} is not implemented')
+
+
+        removal_candidate_car = removal_candidates_car[0]
         remove_edge_uvk = removal_candidate_car[0]
         remove_edge_data = removal_candidate_car[1]
-        remove_edge_street_data = G.edges[(remove_edge_data['u_G'], remove_edge_data['v_G'], remove_edge_data['k_G'])]
 
         opposite_edge_uvk = (remove_edge_uvk[1], remove_edge_uvk[0], remove_edge_uvk[2])
 
+        # make a subgraph containing only parking lanes
         P = L.edge_subgraph(
-            [uvk for uvk, data in L.edges.items() if data.get('cost_car_parking') != np.inf]
+            [uvk for uvk, data in L.edges.items() if MODE_CAR_PARKING in data['lane'].get_modes()]
         )
         P = P.subgraph(
             [node for node, degree in dict(G.degree()).items() if degree > 0]
         )
 
+        # set a flag whether each node must maintain access
+        # (either due to required access or because of touching a parking lane)
         for i, data in L.nodes.items():
             data['_cars_and_parking'] = data.get('needs_access_by_private_cars', False) or i in P.nodes
 
+        # checks
         # would the removal of this edge disconnect the graph?
-        M = get_effective_subgraph(L, 'cost_private_cars', 'needs_access_by_private_cars')
-        edges_disconnect_graph = check_if_edges_disconnect_graph(M, [remove_edge_uvk])
+        M = get_effective_subgraph(L, weight='cost_private_cars')
+        edges_disconnect_graph = check_if_edges_disconnect_graph(
+            M, [remove_edge_uvk], 'needs_access_by_private_cars'
+        )
 
         # would the removal of this edge violate the public transit requirement?
         edge_breaks_transit = check_if_edge_breaks_transit(G, L, *remove_edge_uvk)
-
-        #print('check')
 
         # is the last direction of a mandatory lane with direction tbd?
         is_last_direction_of_mandatory_lane = \
             remove_edge_data['lane'].status == STATUS_FIXED and remove_edge_data['lane'].direction == DIRECTION_TBD \
             and not L.has_edge(*opposite_edge_uvk)
 
-        # is the last car lane of a street with parking?
-        dependent_parking_lanes = lane_graph.get_dependent_parking_lanes(L, *remove_edge_uvk)
+        # has dependent parking lanes?
+        has_dependent_parking_lanes = check_if_has_dependent_parking_lanes(L, *remove_edge_uvk)
 
         if (
-                dependent_parking_lanes == {}
-                or access_graph.effect_of_parking_removal_on_underassignment(A, dependent_parking_lanes.keys()) == 0
-        ):
-            removes_needed_parking = False
-        else:
-            removes_needed_parking = True
-            L.edges[remove_edge_uvk]['lane'].status = STATUS_FIXED
-
-        #print('remove')
-
-        if (
-                not edges_disconnect_graph
-                and not edge_breaks_transit
-                and not is_last_direction_of_mandatory_lane
-                and not removes_needed_parking
+            edges_disconnect_graph
+            or edge_breaks_transit
+            or is_last_direction_of_mandatory_lane
+            or has_dependent_parking_lanes
         ):
 
-            # execute the removal
-            if verbose:
-                print('removed', remove_edge_uvk)
-            L.remove_edge(*remove_edge_uvk)
-            uv_changed = remove_edge_uvk[0:2]
-
-            if dependent_parking_lanes != {}:
-                L.remove_edges_from(dependent_parking_lanes.keys())
-                A.remove_nodes_from(dependent_parking_lanes.keys())
-
-        else:
             # mark as fixed
-            if verbose:
-                print(remove_edge_uvk, edges_disconnect_graph, is_last_direction_of_mandatory_lane)
             L.edges[remove_edge_uvk]['lane'].status = STATUS_FIXED
-            if L.edges[remove_edge_uvk]['lane'].direction == DIRECTION_TBD:
-                L.edges[remove_edge_uvk]['lane'].direction = DIRECTION_FORWARD
-            L.edges[remove_edge_uvk]['twin_factor'] = 1
 
-            L.edges[remove_edge_uvk]['_disconnect_graph'] = edges_disconnect_graph
+            # if direction tbd
+            if L.edges[remove_edge_uvk]['lane'].direction == DIRECTION_TBD:
+                # convert to forward and make twin factor 1
+                L.edges[remove_edge_uvk]['lane'].direction = DIRECTION_FORWARD
+                L.edges[remove_edge_uvk]['twin_factor'] = 1
+
+                # make first instance and adjust lane key
+                old_instance = L.edges[remove_edge_uvk]['instance']
+                L.edges[remove_edge_uvk]['instance'] = 1
+                remove_edge_uvk_old = copy.deepcopy(remove_edge_uvk)
+                remove_edge_uvk = list(remove_edge_uvk)
+                remove_edge_uvk[2] = remove_edge_uvk[2] + '-' + str(old_instance)
+                L.add_edge(*remove_edge_uvk, **L.edges[remove_edge_uvk_old])
+                L.remove_edge(*remove_edge_uvk_old)
+
+            L.edges[remove_edge_uvk]['_disconnects_graph'] = edges_disconnect_graph
             L.edges[remove_edge_uvk]['_breaks_transit'] = edge_breaks_transit
             L.edges[remove_edge_uvk]['_last_dir_of_mandatory'] = is_last_direction_of_mandatory_lane
-            L.edges[remove_edge_uvk]['_removes_needed_parking'] = removes_needed_parking
+            L.edges[remove_edge_uvk]['_has_dependent_parking'] = has_dependent_parking_lanes
 
             if verbose:
                 print('fixed', remove_edge_uvk)
             uv_changed = None
+
+        else:
+
+            # remove
+            if verbose:
+                print('removed', remove_edge_uvk)
+
+            # if direction is both and opposite instance exists, make it forward and instance 1
+            if L.edges[remove_edge_uvk]['lane'].direction == DIRECTION_BOTH and L.has_edge(*opposite_edge_uvk):
+                L.edges[opposite_edge_uvk]['lane'].direction = DIRECTION_FORWARD
+                L.edges[opposite_edge_uvk]['lane'].set_default_width()
+                L.edges[opposite_edge_uvk]['instance'] = 1
+
+            L.remove_edge(*remove_edge_uvk)
+            uv_changed = remove_edge_uvk[0:2]
 
         iteration_step += 1
 
@@ -547,6 +651,7 @@ def _remove_parking(
         L, L_existing,
         G, width_attribute,
         A,
+        gravity_iterations=15,
         verbose=False
 ):
     """
@@ -589,10 +694,12 @@ def _remove_parking(
         removal_candidate_parking = removal_candidates_parking[-1]
         remove_edge_uvk = removal_candidate_parking[0]
 
-        if access_graph.effect_of_parking_removal_on_underassignment(A, [remove_edge_uvk]) == 0:
+        if access_graph.effect_of_parking_removal_on_underassignment(
+                A, [remove_edge_uvk], iterations=gravity_iterations
+        ) == 0:
             L.remove_edge(*remove_edge_uvk)
             A.remove_node(remove_edge_uvk)
-            access_graph.gravity_model(A)
+            access_graph.gravity_model(A, iterations=gravity_iterations)
 
         else:
             L.edges[remove_edge_uvk]['lane'].status = STATUS_FIXED
@@ -796,61 +903,7 @@ def _adjust_width_of_lanes(
                 lane_data['lane'].status = STATUS_FIXED
 
 
-def multi_rebuild(
-        L, L_existing,
-        G, width_attribute,
-        verbose=False
-):
-    """
-    Default rebuilding function based on a heuristic of removing links from a lane graph.
-    The changes are made inplace on the lane graph L.
-
-    Parameters
-    ----------
-    L: nx.MultiLaneGraph
-        given lane graph with a wishlist of edges, some of them
-        will be removed throughout the process
-    L_existing: nx.MultiLaneGraph
-        existing lane graph for reference, not needed here but may be useful
-        for alternative variations of this function
-    G: nx.MultiLaneGraph
-        street graph
-    width_attribute: str
-        the attribute key to find the width of each street in the street graph
-    verbose: bool
-
-    Returns
-    -------
-    None
-    """
-
-    if verbose:
-        print('---- removing car lanes ------')
-    _remove_car_lanes(L, L_existing, G, width_attribute, verbose)
-
-    if verbose:
-        print('---- narrow down car lanes ------')
-    _narrow_down_car_lanes(L, L_existing, G, width_attribute, verbose)
-
-    if verbose:
-        print('---- removing parking ------')
-    _remove_parking(L, L_existing, G, width_attribute, verbose)
-
-    if verbose:
-        print('---- removing cycling lanes ------')
-    _remove_cycling_lanes(L, L_existing, G, width_attribute, verbose)
-
-    if verbose:
-        print('---- merging transit lanes with car lanes ------')
-    _merge_transit_with_car_lanes(L, L_existing, G, width_attribute, verbose)
-
-    if verbose:
-        print('---- adjusting non-traffic spaces ------')
-    _adjust_non_traffic(L, L_existing, G, width_attribute, verbose)
-
-    return L
-
-
+"""
 def rebuild_streets_based_on_lane_graph(
         G,
         L,
@@ -892,160 +945,191 @@ def rebuild_streets_based_on_lane_graph(
                     lane.width = L_data['width']
                     lanes_description.append(lane)
         G_data[target_lane_key] = lanes_description
+"""
+
+
+def multi_rebuild_region(
+        G,
+        polygon,
+        access_needs,
+        hierarchies_to_include=hierarchy.HIERARCHIES,
+        hierarchies_to_fix=(),
+        add_fix_hierarchies=(hierarchy.PATHWAY, hierarchy.OTHER_HIERARCHY, hierarchy.SERVICE),
+        motorized_traffic_on_all_streets=False,
+        given_lanes_function=multi_set_given_lanes,
+        remove_car_lanes_mode=None,
+        motorized_traffic_lane_mode='separate_lanes',
+        public_transit_mode='mandatory_like_existing',
+        parking_mode='everywhere_by_need',
+        parking_radius=200,
+        gravity_iterations=15,
+        needed_node_access_function=multi_set_needed_node_access,
+        given_lanes_attribute=KEY_GIVEN_LANES_DESCRIPTION,
+        target_lanes_attribute=KEY_LANES_DESCRIPTION_AFTER,
+        # export_L=None, export_H=None,
+        # export_when='before_and_after',
+        verbose=False,
+        save_steps_path=None
+):
+    print('truncating street graph')
+    H = oxc.truncate.truncate_graph_polygon(G, polygon, quadrat_width=100, retain_all=True)
+    H = street_graph.filter_by_hierarchy(H, hierarchies_to_include)
+    H = copy.deepcopy(H)
+    print('done truncating')
+
+    print('GIVEN LANES')
+
+    # set given lanes and required access for nodes according to network rules
+    given_lanes_function(
+        H,
+        source_lanes_attribute=target_lanes_attribute,
+        target_lanes_attribute=given_lanes_attribute,
+        hierarchies_to_fix=tuple(set(hierarchies_to_fix) | set(add_fix_hierarchies)),
+        motorized_traffic_on_all_streets=motorized_traffic_on_all_streets,
+        motorized_traffic_lane_mode=motorized_traffic_lane_mode,
+        public_transit_mode=public_transit_mode,
+        parking_mode=parking_mode,
+    )
+
+    # for each node, set whether it must be accessible by each mode
+    needed_node_access_function(H)
+
+    # for i, data in H.nodes.items():
+    #    print(i, 'needs_access_by_private_cars' in data.keys())
+
+    L = lane_graph.create_lane_graph(H)
+    if save_steps_path:
+        io.export_HLA(save_steps_path, '0', L=L)
+
+    """
+    if not hierarchy.HIERARCHIES <= hierarchies_to_include:
+        # simplify the graph by removing intermediate nodes
+        merge_edges.reset_intermediate_nodes(H)
+        merge_edges.merge_consecutive_edges(H, distinction_attributes={given_lanes_attribute}, min_width=True)
+    """
+
+    L = lane_graph.create_lane_graph(H, lanes_attribute=given_lanes_attribute)
+
+    if len(L.edges) == 0:
+        print('no edges')
+        return
+
+    A = access_graph.create_access_graph(L, gpd.clip(access_needs, polygon), radius=parking_radius)
+    access_graph.gravity_model(A, iterations=gravity_iterations)
+
+    # Given lanes
+    if save_steps_path:
+        io.export_HLA(save_steps_path, '1', H=H, L=L, A=A)
+
+    # Remove lanes in steps
+    print('REMOVE PARKING')
+    _remove_parking(L, None, H, 'width', A, gravity_iterations=gravity_iterations, verbose=True)
+
+    M = copy.deepcopy(L)
+    for uvk, data in L.edges.items():
+        if not (
+                data['lane'].lanetype == LANETYPE_PARKING_PARALLEL
+                or (data['lane'].status == STATUS_FIXED and data['lane'].lanetype == LANETYPE_MOTORIZED)
+        ):
+            M.remove_edge(*uvk)
+
+    graph.remove_isolated_nodes(M)
+
+    for i, data in L.nodes.items():
+        data['needs_access_by_private_cars'] = M.has_node(i)
+        data['_test'] = M.has_node(i)
+
+    if save_steps_path:
+        io.export_HLA(save_steps_path, '2', L=L, A=A)
+
+    print('REMOVE CAR LANES')
+    _remove_car_lanes(L, None, H, 'width', A, remove_car_lanes_mode, verbose=True)
+    if save_steps_path:
+        io.export_HLA(save_steps_path, '3', L=L, A=A)
+    print('REMOVE CYCLING LANES')
+    _remove_cycling_lanes(L, None, H, 'width', verbose=True)
+    if save_steps_path:
+        io.export_HLA(save_steps_path, '4', L=L, A=A)
+    print('MERGE TRANSIT AND CAR LANES')
+    _merge_transit_with_car_lanes(L, None, H, 'width', verbose=True)
+    if save_steps_path:
+        io.export_HLA(save_steps_path, '5', L=L, A=A)
+    print('ADJUST WIDTH OF LANES')
+    _adjust_width_of_lanes(L, None, H, 'width', lanetypes={LANETYPE_CYCLING_LANE}, verbose=True)
+    _adjust_width_of_lanes(L, None, H, 'width', verbose=True)
+    if save_steps_path:
+        io.export_HLA(save_steps_path, '6', L=L, A=A)
+
+    for uvk, data in H.edges.items():
+        lane_graph.merge_lanes_and_equalize_widths(
+            L, *uvk,
+            filter=lambda lane: lane['lane'].lanetype == LANETYPE_CYCLING_LANE
+        )
+
+    street_graph.lane_graph_to_street_graph(
+        H, L,
+        KEY_LANES_DESCRIPTION_AFTER
+    )
+
+    if save_steps_path:
+        io.export_HLA(save_steps_path, '7', H=H, L=L, A=A)
+
+    """
+    if not hierarchy.HIERARCHIES <= hierarchies_to_include:
+        # reconstruct the original street graph with intermediary nodes
+        merge_edges.reconstruct_consecutive_edges(H)
+        street_graph.organize_edge_directions(H, key_lanes_description=KEY_LANES_DESCRIPTION_AFTER)
+    """
+
+    if save_steps_path:
+        io.export_HLA(save_steps_path, '8', H=H, L=L, A=A)
+
+    # write rebuilt lanes from the subgraph into the main graph
+    nx.set_edge_attributes(
+        G,
+        copy.deepcopy(nx.get_edge_attributes(H, target_lanes_attribute)),
+        target_lanes_attribute
+    )
+
+    return H, L, A
 
 
 def multi_rebuild_regions(
         G,
         rebuilding_regions_gdf,
-        width_attribute=KEY_LANES_DESCRIPTION + '_width_total_m',
-        rebuilding_function=multi_rebuild,
-        given_lanes_function=multi_set_given_lanes,
-        public_transit_mode='mandatory_like_existing',
-        parking_mode='mandatory_like_existing',
-        needed_node_access_function=multi_set_needed_node_access,
-        add_fix_hierarchies={hierarchy.PATHWAY, hierarchy.OTHER_HIERARCHY},
-        existing_lanes_attribute=KEY_LANES_DESCRIPTION,
-        given_lanes_attribute=KEY_GIVEN_LANES_DESCRIPTION,
+        access_needs,
+        rebuilding_function=multi_rebuild_region,
+        source_lanes_attribute=KEY_LANES_DESCRIPTION,
         target_lanes_attribute=KEY_LANES_DESCRIPTION_AFTER,
-        export_L=None, export_H=None,
-        export_when='before_and_after',
-        verbose=False,
+        **kwargs
 ):
-    """
-    Process each rebuilding region. By default, the redesign process is defined by the built-in functions
-    multi_set_given_lanes() and multi_rebuild().
-
-    However, they can be overridden by custom functions to generate alternative design scenarios.
-
-    Parameters
-    ----------
-    G: nx.GeoDataFrame
-        street graph
-    rebuilding_regions_gdf: gpd.GeoDataFrame
-    width_attribute: str
-        the attribute where the available width of each street in the street graph is stored
-    rebuilding_function: function
-        The function that will be used to rebuild the network, i.e. perform the optimization.
-        Per default, a built-in heuristic will be used based on link elimination from the lane graph.
-        You can pass a custom function to perform this task differently or compare different approaches.
-        Make sure that your function takes the same arguments as multi_rebuild().
-    given_lanes_function: function
-        the function that will be used to define the given lanes, i.e. a wishlist of lanes for each edge
-    public_transit_mode: str
-        specifies the design of public transit infrastructure, see multi_set_given_lanes()
-    parking_mode: str
-        specifies the design of parking infrastructure, see multi_set_given_lanes()
-    needed_node_access_function
-    existing_lanes_attribute: str
-        the attribute with existing lanes
-    given_lanes_attribute: str
-        the attribute with 'given' lanes which is a wishlist of lanes created by the given_lanes_function
-    target_lanes_attribute
-        the attribute where the resulting lanes will be stored
-    verbose: bool
-        for debugging
-
-    Returns
-    -------
-    None
-    """
-
     # initialize the target lanes attribute as a copy of the given lanes
-    nx.set_edge_attributes(G, nx.get_edge_attributes(G, existing_lanes_attribute), target_lanes_attribute)
-    # ensure consistent edge directions
-    street_graph.organize_edge_directions(G)
+    nx.set_edge_attributes(
+        G,
+        copy.deepcopy(nx.get_edge_attributes(G, source_lanes_attribute)),
+        target_lanes_attribute
+    )
 
-    for i, rebuilding_region in rebuilding_regions_gdf.iterrows():
+    # H, L, A = multi_rebuild_region(G, rebuilding_regions_gdf['geometry'][0], access_needs)
 
-        print('rebuilding region', i)
+    rebuilding_regions_gdf = rebuilding_regions_gdf.sort_values(by='order')
 
-        if len(rebuilding_region['hierarchies_to_include']) > 0:
-            hierarchies_to_include = rebuilding_region['hierarchies_to_include']
-        else:
-            hierarchies_to_include = hierarchy.HIERARCHIES
+    HLAs = rebuilding_regions_gdf.apply(
+        lambda region: rebuilding_function(
+            G,
+            region['geometry'],
+            access_needs,
+            hierarchies_to_include=region['hierarchies_to_include'] if len(
+                region['hierarchies_to_include']) > 0 else hierarchy.HIERARCHIES,
+            hierarchies_to_fix=region['hierarchies_to_fix'],
+            motorized_traffic_on_all_streets=region['motorized_traffic_on_all_streets'],
+            parking_mode=region['parking_mode'],
+            parking_radius=region['parking_radius'],
+            remove_car_lanes_mode=region['remove_car_lanes_mode'],
+            motorized_traffic_lane_mode=region['motorized_traffic_lane_mode'],
+            **kwargs
+        ),
+        axis=1
+    )
 
-        print('include', hierarchies_to_include)
-
-        hierarchies_to_fix = (
-            hierarchy.HIERARCHIES.difference(hierarchies_to_include)
-            .union(rebuilding_region['hierarchies_to_fix'])
-            .union(add_fix_hierarchies)
-        )
-
-        print('fix', hierarchies_to_fix)
-
-        # make a graph cutout based on the region geometry and skip this region if the resulting subgraph is empty
-        H = oxc.truncate.truncate_graph_polygon(G, rebuilding_region.geometry, quadrat_width=30, retain_all=True)
-        if len(H.edges) == 0:
-            continue
-
-        print('after cutout')
-        print(H.nodes)
-
-        # keep only hierarchies to include
-        H = street_graph.filter_by_hierarchy(H, hierarchies_to_include)
-
-        print('after hierarchies')
-        print(H.nodes)
-
-        # set given lanes and required access for nodes according to network rules
-        given_lanes_function(
-            H,
-            hierarchies_to_fix=hierarchies_to_fix,
-            motorized_traffic_on_all_streets=rebuilding_region['keep_all_streets'],
-            public_transit_mode=public_transit_mode,
-            parking_mode=parking_mode
-        )
-
-        print('after given lanes')
-        print(H.nodes)
-
-        needed_node_access_function(H)
-
-        print('after needed nodes')
-        print(H.nodes)
-
-        # simplify the graph by removing intermediate nodes
-        merge_edges.reset_intermediate_nodes(H)
-        merge_edges.merge_consecutive_edges(H, distinction_attributes={KEY_LANES_DESCRIPTION_AFTER})
-
-        print('after merging')
-        print(H.nodes)
-
-        # make lane graph and ensure it is strongly connected
-        L = lane_graph.create_lane_graph(H, KEY_GIVEN_LANES_DESCRIPTION)
-        #L = graph.keep_only_the_largest_connected_component(L)
-
-        print('L')
-        print(L.nodes)
-
-        # export the lane graphs (before rebuilding) for debugging purposes
-        if export_when in ['before_and_after', 'before']:
-            if export_L:
-                io.export_street_graph(L, export_L[0], export_L[1])
-            if export_H:
-                io.export_street_graph(H, export_H[0], export_H[1])
-
-        # execute the multi rebuilding function
-        L = rebuilding_function(L, None, H, width_attribute, verbose=verbose)
-
-        # use the resulting lane graph (with edges that have not been removed) to rebuild the street graph
-        rebuild_streets_based_on_lane_graph(
-            H,
-            L,
-            hierarchies_to_protect=hierarchies_to_fix
-        )
-
-        # reconstruct the original street graph with intermediary nodes
-        merge_edges.reconstruct_consecutive_edges(H)
-        street_graph.organize_edge_directions(H)
-
-        # export the lane graphs (after rebuilding) for debugging purposes
-        if export_when in ['before_and_after', 'after']:
-            if export_L:
-                io.export_street_graph(L, *export_L)
-            if export_H:
-                io.export_street_graph(H, *export_H)
-
-        # write rebuilt lanes from the subgraph into the main graph
-        nx.set_edge_attributes(G, nx.get_edge_attributes(H, KEY_LANES_DESCRIPTION_AFTER), KEY_LANES_DESCRIPTION_AFTER)
+    return HLAs

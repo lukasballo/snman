@@ -3,7 +3,6 @@ from . import geometry_tools, space_allocation, utils, street_graph, lane_graph
 from .constants import *
 import geopandas as gpd
 import pandas as pd
-import pyproj
 import shapely.ops
 import shapely.geometry
 import shapely
@@ -14,6 +13,7 @@ import copy
 import numpy as np
 import json
 import ast
+import os
 
 # - CREATING BASIC DATASETS --------------------------------------------------------------------------------------------
 
@@ -66,6 +66,7 @@ def create_street_graph_from_OSM(perimeter_geometry, CRS_internal, return_raw=Fa
         data['traffic_signals'] = 1 * (data.get('highway') == 'traffic_signals')
 
     street_graph.convert_crs(G, CRS_internal)
+    street_graph.fill_wrong_edge_geometries(G)
     space_allocation.generate_lanes(G)
     street_graph.filter_lanes_by_modes(G, {MODE_TRANSIT, MODE_PRIVATE_CARS, MODE_CYCLING, MODE_CAR_PARKING})
 
@@ -127,6 +128,55 @@ def load_street_graph(
     edges_gdf.apply(lambda e: G.add_edge(*e.name, **e), axis=1)
 
     return G
+
+
+def load_lane_graph(
+        edges_path, nodes_path, crs=DEFAULT_CRS,
+        unstringify_attributes={
+            'lane': space_allocation.lane_from_string,
+            'layers': ast.literal_eval
+        }
+):
+    """
+    Load a pre-generated lane graph that has been saved as geofile (shp, gpkg, etc.)
+
+    Parameters
+    ----------
+    edges_path : string
+        path to the file containing the edges
+    nodes_path : string
+        path to the file containing the nodes
+    unstringify_attributes : dict
+        defines which function should be applied to each attribute to unstringify it
+    crs : int
+        target coordinate reference system of the imported street graph
+
+    Returns
+    -------
+    L : lane_graph.LaneGraph
+    """
+
+    edges_gdf = import_geofile_to_gdf(edges_path, crs=crs).replace(np.nan, None)
+    edges_gdf['u'] = edges_gdf['u'].astype(int)
+    edges_gdf['v'] = edges_gdf['v'].astype(int)
+    edges_gdf['key'] = edges_gdf['key'].astype(str)
+    edges_gdf.set_index(['u', 'v', 'key'], inplace=True)
+
+    nodes_gdf = import_geofile_to_gdf(nodes_path, crs=crs).replace(np.nan, None)
+    nodes_gdf['osmid'] = nodes_gdf['osmid'].astype(int)
+    nodes_gdf.set_index('osmid', inplace=True)
+
+    for key, fn in unstringify_attributes.items():
+        if key in edges_gdf:
+            edges_gdf[key] = edges_gdf[key].apply(fn)
+        if key in nodes_gdf:
+            nodes_gdf[key] = nodes_gdf[key].apply(fn)
+
+    L = lane_graph.LaneGraph(crs=crs)
+    nodes_gdf.apply(lambda n: L.add_node(n.name, **n), axis=1)
+    edges_gdf.apply(lambda e: L.add_edge(*e.name, **e), axis=1)
+
+    return L
 
 
 def import_geofile_to_gdf(file_path, crs=DEFAULT_CRS, index=None, filter_index=None, perimeter=None):
@@ -641,6 +691,35 @@ def export_lane_geometries(L, path_edges, path_nodes, scaling=1, include_opposit
     export_lane_graph(M, path_edges, path_nodes, crs=crs)
 
 
+def export_HLA(path, step, H=None, L=None, A=None):
+    if H:
+        # Export street graph
+        export_street_graph(
+            H,
+            os.path.join(path, f'{step}_H_edges.gpkg'),
+            os.path.join(path, f'{step}_H_nodes.gpkg')
+        )
+
+    if L:
+        # Export lane geometries
+        export_lane_geometries(
+            L,
+            os.path.join(path, f'{step}_L_edges.gpkg'),
+            os.path.join(path, f'{step}_L_nodes.gpkg'),
+            scaling=1
+        )
+
+    if A:
+        # Save graph
+        export_graph(
+            A,
+            os.path.join(path, f'{step}_A_edges.gpkg'),
+            os.path.join(path, f'{step}_A_nodes.gpkg'),
+            reset_index=True,
+            stringify_attributes=['osmid', 'u', 'v', 'has_parking_spots']
+        )
+
+
 def export_gdf(gdf, path, columns=[], crs=None):
     """
     Export a GeoDataFrame into a geofile.
@@ -701,10 +780,13 @@ def export_osm_xml(
     None
     """
 
+    H = copy.deepcopy(G)
+
     # keep only the relevant modes
-    H = street_graph.filter_lanes_by_modes(
-        G,
+    street_graph.filter_lanes_by_modes(
+        H,
         modes,
+        operator='or',
         lane_description_key=key_lanes_description
     )
 
@@ -719,6 +801,7 @@ def export_osm_xml(
 
     # ensure right edge directions, tags and crs
     street_graph.organize_edge_directions(H, method='by_osm_convention', key_lanes_description=key_lanes_description)
+    street_graph.add_edge_costs(H, lanes_description=key_lanes_description)
     space_allocation.update_osm_tags(H, lanes_description_key=key_lanes_description)
     street_graph.convert_crs(H, 'epsg:4326')
 

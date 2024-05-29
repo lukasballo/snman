@@ -526,7 +526,7 @@ class _lane_stats:
                     self.n_lanes_dedicated_cycling_lanes_direction_tbd += 1
 
             # Cycling paths
-            if lane.lanetype == LANETYPE_CYCLING_TRACK:
+            if lane.lanetype in {LANETYPE_CYCLING_TRACK, LANETYPE_FOOT_CYCLING_MIXED}:
                 if direction == DIRECTION_FORWARD:
                     self.n_lanes_dedicated_cycling_tracks_forward += 1
                 elif direction == DIRECTION_BACKWARD:
@@ -731,13 +731,24 @@ def is_backward_oneway_street(lanes):
 
     ls = _lane_stats(lanes)
 
-    # only motorized lanes backward
-    return (
-        ls.n_lanes_motorized_forward == 0
-        and ls.n_lanes_motorized_both_ways == 0
-        and ls.n_lanes_motorized_direction_tbd == 0
-        and ls.n_lanes_motorized_backward > 0
-    )
+    if ls.n_lanes_motorized > 0:
+        if (
+            ls.n_lanes_motorized_forward == 0
+            and ls.n_lanes_motorized_both_ways == 0
+            and ls.n_lanes_motorized_direction_tbd == 0
+            and ls.n_lanes_motorized_backward > 0
+        ):
+            return True
+
+    elif (
+            ls.n_lanes_dedicated_cycling_lanes_forward + ls.n_lanes_dedicated_cycling_tracks_forward == 0
+            and ls.n_lanes_dedicated_cycling_lanes_both_ways + ls.n_lanes_dedicated_cycling_tracks_both_ways == 0
+            and ls.n_lanes_dedicated_cycling_lanes_direction_tbd + ls.n_lanes_dedicated_cycling_tracks_direction_tbd == 0
+            and ls.n_lanes_dedicated_cycling_lanes_backward + ls.n_lanes_dedicated_cycling_tracks_backward > 0
+    ):
+        return True
+
+    return False
 
 
 def is_backward_by_top_order_lanes(lanes):
@@ -853,7 +864,10 @@ def _reorder_lanes_on_edge(lanes, how='standard'):
     n_cars = len(list(utils.flatten_list(sorted_lanes[MODE_PRIVATE_CARS])))
 
     # consolidate parking lanes, merge all parking lanes into a single with adjusted width
-    parking_lanes = sorted_lanes[MODE_CAR_PARKING][DIRECTION_FORWARD]
+    parking_lanes =(
+            sorted_lanes[MODE_CAR_PARKING][DIRECTION_FORWARD]
+            + sorted_lanes[MODE_CAR_PARKING][DIRECTION_BACKWARD]
+    )
     width = sum([lane.width for lane in parking_lanes])
     if width > 0:
         consolidated_parking = Lane(LANETYPE_PARKING_PARALLEL, DIRECTION_FORWARD)
@@ -1013,8 +1027,6 @@ def filter_lanes_by_modes(lanes, modes, operator='or'):
 
     """
 
-    lanes_copy = copy.copy(lanes)
-
     lanes_result = copy.copy(lanes)
     lanes_result[:] = []
 
@@ -1028,10 +1040,24 @@ def filter_lanes_by_modes(lanes, modes, operator='or'):
     return lanes_result
 
 
+def filter_lanes_by_function(lanes, filter_function):
+
+    lanes_result = copy.copy(lanes)
+    lanes_result[:] = []
+
+    lanes_result += [lane for lane in lanes if filter_function(lane) is True]
+
+    return lanes_result
+
+
 def space_allocation_from_string(sa_string):
     lane_strings = sa_string.split(' | ')
     lanes = [Lane(s[0], s[1], status=s[2], width=utils.safe_float(s[3:])) for s in lane_strings]
     return SpaceAllocation(lanes)
+
+
+def lane_from_string(s):
+    return Lane(s[0], s[1], status=s[2], width=utils.safe_float(s[3:]))
 
 
 class Lane:
@@ -1059,7 +1085,7 @@ class Lane:
         if width:
             self.width = width
         else:
-            self.width = LANE_TYPES[self.lanetype + direction]['width']
+            self.set_default_width()
         self.valid = True
 
     def __str__(self):
@@ -1070,6 +1096,9 @@ class Lane:
 
     def __lt__(self, other):
         return str(self) < str(other)
+
+    def set_default_width(self):
+        self.width = LANE_TYPES[self.lanetype + self.direction]['width']
 
     def get_modes(self):
         return set(LANE_TYPES[self.lanetype + self.direction]['modes'])

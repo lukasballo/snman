@@ -56,7 +56,7 @@ def create_lane_graph(G, lanes_attribute=KEY_LANES_DESCRIPTION):
             attributes['lane_id_within_street'] = i
 
             attributes['primary_mode'] = lane.get_primary_mode()
-            attributes['lane_id'] = lane_id
+            #attributes['lane_id'] = lane_id
             attributes['lanetype'] = lane.lanetype
             #attributes['direction'] = lane.direction
             attributes['width'] = lane.width
@@ -73,7 +73,7 @@ def create_lane_graph(G, lanes_attribute=KEY_LANES_DESCRIPTION):
                     cost = space_allocation._calculate_lane_cost(lane, length, slope, mode)
                     costs['cost_' + mode] = cost
                 L.add_edge(
-                    u, v, lane_id, **{**attributes, **costs}, lane=lane, backward=0, twin_factor=1, instance=1,
+                    u, v, lane_id, **{**attributes, **costs}, lane=lane, backward=0, instance=1,
                     geometry=data.get('geometry')
                 )
             if reverse:
@@ -82,7 +82,7 @@ def create_lane_graph(G, lanes_attribute=KEY_LANES_DESCRIPTION):
                     cost = space_allocation._calculate_lane_cost(lane, length, -slope, mode)
                     costs['cost_' + mode] = cost
                 L.add_edge(
-                    v, u, lane_id, **{**attributes, **costs}, lane=lane, backward=1, twin_factor=1, instance=1,
+                    v, u, lane_id, **{**attributes, **costs}, lane=lane, backward=1, instance=1,
                     geometry=geometry_tools.reverse_linestring(data.get('geometry'))
                 )
             if lane.direction in [DIRECTION_BOTH, DIRECTION_TBD]:
@@ -92,7 +92,7 @@ def create_lane_graph(G, lanes_attribute=KEY_LANES_DESCRIPTION):
                     costs['cost_' + mode] = cost
                 L.add_edge(
                     u, v, lane_id, **{**attributes, **costs},
-                    lane=lane, backward=0, twin_factor=0.5, instance=1,
+                    lane=lane, backward=0, instance=1,
                     geometry=data.get('geometry')
                 )
                 costs = {}
@@ -102,7 +102,7 @@ def create_lane_graph(G, lanes_attribute=KEY_LANES_DESCRIPTION):
                 opposite_lane = copy.copy(lane)
                 L.add_edge(
                     v, u, lane_id, **{**attributes, **costs},
-                    lane=opposite_lane, backward=1, twin_factor=0.5, instance=2,
+                    lane=opposite_lane, backward=1, instance=2,
                     geometry=geometry_tools.reverse_linestring(data.get('geometry'))
                 )
 
@@ -166,9 +166,10 @@ def calculate_stats(L, mode):
             round(
                 sum(
                     [
-                        1 * e['twin_factor']
+                        1
                         for uvk, e
                         in L.edges.items()
+                        if e['instance'] == 1
                     ]
                 ),
                 3
@@ -178,10 +179,10 @@ def calculate_stats(L, mode):
             round(
                 sum(
                     [
-                        e['length'] * e['twin_factor']
+                        e['length']
                         for uvk, e
                         in L.edges.items()
-                        if e['width'] > 0
+                        if e['width'] > 0 and e['instance'] == 1
                     ]
                 ) / 1000,
                 3
@@ -190,9 +191,10 @@ def calculate_stats(L, mode):
             round(
                 sum(
                     [
-                        e['length'] * e['width'] * e['twin_factor']
+                        e['length'] * e['width']
                         for uvk, e
                         in L.edges.items()
+                        if e['instance'] == 1
                     ]
                 ) / pow(1000, 2),
                 3
@@ -201,10 +203,10 @@ def calculate_stats(L, mode):
             round(
                 sum(
                     [
-                        e['length'] * e['twin_factor'] * (e['primary_mode'] == mode)
+                        e['length'] * (e['primary_mode'] == mode)
                         for uvk, e
                         in L.edges.items()
-                        if e['width'] > 0
+                        if e['width'] > 0 and e['instance'] == 1
                     ]
                 ) / 1000,
                 3
@@ -213,9 +215,10 @@ def calculate_stats(L, mode):
             round(
                 sum(
                     [
-                        e['length'] * e['width'] * e['twin_factor'] * (e['primary_mode'] == mode)
+                        e['length'] * e['width'] * (e['primary_mode'] == mode)
                         for uvk, e
                         in L.edges.items()
+                        if e['instance'] == 1
                     ]
                 ) / pow(1000, 2),
                 3
@@ -224,9 +227,10 @@ def calculate_stats(L, mode):
             round(
                 sum(
                     [
-                        e['length'] * e['width'] * e['twin_factor'] * (e['primary_mode'] == mode)
+                        e['length'] * e['width'] * (e['primary_mode'] == mode)
                         for uvk, e
                         in L.edges.items()
+                        if e['instance'] == 1
                     ]
                 ) / pow(1000, 2),
                 3
@@ -235,16 +239,18 @@ def calculate_stats(L, mode):
             round(
                 sum(
                     [
-                        e['bc'] * e['twin_factor']
+                        e['bc']
                         for uvk, e
                         in L.edges.items()
+                        if e['instance'] == 1
                     ]
                 ) /
                 sum(
                     [
-                        e['twin_factor']
+                        1
                         for uvk, e
                         in L.edges.items()
+                        if e['instance'] == 1
                     ]
                 ),
                 5
@@ -262,7 +268,7 @@ def calculate_stats(L, mode):
     }
 
 
-def get_street_lanes(L, u_G, v_G, k_G, direction=None):
+def get_street_lanes(L, u_G, v_G, k_G, direction=None, only_first_instance=False):
     """
     Returns a dictionary of edges from the lane graph that correspond to a particular street in the street graph
 
@@ -279,6 +285,8 @@ def get_street_lanes(L, u_G, v_G, k_G, direction=None):
     direction: str
         returns only the lanes in forward or backward direction if specified,
         returns all lanes if None
+    only_first_instance:
+        of true, returns only the first instance of every bidirectional lane
     Returns
     -------
     dict
@@ -300,10 +308,12 @@ def get_street_lanes(L, u_G, v_G, k_G, direction=None):
 
     # filter for those matching the k_G key which means they belong to the correct (parallel) street
     lanes = {uvk: data for uvk, data in lanes.items() if data['k_G'] == k_G}
+    if only_first_instance:
+        lanes = {uvk: data for uvk, data in lanes.items() if data['instance'] == 1}
     return lanes
 
 
-def calculate_street_width(L, u_G, v_G, k_G, use_twin_factor=True):
+def calculate_street_width(L, u_G, v_G, k_G):
     """
     Calculates the width of a street in a lane graph
 
@@ -317,7 +327,6 @@ def calculate_street_width(L, u_G, v_G, k_G, use_twin_factor=True):
         v in street graph
     k_G:int
         k in street graph
-    use_twin_factor: bool
 
     Returns
     -------
@@ -325,10 +334,7 @@ def calculate_street_width(L, u_G, v_G, k_G, use_twin_factor=True):
     """
 
     lanes = get_street_lanes(L, u_G, v_G, k_G)
-    if use_twin_factor:
-        widths = map(lambda lane: lane['width'] * lane['twin_factor'], lanes.values())
-    else:
-        widths = map(lambda lane: lane['width'], lanes.values())
+    widths = map(lambda lane: lane['width'] * (lane['instance'] == 1), lanes.values())
     total_width = sum(widths)
     return total_width
 

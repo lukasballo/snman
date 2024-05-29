@@ -15,10 +15,12 @@ def simplify_edge_geometries(G, radius=DEFAULT_SIMPLIFICATION_RADIUS):
             edge['geometry'] = edge['geometry'].simplify(radius, preserve_topology=False)
 
 
-def merge_nodes_geometric(Gc, tolerance=DEFAULT_INTERSECTION_TOLERANCE, given_intersections_gdf=None, regions_gdf=None):
+def create_intersection_geometries(G, tolerance=DEFAULT_INTERSECTION_TOLERANCE, given_intersections_gdf=None, regions_gdf=None):
     """
     Create intersection geometries.
-    Optionally use given intersection geometries to locally override the auto-detected results
+    Optionally use given intersection geometries to locally override the auto-detected results.
+
+    Derived from merge_nodes_geometric() in osmnx.
 
     Parameters
     ----------
@@ -40,7 +42,7 @@ def merge_nodes_geometric(Gc, tolerance=DEFAULT_INTERSECTION_TOLERANCE, given_in
         including a mixture of the auto-detected and explicitly defined intersections
     """
 
-    G_gdf = oxc.utils_graph.graph_to_gdfs(Gc, edges=False)
+    G_gdf = oxc.utils_graph.graph_to_gdfs(G, edges=False)
 
     # exclude nodes already covered by given intersections
     # this is important to get rid of residuals from the buffers after subtracting the given intersections
@@ -101,7 +103,7 @@ def merge_nodes_geometric(Gc, tolerance=DEFAULT_INTERSECTION_TOLERANCE, given_in
             )
         )
 
-    auto_intersections = gpd.GeoSeries(auto_intersections, crs=Gc.graph["crs"])
+    auto_intersections = gpd.GeoSeries(auto_intersections, crs=G.graph["crs"])
 
     intersections_gdf = gpd.GeoDataFrame({
         'geometry': auto_intersections
@@ -321,14 +323,14 @@ def consolidate_intersections(G, intersections_gdf, reconnect_edges=True):
     return street_graph.StreetGraph(H)
 
 
-def split_through_edges_in_intersections(Gc, intersections_gdf):
+def split_through_edges_in_intersections(G, intersections_gdf):
     """
     Within each intersection polygon, split edges that are passing through it without having a node there.
     This is helpful for a proper simplification of complex intersections
 
     Parameters
     ----------
-    Gc : nx.MultiGraph
+    G : nx.MultiGraph
         centerline graph
     intersections_gdf : gpd.GeoDataFrame
         intersection geometries
@@ -346,7 +348,7 @@ def split_through_edges_in_intersections(Gc, intersections_gdf):
     # retain the geometry and centroid in separate attributes for later joining
     intersections_gdf['ix_geometry'] = intersections_gdf['geometry']
 
-    edges = oxc.graph_to_gdfs(Gc, nodes=False)
+    edges = oxc.graph_to_gdfs(G, nodes=False)
     edges = edges[edges['_include_in_simplification'] == True]
     # retain the edge geometry in a separate attribute for later joining
     edges['e_geometry'] = edges['geometry']
@@ -394,12 +396,12 @@ def split_through_edges_in_intersections(Gc, intersections_gdf):
         return
 
     a.apply(
-        lambda row: street_graph.split_edge(Gc, *row.name, row.split_points),
+        lambda row: street_graph.split_edge(G, *row.name, row.split_points),
         axis=1
     )
 
 
-def connect_components_in_intersections(Gc, intersections_gdf, separate_layers=True):
+def connect_components_in_intersections(G, intersections_gdf, separate_layers=True):
     """
     Creates connections between weakly connected components so that they can be merged into a single intersection
     In this process, we use the following restrictions:
@@ -408,7 +410,7 @@ def connect_components_in_intersections(Gc, intersections_gdf, separate_layers=T
 
     Parameters
     ----------
-    Gc : nx.MultiGraph
+    G : nx.MultiGraph
         centerline graph
     intersections_gdf : gpd.GeoDataFrame
         intersection geometries
@@ -421,7 +423,7 @@ def connect_components_in_intersections(Gc, intersections_gdf, separate_layers=T
     """
 
     # get the nodes as a geodataframe
-    node_points = oxc.graph_to_gdfs(Gc, edges=False)[["geometry", "street_count", "highway", '_include_in_simplification']]
+    node_points = oxc.graph_to_gdfs(G, edges=False)[["geometry", "street_count", "highway", '_include_in_simplification']]
     # eliminate dead ends from the process to keep them as they are
     node_points = node_points.query('street_count != 1')
     # assign each node to an intersection (polygon)
@@ -429,7 +431,7 @@ def connect_components_in_intersections(Gc, intersections_gdf, separate_layers=T
     # clean up the columns of the resulting geodataframe (cluster=id of the intersection geometry)
     gdf = gdf.drop(columns="geometry").rename(columns={"index_right": "cluster"})
     # shift the cluster ids to avoid collision with node ids
-    gdf['cluster'] = gdf['cluster'] + max(Gc.nodes)
+    gdf['cluster'] = gdf['cluster'] + max(G.nodes)
 
     gdf['osmid_temp'] = gdf.index
     # overwrite cluster ids with the normal ids in case of nodes that are excluded from simplification
@@ -441,7 +443,7 @@ def connect_components_in_intersections(Gc, intersections_gdf, separate_layers=T
         if len(nodes_subset) > 1:
             # identify all (weakly connected) components in cluster
             # wccs is a list of sets containing id's of the nodes in each weakly connected component
-            wccs = list(nx.weakly_connected_components(Gc.subgraph(nodes_subset.index)))
+            wccs = list(nx.weakly_connected_components(G.subgraph(nodes_subset.index)))
             # skip this node if there are not at least two components (one component = no need for further connections)
             if len(wccs) <= 1:
                 continue
@@ -454,8 +456,8 @@ def connect_components_in_intersections(Gc, intersections_gdf, separate_layers=T
                 b = combination[1]
 
                 # create gdfs of nodes from each wcc
-                a = oxc.graph_to_gdfs(Gc.subgraph(wccs[a]), edges=False)
-                b = oxc.graph_to_gdfs(Gc.subgraph(wccs[b]), edges=False)
+                a = oxc.graph_to_gdfs(G.subgraph(wccs[a]), edges=False)
+                b = oxc.graph_to_gdfs(G.subgraph(wccs[b]), edges=False)
 
                 # extract the layers of both wcc
                 a_layers = set().union(*a['layers'].tolist())
@@ -471,8 +473,8 @@ def connect_components_in_intersections(Gc, intersections_gdf, separate_layers=T
                 a = closest_pair['node_a']
                 b = closest_pair['node_b']
 
-                a_data = Gc.nodes[a]
-                b_data = Gc.nodes[b]
+                a_data = G.nodes[a]
+                b_data = G.nodes[b]
 
                 # skip this connector if the layer sets don't match
                 if separate_layers and a_layers.isdisjoint(b_layers):
@@ -483,7 +485,7 @@ def connect_components_in_intersections(Gc, intersections_gdf, separate_layers=T
                     shp.ops.Point(b_data.get('x'), b_data.get('y'))
                 ))
 
-                Gc.add_edge(
+                G.add_edge(
                     a, b, geometry=geom,
                     osmid=0,
                     _components_connector=True
@@ -547,7 +549,7 @@ def simplify_street_graph(
 
         #print('Detect intersections')
         add_layers_to_nodes(G)
-        intersections_gdf = merge_nodes_geometric(
+        intersections_gdf = create_intersection_geometries(
             G,
             given_intersections_gdf=given_intersections_gdf
         )
@@ -557,7 +559,7 @@ def simplify_street_graph(
 
         #print('Detect intersections (repeat to ensure that no points are outside of intersections)')
         add_layers_to_nodes(G)
-        intersections_gdf = merge_nodes_geometric(
+        intersections_gdf = create_intersection_geometries(
             G,
             given_intersections_gdf=given_intersections_gdf
         )
@@ -584,6 +586,10 @@ def simplify_street_graph(
 
         #print('Update precalculated attributes')
         street_graph.update_precalculated_attributes(G)
+
+        # In rare cases, the geometries get corrupted throughout the process.
+        # In this step, we fill them with straight lines.
+        street_graph.fill_wrong_edge_geometries(G)
 
     #print('Heavy simplification of edge geometries')
     if edge_geometries_simplification_radius:

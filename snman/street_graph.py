@@ -1,5 +1,5 @@
 from . import osmnx_customized as oxc
-from . import graph, space_allocation, _errors, geometry_tools
+from . import graph, space_allocation, _errors, geometry_tools, lane_graph
 from .constants import *
 import geopandas as gpd
 import networkx as nx
@@ -260,7 +260,8 @@ def split_edge(G, u, v, key, split_points):
     edge_data = G.get_edge_data(u, v, key)
     edge_linestring = edge_data.get('geometry', False)
 
-    if edge_linestring is False:
+    if edge_linestring is False or u == v:
+        #print('no geometry or u==v', u, v, key)
         return
 
     # snap split points to the edge linestring
@@ -273,7 +274,11 @@ def split_edge(G, u, v, key, split_points):
     # generate a list of new node points (where the linestring has been split)
     node_points = list(map(lambda segment: segment.centroid, list(segments.geoms)[1::2]))
     # add first and last node of the linestring to the new node points
-    node_points = [shapely.Point(edge_linestring.coords[0])] + node_points + [shapely.Point(edge_linestring.coords[-1])]
+    try:
+        node_points = [shapely.Point(edge_linestring.coords[0])] + node_points + [shapely.Point(edge_linestring.coords[-1])]
+    except NotImplementedError:
+        print('notimplementederror subgeometries', u, v, key)
+        return
 
     # generate a list of new node ids
     start_node_id = max(G.nodes) + 1
@@ -374,6 +379,9 @@ def reverse_edge(
         except AttributeError:
             pass
 
+    if data.get('grade'):
+        data['grade'] = -data.get('grade', 0)
+
     # flip the reversed flag
     data[KEY_REVERSED] = not data.get(KEY_REVERSED, False)
 
@@ -404,6 +412,19 @@ def filter_lanes_by_modes(G, modes, lane_description_key=KEY_LANES_DESCRIPTION, 
     for uvk, data in G.edges.items():
         lanes = data.get(lane_description_key, [])
         data[lane_description_key] = space_allocation.filter_lanes_by_modes(lanes, modes, **kwargs)
+
+    if delete_empty_edges:
+        delete_edges_without_lanes(G, lane_description_key=lane_description_key)
+        graph.remove_isolated_nodes(G)
+
+    return G
+
+
+def filter_lanes_by_function(G, filter_function, lane_description_key=KEY_LANES_DESCRIPTION, delete_empty_edges=True):
+
+    for uvk, data in G.edges.items():
+        lanes = data.get(lane_description_key, [])
+        data[lane_description_key] = space_allocation.filter_lanes_by_function(lanes, filter_function)
 
     if delete_empty_edges:
         delete_edges_without_lanes(G, lane_description_key=lane_description_key)
@@ -474,31 +495,65 @@ def clone(G, edges=True):
     return H
 
 
+def get_straight_edge_geometry(G, u, v, k):
+    """
+    Returns a default (straight) edge geometry based on its nodes
+
+    Parameters
+    ----------
+    G: StreetGraph
+    u: int
+    v: int
+    k: int
+
+    Returns
+    -------
+    shapely.geometry.LineString
+    """
+
+    uv_geoms = [(G.nodes[i]['x'], G.nodes[i]['y']) for i in (u, v)]
+    return shapely.geometry.LineString(uv_geoms)
+
+
+def fill_wrong_edge_geometries(G):
+    """
+    Replaces missing or wrong edge geometries with straight lines between their nodes
+
+    Parameters
+    ----------
+    G: StreetGraph
+    """
+
+    for uvk, data in G.edges.items():
+        if type(data.get('geometry')) != shapely.geometry.LineString:
+            data['geometry'] = get_straight_edge_geometry(G, *uvk)
+
+
 def separate_edges_for_lane_directions(G, lanes_key=KEY_LANES_DESCRIPTION):
 
-    H = clone(G, edges=False)
+    H = copy.deepcopy(G)
+    H.remove_edges_from(list(H.edges()))
 
     for uvk, data in G.edges.items():
 
         u, v, k = uvk
         lanes = data[lanes_key]
-        lanes_forward = []
-        lanes_backward = []
+        lanes_forward = space_allocation.SpaceAllocation([])
+        lanes_backward = space_allocation.SpaceAllocation([])
 
         for lane in lanes:
-            lp = space_allocation._lane_properties(lane)
-            if lp.direction == DIRECTION_FORWARD:
-                lanes_forward.append(lane)
-            elif lp.direction == DIRECTION_BACKWARD:
-                lanes_backward.append(lane)
+            if lane.direction == DIRECTION_FORWARD:
+                lanes_forward.append(copy.deepcopy(lane))
+            elif lane.direction == DIRECTION_BACKWARD:
+                lanes_backward.append(copy.deepcopy(lane))
             # convert bidirectional lanes into two separate oneway lanes
-            elif lp.direction == DIRECTION_BOTH:
-                lp_forward = space_allocation._lane_properties(lane)
-                lp_forward.direction = DIRECTION_FORWARD
-                lanes_forward.append(str(lp_forward))
-                lp_backward = space_allocation._lane_properties(lane)
-                lp_backward.direction = DIRECTION_BACKWARD
-                lanes_backward.append(str(lp_backward))
+            elif lane.direction == DIRECTION_BOTH:
+                lane_forward = copy.deepcopy(lane)
+                lane_forward.direction = DIRECTION_FORWARD
+                lanes_forward.append(lane_forward)
+                lane_backward = copy.deepcopy(lane)
+                lane_backward.direction = DIRECTION_BACKWARD
+                lanes_backward.append(lane_backward)
 
         new_data = copy.deepcopy(data)
         del new_data[lanes_key]
@@ -521,13 +576,48 @@ def separate_edges_for_lane_directions(G, lanes_key=KEY_LANES_DESCRIPTION):
             )
             reverse_edge(H, u, v, k)
 
-    organize_edge_directions(H, method='by_osm_convention')
+    organize_edge_directions(H)
     space_allocation.update_osm_tags(H, lanes_description_key=lanes_key)
     add_edge_costs(H, lanes_description=lanes_key)
 
     return H
 
 
+def lane_graph_to_street_graph(
+        G,
+        L,
+        target_lane_key
+):
+    """
+    Changes the lanes in a street graph according to a lane graph
+
+    Parameters
+    ----------
+    G: StreetGraph
+    L: lane_graph.LaneGraph
+    target_lane_key: str
+    """
+
+    for G_uvk, G_data in G.edges.items():
+        lanes = lane_graph.get_street_lanes(L, *G_uvk, only_first_instance=True)
+        if len(lanes) == 0:
+            continue
+        # order the lanes by lane id
+        lanes = copy.deepcopy(lanes)
+        # reverse direction of backward lanes
+        for uvk, data in lanes.items():
+            if uvk[0] != G_uvk[0]:
+                data['lane'].direction = DIRECTION_BACKWARD
+            pass
+        lanes = dict(sorted(lanes.items(), key=lambda lane: lane[0][2]))
+        sa = space_allocation.SpaceAllocation([lane['lane'] for lane in lanes.values()])
+        G_data[target_lane_key] = sa
+        #print(G_uvk, str(sa))
+
+
 class StreetGraph(graph.SNManMultiDiGraph):
+    """
+    Main data structure for storing information about the street network and lanes on each street.
+    """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
