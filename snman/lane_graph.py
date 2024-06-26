@@ -182,7 +182,7 @@ def calculate_stats(L, mode):
                         e['length']
                         for uvk, e
                         in L.edges.items()
-                        if e['width'] > 0 and e['instance'] == 1
+                        if e['lane'].width > 0 and e['instance'] == 1
                     ]
                 ) / 1000,
                 3
@@ -191,7 +191,7 @@ def calculate_stats(L, mode):
             round(
                 sum(
                     [
-                        e['length'] * e['width']
+                        e['length'] * e['lane'].width
                         for uvk, e
                         in L.edges.items()
                         if e['instance'] == 1
@@ -206,7 +206,7 @@ def calculate_stats(L, mode):
                         e['length'] * (e['primary_mode'] == mode)
                         for uvk, e
                         in L.edges.items()
-                        if e['width'] > 0 and e['instance'] == 1
+                        if e['lane'].width > 0 and e['instance'] == 1
                     ]
                 ) / 1000,
                 3
@@ -215,7 +215,7 @@ def calculate_stats(L, mode):
             round(
                 sum(
                     [
-                        e['length'] * e['width'] * (e['primary_mode'] == mode)
+                        e['length'] * e['lane'].width * (e['primary_mode'] == mode)
                         for uvk, e
                         in L.edges.items()
                         if e['instance'] == 1
@@ -227,7 +227,7 @@ def calculate_stats(L, mode):
             round(
                 sum(
                     [
-                        e['length'] * e['width'] * (e['primary_mode'] == mode)
+                        e['length'] * e['lane'].width * (e['primary_mode'] == mode)
                         for uvk, e
                         in L.edges.items()
                         if e['instance'] == 1
@@ -334,7 +334,7 @@ def calculate_street_width(L, u_G, v_G, k_G):
     """
 
     lanes = get_street_lanes(L, u_G, v_G, k_G)
-    widths = map(lambda lane: lane['width'] * (lane['instance'] == 1), lanes.values())
+    widths = map(lambda lane: lane['lane'].width * (lane['instance'] == 1), lanes.values())
     total_width = sum(widths)
     return total_width
 
@@ -346,7 +346,7 @@ def get_horizontal_position_of_lane(L, u, v, k):
     lanes = get_street_lanes(L, data['u_G'], data['v_G'], data['k_G'])
     lanes = {uvk[2]: lane for uvk, lane in lanes.items()}
     lanes = {k: lane for k, lane in sorted(lanes.items())}
-    widths = [lane['width'] for lane in lanes.values()]
+    widths = [lane['lane'].width for lane in lanes.values()]
     widths = np.cumsum(widths) - np.array(widths)/2 - sum(widths) / 2
     widths = dict(zip(lanes.keys(), widths))
 

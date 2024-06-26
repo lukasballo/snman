@@ -969,7 +969,8 @@ def multi_rebuild_region(
         # export_L=None, export_H=None,
         # export_when='before_and_after',
         verbose=False,
-        save_steps_path=None
+        save_steps_path=None,
+        save_steps_scaling_factor=1
 ):
     print('truncating street graph')
     H = oxc.truncate.truncate_graph_polygon(G, polygon, quadrat_width=100, retain_all=True)
@@ -999,7 +1000,7 @@ def multi_rebuild_region(
 
     L = lane_graph.create_lane_graph(H)
     if save_steps_path:
-        io.export_HLA(save_steps_path, '0', L=L)
+        io.export_HLA(save_steps_path, '0', L=L, scaling_factor=save_steps_scaling_factor)
 
     """
     if not hierarchy.HIERARCHIES <= hierarchies_to_include:
@@ -1019,7 +1020,7 @@ def multi_rebuild_region(
 
     # Given lanes
     if save_steps_path:
-        io.export_HLA(save_steps_path, '1', H=H, L=L, A=A)
+        io.export_HLA(save_steps_path, '1', H=H, L=L, A=A, scaling_factor=save_steps_scaling_factor)
 
     # Remove lanes in steps
     print('REMOVE PARKING')
@@ -1040,25 +1041,25 @@ def multi_rebuild_region(
         data['_test'] = M.has_node(i)
 
     if save_steps_path:
-        io.export_HLA(save_steps_path, '2', L=L, A=A)
+        io.export_HLA(save_steps_path, '2', L=L, A=A, scaling_factor=save_steps_scaling_factor)
 
     print('REMOVE CAR LANES')
     _remove_car_lanes(L, None, H, 'width', A, remove_car_lanes_mode, verbose=True)
     if save_steps_path:
-        io.export_HLA(save_steps_path, '3', L=L, A=A)
+        io.export_HLA(save_steps_path, '3', H=H, L=L, A=A, scaling_factor=save_steps_scaling_factor)
     print('REMOVE CYCLING LANES')
     _remove_cycling_lanes(L, None, H, 'width', verbose=True)
     if save_steps_path:
-        io.export_HLA(save_steps_path, '4', L=L, A=A)
+        io.export_HLA(save_steps_path, '4', H=H, L=L, A=A, scaling_factor=save_steps_scaling_factor)
     print('MERGE TRANSIT AND CAR LANES')
     _merge_transit_with_car_lanes(L, None, H, 'width', verbose=True)
     if save_steps_path:
-        io.export_HLA(save_steps_path, '5', L=L, A=A)
+        io.export_HLA(save_steps_path, '5', H=H, L=L, A=A, scaling_factor=save_steps_scaling_factor)
     print('ADJUST WIDTH OF LANES')
     _adjust_width_of_lanes(L, None, H, 'width', lanetypes={LANETYPE_CYCLING_LANE}, verbose=True)
     _adjust_width_of_lanes(L, None, H, 'width', verbose=True)
     if save_steps_path:
-        io.export_HLA(save_steps_path, '6', L=L, A=A)
+        io.export_HLA(save_steps_path, '6', L=L, A=A, scaling_factor=save_steps_scaling_factor)
 
     for uvk, data in H.edges.items():
         lane_graph.merge_lanes_and_equalize_widths(
@@ -1072,7 +1073,7 @@ def multi_rebuild_region(
     )
 
     if save_steps_path:
-        io.export_HLA(save_steps_path, '7', H=H, L=L, A=A)
+        io.export_HLA(save_steps_path, '7', H=H, L=L, A=A, scaling_factor=save_steps_scaling_factor)
 
     """
     if not hierarchy.HIERARCHIES <= hierarchies_to_include:
@@ -1082,7 +1083,7 @@ def multi_rebuild_region(
     """
 
     if save_steps_path:
-        io.export_HLA(save_steps_path, '8', H=H, L=L, A=A)
+        io.export_HLA(save_steps_path, '8', H=H, L=L, A=A, scaling_factor=save_steps_scaling_factor)
 
     # write rebuilt lanes from the subgraph into the main graph
     nx.set_edge_attributes(
