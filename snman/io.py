@@ -14,6 +14,9 @@ import numpy as np
 import json
 import ast
 import os
+import importlib.resources as pkg_resources
+import subprocess
+
 
 # - CREATING BASIC DATASETS --------------------------------------------------------------------------------------------
 
@@ -181,7 +184,7 @@ def load_lane_graph(
 
 def import_geofile_to_gdf(file_path, crs=DEFAULT_CRS, index=None, filter_index=None, perimeter=None):
     """
-    Import a geofile (shp, gpkg, etc.) as a GeoDataFrame
+    Import a geofile (shp, gpkg, etc.) or a parquet file (gzip) as a GeoDataFrame
 
     Parameters
     ----------
@@ -201,7 +204,11 @@ def import_geofile_to_gdf(file_path, crs=DEFAULT_CRS, index=None, filter_index=N
         resulting GeoDataFrame
     """
 
-    gdf = gpd.read_file(file_path).to_crs(crs)
+    if file_path[-5:] == '.gzip':
+        gdf = gpd.read_parquet(file_path)
+    else:
+        gdf = gpd.read_file(file_path).to_crs(crs)
+
     if index is not None:
         gdf = gdf.set_index(index)
 
@@ -755,7 +762,10 @@ def export_osm_xml(
         tag_all_nodes=False,
         key_lanes_description=KEY_LANES_DESCRIPTION,
         as_oneway_links=False,
-        modes=(MODE_TRANSIT, MODE_CYCLING, MODE_PRIVATE_CARS)
+        modes=(MODE_TRANSIT, MODE_CYCLING, MODE_PRIVATE_CARS),
+        overwrite_highway=False,
+        set_maxspeed_by_cost=False,
+        neutral_speed_kmh=None
 ):
     """
     Generates an OSM file from the street graph
@@ -774,6 +784,16 @@ def export_osm_xml(
         which attribute should be used for the lanes
     as_oneway_links : bool
         if true, every link with bidirectional traffic will be exported as two one-way links
+    modes : list
+        which modes should be included
+    overwrite_highway : bool or str
+        set all highway tag values to this value, do nothing if False,
+        this setting is needed to encode a cycling network as travel lanes for routing with link costs in R5
+    set_maxspeed_by_cost : bool or str
+        set maxspeed of links according to their length and a cost attribute defined here,
+        do nothing if False
+    neutral_speed_kmh : int
+        only valid if set_maxspeed_by_cost is set
 
     Returns
     -------
@@ -804,6 +824,17 @@ def export_osm_xml(
     street_graph.add_edge_costs(H, lanes_description=key_lanes_description)
     space_allocation.update_osm_tags(H, lanes_description_key=key_lanes_description)
     street_graph.convert_crs(H, 'epsg:4326')
+
+    if overwrite_highway:
+        for uvk, data in H.edges.items():
+            data['highway'] = overwrite_highway
+
+    # remove all maxspeed tags to avoid duplicities
+    if set_maxspeed_by_cost:
+        for uvk, data in H.edges.items():
+            data['highway'] = overwrite_highway
+            if 'maxspeed' in data.keys():
+                del data['maxspeed']
 
     # create the overall structure of the XML
     tree = ET.ElementTree('tree')
@@ -844,9 +875,9 @@ def export_osm_xml(
             if i in {0, 1}:
                 node_id = uvk[i]
                 # avoid id=0
-                node_points[node_id + 1] = shapely.Point(H.nodes[node_id]['x'], H.nodes[node_id]['y'])
+                node_points[node_id+1] = shapely.Point(H.nodes[node_id]['x'], H.nodes[node_id]['y'])
                 # add node along the way, use the existing node id
-                ET.SubElement(way, 'nd', attrib={'ref': str(node_id + 1)})
+                ET.SubElement(way, 'nd', attrib={'ref': str(node_id+1)})
 
             # intermediary nodes
             elif i == 'intermediary_nodes':
@@ -860,12 +891,16 @@ def export_osm_xml(
 
         # way tags
         for tag in tags:
-            # skip if the tag is not defined for this way
-            if data.get(tag, None) is None:
+            if tag == 'maxspeed' and set_maxspeed_by_cost:
+                tag_value = str(neutral_speed_kmh * data['length'] / data[set_maxspeed_by_cost])
+            elif data.get(tag, None) is not None:
+                tag_value = str(data.get(tag, ''))
+            else:
                 continue
+
             ET.SubElement(way, 'tag', attrib={
                 'k': tag,
-                'v': str(data.get(tag, ''))
+                'v': tag_value
             })
 
         if uv_tags:
@@ -879,10 +914,11 @@ def export_osm_xml(
         for mode in modes:
             for direction in [DIRECTION_BACKWARD, DIRECTION_FORWARD]:
                 tag = 'cost_' + mode + '_' + direction
-                value = str(data.get('cost_' + key_lanes_description + '_' + mode + '_' + direction, ''))
+                value = str(data.get('cost_' + key_lanes_description + '_' + mode + '_' + direction))
                 ET.SubElement(way, 'tag', attrib={'k': tag, 'v': value})
 
     # add nodes
+    node_points = dict(sorted(node_points.items()))
     for node_id, point in node_points.items():
         node = ET.SubElement(osm, 'node', attrib={
             'id': str(node_id),
@@ -904,6 +940,34 @@ def export_osm_xml(
     ET.indent(tree)
     tree.write(path, encoding='UTF-8', xml_declaration=True)
 
+
+def osm_to_pbf(osm_file):
+    """
+    Converts an osm file to pbf, using the osmconvert.exe utility.
+
+    Using the wizzard of the utility:
+        1. copy the osm file into this directory
+        2. run osmconvert64-0.8.8p.exe¨
+        3. press 'a' and enter
+        4. enter the osm file name and press enter
+        5. press 1
+        6. press 3
+
+    Alternatively, you can use the following command:
+
+        osmconvert before_oneway_links.osm --out-pbf -o=before_oneway_links_01.pbf
+        Parameters
+    ----------
+    osm_file: str
+        Path to the osm file. The resulting pbf file will be written to the same directory
+    """
+
+    current_file_path = os.path.abspath(__file__)
+    current_directory = os.path.dirname(current_file_path)
+
+    osmconvert = os.path.join(current_directory, 'osmconvert.exe')
+    command = f'"{osmconvert}" "{osm_file}" --out-pbf -o="{osm_file}.pbf"'
+    subprocess.run(command, capture_output=True, text=True)
 
 def _iterable_columns_from_strings(df, columns, method='separator', separator=','):
     """

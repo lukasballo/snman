@@ -104,7 +104,7 @@ def add_node_elevations_raster(G, filepath, band=1, cpus=None, graph_crs=2056, r
     nodes.x = nodes.geometry.x
     nodes.y = nodes.geometry.y
     nodes = nodes[["x", "y"]]
-    #print(nodes)
+    print(nodes)
 
     if cpus == 1:
         elevs = dict(_query_raster(nodes, filepath, band))
