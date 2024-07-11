@@ -20,6 +20,8 @@ outputs_path = os.path.join(data_directory, 'outputs', PERIMETER)
 
 CRS_internal = 2056      # for Zurich
 
+print(outputs_path, 'test')
+
 # --------------------------------------------------------------------
 
 statent = gpd.read_parquet(
