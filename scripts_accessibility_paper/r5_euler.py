@@ -14,7 +14,7 @@ from snman.constants import *
 PERIMETER = '_accessibility_debug_euler'
 
 # Set these paths according to your own setup
-data_directory = os.path.join('~','data')
+data_directory = os.path.join(os.sep, 'cluster', 'home', 'lballo', 'data')
 inputs_path = os.path.join(data_directory, 'inputs')
 outputs_path = os.path.join(data_directory, 'outputs', PERIMETER)
 
