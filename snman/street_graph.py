@@ -615,6 +615,27 @@ def lane_graph_to_street_graph(
         #print(G_uvk, str(sa))
 
 
+def street_graph_from_gdf(nodes_gdf, edges_gdf, crs=DEFAULT_CRS):
+    """
+    Creates a StreetGraph from GeoDataFrames of nodes and edges
+
+    Parameters
+    ----------
+    nodes_gdf: gpd.GeoDataFrame
+    edges_gdf: gpd.GeoDataFrame
+    crs: int
+
+    Returns
+    -------
+    StreetGraph
+    """
+
+    G = StreetGraph(crs=crs)
+    nodes_gdf.apply(lambda n: G.add_node(n.name, **n), axis=1)
+    edges_gdf.apply(lambda e: G.add_edge(*e.name, **e), axis=1)
+    return G
+
+
 class StreetGraph(graph.SNManMultiDiGraph):
     """
     Main data structure for storing information about the street network and lanes on each street.

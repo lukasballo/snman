@@ -5,6 +5,7 @@ import geopandas as gpd
 from .constants import *
 import datetime
 import r5py
+import shapely as shp
 
 
 def calculate_behavioral_cost(private_cars=999999, transit=999999, cycling=999999, foot=999999, age=None):
@@ -76,7 +77,7 @@ def calculate_behavioral_cost(private_cars=999999, transit=999999, cycling=99999
     detour_parameter_car = 1.3  # [-]
     x_crowfly_distance = tt[MODE_PRIVATE_CARS] / 60 * avg_speed_car / detour_parameter_car
     x_cost_car = tt[MODE_PRIVATE_CARS] * 0.2
-    x_cost_pt = tt[MODE_TRANSIT] * 0.2
+    x_cost_pt = tt[MODE_TRANSIT] * 0.05
 
     x_transfers = round(tt[MODE_TRANSIT] / 30) if tt[MODE_TRANSIT] is not np.inf else np.inf
     x_transfer_t = x_transfers * 5
@@ -127,7 +128,8 @@ def calculate_accessibility_for_statent_cell(
         distance_limit=10000,
         base_travel_time=0.1,
         destinations_sample=1,
-        population_sample=1
+        population_sample=1,
+        sum_accessibility_contributions=True
 ):
     """
     Calculates accessibility for every resident associated with a given cell in the statent dataset.
@@ -151,7 +153,9 @@ def calculate_accessibility_for_statent_cell(
     distance_limit: int
         cutoff crowfly distance
     base_travel_time: float
-        travrel time in minutes to be added to all travel timed, a small number is useful to prevent 0 min. travel times
+        travel time in minutes to be added to all travel timed, a small number is useful to prevent 0 min. travel times
+    sum_accessibility_contributions: bool
+        if True, the accessibility contributions will be summed into one accessibility value per person
 
     Returns
     -------
@@ -236,7 +240,9 @@ def calculate_accessibility_for_statent_cell(
     tt_matrix['travel_time'] = tt_matrix['travel_time'] + base_travel_time
 
     # make a light version of statpop
-    statpop_reduced = statpop_filtered.reset_index()[['record', 'age', 'statent_id', 'geometry']]
+    statpop_reduced = statpop_filtered.reset_index()[[
+        'record', 'age', 'sex', 'maritalstatus', 'residencepermit', 'residentpermit', 'statent_id', 'geometry'
+    ]]
     statpop_reduced.set_index('record', inplace=True)
 
     accessibility_costs = pd.merge(statpop_reduced.reset_index(), tt_matrix, how='left', left_on='statent_id',
@@ -244,7 +250,6 @@ def calculate_accessibility_for_statent_cell(
     accessibility_costs = accessibility_costs[accessibility_costs['travel_time'].notna()]
 
     # group accessibility by person, providing a list of travel times to each statent destination
-
     ag = accessibility_costs.reset_index().groupby(['record', 'to_id']).agg({
         'travel_time': list,
         'mode': list,
@@ -252,11 +257,12 @@ def calculate_accessibility_for_statent_cell(
         'age': 'first',
         # 'maritalstatus': 'first',
         # 'residencepermit': 'first',
-        # 'residentpermit': 'first'
-    })
+        # 'residentpermit': 'first',
+        'from_id': 'first'
+    }).reset_index()
 
     # add destination information from statent
-    ag = pd.merge(ag.reset_index(), statent.reset_index()[['id', 'VOLLZEITAEQ_TOTAL']], left_on='to_id', right_on='id')
+    ag = pd.merge(ag, statent.reset_index()[['id', 'VOLLZEITAEQ_TOTAL']], left_on='to_id', right_on='id')
 
     # create a dictionary with travel options for each person and statent destination
     ag['travel_options'] = ag.apply(lambda row: dict(zip(row['mode'], row['travel_time'])), axis=1)
@@ -271,25 +277,65 @@ def calculate_accessibility_for_statent_cell(
     # apply the accessibility cost function
     ag['accessibility_contribution'] = ag['behavioral_cost'] ** -0.7
 
-    # for each person, sum the accessibility contributions across all destinations
-    accessibility = ag.groupby('record').agg({
-        'accessibility_contribution': 'sum'
-    })
+    if not sum_accessibility_contributions:
 
-    accessibility.rename(columns={'accessibility_contribution': 'accessibility'}, inplace=True)
-    accessibility['accessibility'] = accessibility['accessibility'] / destinations_sample
+        ag2 = pd.concat([
+            ag,
+            pd.json_normalize(ag['choice_probabilities']).add_prefix('prob_'),
+            pd.json_normalize(ag['travel_options']).add_prefix('tt_')
+        ],
+            axis=1
+        )
 
-    accessibility = accessibility.join(statpop_reduced)
-    return gpd.GeoDataFrame(accessibility, crs=2056)
+        ag2 = pd.merge(
+            ag2,
+            statpop_reduced[['geometry']],
+            left_on='record', right_index=True
+        ).rename(columns={'geometry': 'home_geometry'})
 
+        ag2 = pd.merge(
+            ag2,
+            statent_filtered[['id', 'geometry']],
+            left_on='from_id', right_on='id'
+        ).rename(columns={'geometry': 'origin_geometry'})
 
-from joblib import Parallel, delayed
-import time
+        ag2 = pd.merge(
+            ag2,
+            statent_filtered[['id', 'geometry']],
+            left_on='to_id', right_on='id'
+        ).rename(columns={'geometry': 'destination_geometry'})
 
-# Define a sample function to be executed
-def my_function(args, x):
-    return calculate_accessibility_for_statent_cell(*args, x)
+        ag2['geometry'] = ag2.apply(
+            lambda row: shp.LineString([
+                row['home_geometry'],
+                row['origin_geometry'],
+                row['destination_geometry']
+            ]),
+            axis=1
+        )
 
-def parallel(args, inputs):
-    results = Parallel(n_jobs=3)(delayed(my_function)(i) for i in inputs)
+        ag2.drop(
+            columns=[
+                'home_geometry', 'origin_geometry', 'destination_geometry',
+                'id', 'id_x', 'id_y',
+                'travel_time', 'mode',
+                'travel_options', 'choice_probabilities'
+            ],
+            inplace=True
+        )
 
+        return gpd.GeoDataFrame(ag2, crs=2056)
+
+    else:
+
+        # for each person, sum the accessibility contributions across all destinations
+        accessibility = ag.groupby('record').agg({
+            'accessibility_contribution': 'sum'
+        })
+
+        accessibility.rename(columns={'accessibility_contribution': 'accessibility'}, inplace=True)
+        accessibility['accessibility'] = accessibility['accessibility'] / destinations_sample
+
+        accessibility = accessibility.join(statpop_reduced)
+        accessibility['person'] = accessibility.index
+        return gpd.GeoDataFrame(accessibility, crs=2056)

@@ -126,9 +126,7 @@ def load_street_graph(
         if key in nodes_gdf:
             nodes_gdf[key] = nodes_gdf[key].apply(fn)
 
-    G = street_graph.StreetGraph(crs=crs)
-    nodes_gdf.apply(lambda n: G.add_node(n.name, **n), axis=1)
-    edges_gdf.apply(lambda e: G.add_edge(*e.name, **e), axis=1)
+    street_graph.street_graph_from_gdf(nodes_gdf, edges_gdf)
 
     return G
 
@@ -765,7 +763,10 @@ def export_osm_xml(
         modes=(MODE_TRANSIT, MODE_CYCLING, MODE_PRIVATE_CARS),
         overwrite_highway=False,
         set_maxspeed_by_cost=False,
-        neutral_speed_kmh=None
+        floor_maxspeed=0.5,
+        ceil_maxspeed=120,
+        neutral_speed_kmh=None,
+        raw_graph=False
 ):
     """
     Generates an OSM file from the street graph
@@ -792,8 +793,15 @@ def export_osm_xml(
     set_maxspeed_by_cost : bool or str
         set maxspeed of links according to their length and a cost attribute defined here,
         do nothing if False
+    floor_maxspeed : float
+        the maxspeed will be no lower than this number
+    ceil_maxspeed : float
+        the maxspeed will be no higher than this number
     neutral_speed_kmh : int
         only valid if set_maxspeed_by_cost is set
+    raw_graph : bool
+        If True, ignore any lanes and use the graph as is, i.e. every edge will be converted into one osm way.
+        Please note that filtering by mode and creating one-way links will not work.
 
     Returns
     -------
@@ -802,28 +810,32 @@ def export_osm_xml(
 
     H = copy.deepcopy(G)
 
-    # keep only the relevant modes
-    street_graph.filter_lanes_by_modes(
-        H,
-        modes,
-        operator='or',
-        lane_description_key=key_lanes_description
-    )
+    if not raw_graph:
 
-    if as_oneway_links:
-        H = street_graph.separate_edges_for_lane_directions(H, lanes_key=key_lanes_description)
-    else:
-        H = copy.deepcopy(H)
+        # keep only the relevant modes
+        street_graph.filter_lanes_by_modes(
+            H,
+            modes,
+            operator='or',
+            lane_description_key=key_lanes_description
+        )
+
+        if as_oneway_links:
+            H = street_graph.separate_edges_for_lane_directions(H, lanes_key=key_lanes_description)
+        else:
+            H = copy.deepcopy(H)
+
+        # ensure right edge directions, tags and crs
+        street_graph.organize_edge_directions(H, method='by_osm_convention', key_lanes_description=key_lanes_description)
+        street_graph.add_edge_costs(H, lanes_description=key_lanes_description)
+        space_allocation.update_osm_tags(H, lanes_description_key=key_lanes_description)
+
+    street_graph.convert_crs(H, 'epsg:4326')
 
     # initial ID value for new OSM objects, avoid duplicity with graph node ids
     max_node_id = max(list(H.nodes))
     osm_id = itertools.count(max_node_id * 100)
 
-    # ensure right edge directions, tags and crs
-    street_graph.organize_edge_directions(H, method='by_osm_convention', key_lanes_description=key_lanes_description)
-    street_graph.add_edge_costs(H, lanes_description=key_lanes_description)
-    space_allocation.update_osm_tags(H, lanes_description_key=key_lanes_description)
-    street_graph.convert_crs(H, 'epsg:4326')
 
     if overwrite_highway:
         for uvk, data in H.edges.items():
@@ -892,7 +904,15 @@ def export_osm_xml(
         # way tags
         for tag in tags:
             if tag == 'maxspeed' and set_maxspeed_by_cost:
-                tag_value = str(neutral_speed_kmh * data['length'] / data[set_maxspeed_by_cost])
+                if neutral_speed_kmh:
+                    neutral_speed_ms = neutral_speed_kmh / 3.6
+                else:
+                    neutral_speed_ms = 1
+                tag_value = 3.6 * neutral_speed_ms * data['length'] / data[set_maxspeed_by_cost]
+                # avoid 0 speeds
+                tag_value = max([tag_value, floor_maxspeed])
+                tag_value = min([tag_value, ceil_maxspeed])
+                tag_value = str(tag_value)
             elif data.get(tag, None) is not None:
                 tag_value = str(data.get(tag, ''))
             else:
