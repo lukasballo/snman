@@ -6,6 +6,7 @@ from .constants import *
 import datetime
 import r5py
 import shapely as shp
+import math
 
 
 def calculate_behavioral_cost(private_cars=999999, transit=999999, cycling=999999, foot=999999, age=None):
@@ -129,7 +130,8 @@ def calculate_accessibility_for_statent_cell(
         base_travel_time=0.1,
         destinations_sample=1,
         population_sample=1,
-        sum_accessibility_contributions=True
+        sum_accessibility_contributions=True,
+        cost_function_exponent=-0.7
 ):
     """
     Calculates accessibility for every resident associated with a given cell in the statent dataset.
@@ -274,21 +276,25 @@ def calculate_accessibility_for_statent_cell(
         result_type='expand'
     )
 
+    # save the travel options into separate columns
+    ag = pd.concat([
+        ag,
+        pd.json_normalize(ag['choice_probabilities']).add_prefix('prob_'),
+        pd.json_normalize(ag['travel_options']).add_prefix('tt_')
+    ],
+        axis=1
+    )
+
     # apply the accessibility cost function
-    ag['accessibility_contribution'] = ag['behavioral_cost'] ** -0.7
+    ag['accessibility_contribution'] = ag['behavioral_cost'] ** cost_function_exponent
+
+    for mode in [MODE_CYCLING, MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_FOOT]:
+        ag[f'accessibility_contribution_{mode}'] = ag.get([f'tt_{mode}'], np.inf) ** cost_function_exponent
 
     if not sum_accessibility_contributions:
 
-        ag2 = pd.concat([
-            ag,
-            pd.json_normalize(ag['choice_probabilities']).add_prefix('prob_'),
-            pd.json_normalize(ag['travel_options']).add_prefix('tt_')
-        ],
-            axis=1
-        )
-
         ag2 = pd.merge(
-            ag2,
+            ag,
             statpop_reduced[['geometry']],
             left_on='record', right_index=True
         ).rename(columns={'geometry': 'home_geometry'})
@@ -330,10 +336,21 @@ def calculate_accessibility_for_statent_cell(
 
         # for each person, sum the accessibility contributions across all destinations
         accessibility = ag.groupby('record').agg({
-            'accessibility_contribution': 'sum'
+            'accessibility_contribution': 'sum',
+            'accessibility_contribution_cycling': 'sum',
+            'accessibility_contribution_foot': 'sum',
+            'accessibility_contribution_private_cars': 'sum',
+            'accessibility_contribution_transit': 'sum'
         })
 
-        accessibility.rename(columns={'accessibility_contribution': 'accessibility'}, inplace=True)
+        accessibility.rename(columns={
+            'accessibility_contribution': 'accessibility',
+            'accessibility_contribution_cycling': 'accessibility_cycling',
+            'accessibility_contribution_foot': 'accessibility_foot',
+            'accessibility_contribution_private_cars': 'accessibility_private_cars',
+            'accessibility_contribution_transit': 'accessibility_transit'
+        }, inplace=True)
+
         accessibility['accessibility'] = accessibility['accessibility'] / destinations_sample
 
         accessibility = accessibility.join(statpop_reduced)

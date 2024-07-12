@@ -1,14 +1,9 @@
 import r5py
-import shapely
 import pandas as pd
 import geopandas as gpd
-import numpy as np
-import datetime
 
 import os
 import snman
-from snman import osmnx_customized as oxc
-from snman.constants import *
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -39,7 +34,6 @@ print('read default transport network')
 transport_network_default = r5py.TransportNetwork(
     os.path.join(outputs_path, 'before_oneway_links_default.osm.pbf'),
     os.path.join(inputs_path, 'switzerland', 'switzerland', 'gtfs', 'gtfs_fp2024_2024-06-27_mod.zip')
-    #os.path.join(inputs_path, 'switzerland', 'switzerland', 'gtfs', 'vbz_2024.zip')
 )
 
 print('read transport network cycling')
@@ -88,7 +82,8 @@ accessibility_before = pd.concat(
 print('exporting file')
 snman.io.export_gdf(
     gpd.GeoDataFrame(accessibility_before),
-    os.path.join(outputs_path, 'accessibility_before.gpkg')
+    #os.path.join(outputs_path, 'accessibility_before.gpkg')
+    'accessibility_before.gpkg'
 )
 
 # --------------------------------------------------------------------
@@ -116,7 +111,7 @@ accessibility_after = pd.concat(
 print('exporting file')
 snman.io.export_gdf(
     gpd.GeoDataFrame(accessibility_after),
-    os.path.join(outputs_path, 'accessibility_before.gpkg')
+    'accessibility_after.gpkg'
 )
 
 # -------------------------------------------------------------------
@@ -132,5 +127,5 @@ accessibility_before_after['accessibility_after-before'] =(
 
 snman.io.export_gdf(
     gpd.GeoDataFrame(accessibility_before_after),
-    os.path.join(outputs_path, 'accessibility_before_after.gpkg')
+    'accessibility_before_after.gpkg'
 )

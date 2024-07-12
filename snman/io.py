@@ -762,6 +762,7 @@ def export_osm_xml(
         as_oneway_links=False,
         modes=(MODE_TRANSIT, MODE_CYCLING, MODE_PRIVATE_CARS),
         overwrite_highway=False,
+        dont_overwrite_highway=(),
         set_maxspeed_by_cost=False,
         floor_maxspeed=0.5,
         ceil_maxspeed=120,
@@ -790,6 +791,8 @@ def export_osm_xml(
     overwrite_highway : bool or str
         set all highway tag values to this value, do nothing if False,
         this setting is needed to encode a cycling network as travel lanes for routing with link costs in R5
+    dont_overwrite_highway : list
+        which highway tag values should not be overwritten
     set_maxspeed_by_cost : bool or str
         set maxspeed of links according to their length and a cost attribute defined here,
         do nothing if False
@@ -839,12 +842,12 @@ def export_osm_xml(
 
     if overwrite_highway:
         for uvk, data in H.edges.items():
-            data['highway'] = overwrite_highway
+            if data['highway'] not in dont_overwrite_highway:
+                data['highway'] = overwrite_highway
 
     # remove all maxspeed tags to avoid duplicities
     if set_maxspeed_by_cost:
         for uvk, data in H.edges.items():
-            data['highway'] = overwrite_highway
             if 'maxspeed' in data.keys():
                 del data['maxspeed']
 
@@ -961,7 +964,7 @@ def export_osm_xml(
     tree.write(path, encoding='UTF-8', xml_declaration=True)
 
 
-def osm_to_pbf(osm_file):
+def osm_to_pbf(osm_file, dry_run=False):
     """
     Converts an osm file to pbf, using the osmconvert.exe utility.
 
@@ -980,6 +983,8 @@ def osm_to_pbf(osm_file):
     ----------
     osm_file: str
         Path to the osm file. The resulting pbf file will be written to the same directory
+    dry_run: bool
+        if true, output the command string instead of running osmconvert
     """
 
     current_file_path = os.path.abspath(__file__)
@@ -987,7 +992,10 @@ def osm_to_pbf(osm_file):
 
     osmconvert = os.path.join(current_directory, 'osmconvert.exe')
     command = f'"{osmconvert}" "{osm_file}" --out-pbf -o="{osm_file}.pbf"'
-    subprocess.run(command, capture_output=True, text=True)
+    if dry_run:
+        return command
+    else:
+        subprocess.run(command, capture_output=True, text=True)
 
 def _iterable_columns_from_strings(df, columns, method='separator', separator=','):
     """
