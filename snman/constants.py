@@ -129,40 +129,40 @@ LANE_TYPES = {
          'modes': [MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_CYCLING, MODE_FOOT]},
 
     LANETYPE_DEDICATED_PT + DIRECTION_FORWARD:
-        {'width': 3.0, 'order': 2, 'cycling_vod': 0, 'modes': [MODE_TRANSIT]},
+        {'width': 3.0, 'order': 2, 'cycling_vod': 0, 'modes': [MODE_TRANSIT, MODE_FOOT]},
     LANETYPE_DEDICATED_PT + DIRECTION_BACKWARD:
-        {'width': 3.0, 'order': 2, 'cycling_vod': 0, 'modes': [MODE_TRANSIT]},
+        {'width': 3.0, 'order': 2, 'cycling_vod': 0, 'modes': [MODE_TRANSIT, MODE_FOOT]},
     LANETYPE_DEDICATED_PT + DIRECTION_BOTH:
-        {'width': 4.5, 'order': 2, 'cycling_vod': 0, 'modes': [MODE_TRANSIT]},
+        {'width': 4.5, 'order': 2, 'cycling_vod': 0, 'modes': [MODE_TRANSIT, MODE_FOOT]},
     LANETYPE_DEDICATED_PT + DIRECTION_FORWARD_OPTIONAL:
-        {'width': 3.0, 'order': 2, 'cycling_vod': 0, 'modes': [MODE_TRANSIT]},
+        {'width': 3.0, 'order': 2, 'cycling_vod': 0, 'modes': [MODE_TRANSIT, MODE_FOOT]},
     LANETYPE_DEDICATED_PT + DIRECTION_BACKWARD_OPTIONAL:
-        {'width': 3.0, 'order': 2, 'cycling_vod': 0, 'modes': [MODE_TRANSIT]},
+        {'width': 3.0, 'order': 2, 'cycling_vod': 0, 'modes': [MODE_TRANSIT, MODE_FOOT]},
 
     LANETYPE_CYCLING_LANE + DIRECTION_FORWARD:
-        {'width': 1.5, 'order': 3, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING]},
+        {'width': 1.5, 'order': 3, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING, MODE_FOOT]},
     LANETYPE_CYCLING_LANE + DIRECTION_BACKWARD:
-        {'width': 1.5, 'order': 3, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING]},
+        {'width': 1.5, 'order': 3, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING, MODE_FOOT]},
     LANETYPE_CYCLING_LANE + DIRECTION_FORWARD_OPTIONAL:
-        {'width': 1.5, 'order': 3, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING]},
+        {'width': 1.5, 'order': 3, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING, MODE_FOOT]},
     LANETYPE_CYCLING_LANE + DIRECTION_BACKWARD_OPTIONAL:
-        {'width': 1.5, 'order': 3, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING]},
+        {'width': 1.5, 'order': 3, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING, MODE_FOOT]},
     LANETYPE_CYCLING_LANE + DIRECTION_BOTH:
-        {'width': 2.0, 'order': 3, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING]},
+        {'width': 2.0, 'order': 3, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING, MODE_FOOT]},
 
     LANETYPE_CYCLING_TRACK + DIRECTION_FORWARD:
-        {'width': 1.5, 'order': 4, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING]},
+        {'width': 1.5, 'order': 4, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING, MODE_FOOT]},
     LANETYPE_CYCLING_TRACK + DIRECTION_BACKWARD:
-        {'width': 1.5, 'order': 4, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING]},
+        {'width': 1.5, 'order': 4, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING, MODE_FOOT]},
     LANETYPE_CYCLING_TRACK + DIRECTION_BOTH:
-        {'width': 2.5, 'order': 4, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING]},
+        {'width': 2.5, 'order': 4, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING, MODE_FOOT]},
 
     LANETYPE_CYCLING_PSEUDO + DIRECTION_FORWARD:
-        {'width': 0.0, 'order': 5, 'cycling_vod': 0, 'modes': [MODE_CYCLING]},
+        {'width': 0.0, 'order': 5, 'cycling_vod': 0, 'modes': [MODE_CYCLING, MODE_FOOT]},
     LANETYPE_CYCLING_PSEUDO + DIRECTION_BACKWARD:
-        {'width': 0.0, 'order': 5, 'cycling_vod': 0, 'modes': [MODE_CYCLING]},
+        {'width': 0.0, 'order': 5, 'cycling_vod': 0, 'modes': [MODE_CYCLING, MODE_FOOT]},
     LANETYPE_CYCLING_PSEUDO + DIRECTION_BOTH:
-        {'width': 0.0, 'order': 5, 'cycling_vod': 0, 'modes': [MODE_CYCLING]},
+        {'width': 0.0, 'order': 5, 'cycling_vod': 0, 'modes': [MODE_CYCLING, MODE_FOOT]},
 
     LANETYPE_FOOT_CYCLING_MIXED + DIRECTION_FORWARD:
         {'width': 2.5, 'order': 6, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING, MODE_FOOT]},

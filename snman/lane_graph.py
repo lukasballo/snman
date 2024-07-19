@@ -7,7 +7,11 @@ import networkx as nx
 import numpy as np
 
 
-def create_lane_graph(G, lanes_attribute=KEY_LANES_DESCRIPTION):
+def create_lane_graph(
+        G,
+        lanes_attribute=KEY_LANES_DESCRIPTION,
+        cast_attributes={}
+):
     """
     Creates a new lane graph, derived from the street graph
     Parameters
@@ -62,6 +66,9 @@ def create_lane_graph(G, lanes_attribute=KEY_LANES_DESCRIPTION):
             attributes['width'] = lane.width
             attributes['osm_highway'] = data.get('highway')
             attributes['maxspeed'] = data.get('maxspeed')
+
+            for key, value in cast_attributes.items():
+                attributes[key] = data.get(value)
 
             #attributes['status'] = lane.status
             #attributes['fixed'] = lane.status == STATUS_FIXED

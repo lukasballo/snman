@@ -126,7 +126,7 @@ def load_street_graph(
         if key in nodes_gdf:
             nodes_gdf[key] = nodes_gdf[key].apply(fn)
 
-    street_graph.street_graph_from_gdf(nodes_gdf, edges_gdf)
+    G = street_graph.street_graph_from_gdf(nodes_gdf, edges_gdf)
 
     return G
 
