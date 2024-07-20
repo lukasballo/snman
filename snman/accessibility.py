@@ -375,6 +375,7 @@ def calculate_accessibility_for_statent_cell(
 
     # for each person, sum the accessibility contributions across all destinations
     accessibility = destinations_with_cost.groupby('record').agg({
+        'record': 'first',
         'age': 'first',
         'sex': 'first',
         'maritalstatus': 'first',
