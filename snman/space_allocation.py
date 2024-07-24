@@ -1052,7 +1052,12 @@ def filter_lanes_by_function(lanes, filter_function):
 
 def space_allocation_from_string(sa_string):
     lane_strings = sa_string.split(' | ')
-    lanes = [Lane(s[0], s[1], status=s[2], width=utils.safe_float(s[3:])) for s in lane_strings]
+    lanes = [
+        Lane(s[0], s[1], status=s[2], width=utils.safe_float(s[3:])) if len(s) > 2
+        else Lane(s[0], s[1]) if len(s) == 2 # fallback for old lane format
+        else None
+        for s in lane_strings
+    ]
     return SpaceAllocation(lanes)
 
 

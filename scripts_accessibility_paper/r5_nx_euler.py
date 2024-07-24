@@ -121,7 +121,7 @@ def miniwrapper(args):
         L_modes,
         statpop_with_statent_ids, statent, cell,
         datetime.datetime(2024, 2, 22, 18, 00),
-        distance_limit=50*1000,
+        distance_limit=70*1000,
         population_sample=0.05,
         destinations_sample=0.1
     )

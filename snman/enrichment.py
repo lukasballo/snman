@@ -102,13 +102,13 @@ def match_linestrings(
         map_con.add_node(id, (data['y'], data['x']))
 
     # keep only edges accessible to at least one of the provided modes
+    H = copy.deepcopy(G)
     if modes:
-        H = copy.deepcopy(G)
         street_graph.filter_lanes_by_modes(H, modes, lane_description_key=lanes_key)
 
     if _save_map:
-        I = copy.deepcopy(G)
-        I.remove_edges_from(G.edges())
+        I = copy.deepcopy(H)
+        I.remove_edges_from(H.edges())
 
     # add edges to the in-memory map
     for uvk, data in H.edges.items():
