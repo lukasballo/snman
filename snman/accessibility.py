@@ -42,7 +42,7 @@ def calculate_behavioral_cost(
 
     X_IVT_car = travel_time_private_cars / 60
     X_AET_car = travel_time_access_egress_private_cars / 60
-    X_cost_car = 0.26 * path_length_private_cars / 1000
+    X_cost_car = 0.26 * euclidean_distance / 1000 * 1.5  # surrogate
     Alpha_car = -0.8
     Beta_TT_car = -0.0192
     Beta_TT_walk = -0.0457
@@ -53,8 +53,9 @@ def calculate_behavioral_cost(
             Alpha_car
             + Beta_TT_car * X_IVT_car * (X_dist / Mi_dist) ** Lambda_distTT
             + Beta_TT_walk * X_AET_car
-            + Beta_cost * (X_dist / Mi_dist) ** Lambda_dist_cost + X_cost_car * (
-                        X_hhIncome / Mi_hhIncome) ** Lambda_hhIncome
+            + Beta_cost
+                * (X_dist / Mi_dist) ** Lambda_dist_cost
+                * X_cost_car * (X_hhIncome / Mi_hhIncome) ** Lambda_hhIncome
             + Beta_work_car * X_work
             + Beta_city_center_car * X_city_center
     )
@@ -81,8 +82,9 @@ def calculate_behavioral_cost(
             + Beta_AET_PT * X_AET_PT
             + Beta_wait * X_waiting_time
             + Beta_lineSwitch * X_number_of_connections
-            + Beta_cost * (X_dist / Mi_dist) ** Lambda_dist_cost * X_cost_PT * (
-                        X_hhIncome / Mi_hhIncome) ** Lambda_hhIncome
+            + Beta_cost
+                * (X_dist / Mi_dist) ** Lambda_dist_cost
+                * X_cost_PT * (X_hhIncome / Mi_hhIncome) ** Lambda_hhIncome
             + Beta_headway * X_headway
             + Beta_OVGK
     )
