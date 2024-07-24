@@ -18,7 +18,8 @@ def calculate_behavioral_cost(
         travel_time_transit=np.inf,
         travel_time_cycling=np.inf, travel_time_access_egress_cycling=np.inf,
         travel_time_foot=np.inf, travel_time_access_egress_foot=np.inf,
-        age=None
+        age=None,
+        car_cost_detour_factor=1.5
 ):
     """
     Calculates individual generalized cost based on the personal properties and mode choice.
@@ -42,7 +43,7 @@ def calculate_behavioral_cost(
 
     X_IVT_car = travel_time_private_cars / 60
     X_AET_car = travel_time_access_egress_private_cars / 60
-    X_cost_car = 0.26 * euclidean_distance / 1000 * 1.5  # surrogate
+    X_cost_car = 0.26 * euclidean_distance / 1000 * car_cost_detour_factor  # surrogate
     Alpha_car = -0.8
     Beta_TT_car = -0.0192
     Beta_TT_walk = -0.0457
@@ -169,7 +170,8 @@ def calculate_accessibility_for_statent_cell(
         walking_speed_kmh=1.34*3.6,
         access_egress_detour_factor=1.5,
         min_travel_time=5*60,
-        min_euclidian_distance=100
+        min_euclidian_distance=100,
+        car_cost_detour_factor=1.5
 ):
     """
     Calculates accessibility for every resident associated with a given cell in the statent dataset.
@@ -428,7 +430,8 @@ def calculate_accessibility_for_statent_cell(
                 'travel_time_cycling', 'travel_time_access_egress_cycling',
                 'travel_time_foot', 'travel_time_access_egress_foot',
                 'age'
-            ]]
+            ]],
+            car_cost_detour_factor=car_cost_detour_factor
         ),
         axis=1,
         result_type='expand'
