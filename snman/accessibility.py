@@ -171,7 +171,8 @@ def calculate_accessibility_for_statent_cell(
         access_egress_detour_factor=1.5,
         min_travel_time=5*60,
         min_euclidian_distance=100,
-        car_cost_detour_factor=1.5
+        car_cost_detour_factor=1.5,
+        accessibility_beta=-0.7
 ):
     """
     Calculates accessibility for every resident associated with a given cell in the statent dataset.
@@ -451,7 +452,7 @@ def calculate_accessibility_for_statent_cell(
 
     # calculate total accessibility contribution using cost function and destination utility
     destinations_with_cost['accessibility_contribution'] = (
-            (destinations_with_cost['weighted_cost'] ** -0.7)
+            (destinations_with_cost['weighted_cost'] ** accessibility_beta)
             * destinations_with_cost['VOLLZEITAEQ_TOTAL']
     )
 
