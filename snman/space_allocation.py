@@ -51,6 +51,14 @@ def _generate_lanes_for_edge(edge):
 
     # PART 1: INITIALIZE VARIABLES
 
+    edge_hierarchy = edge.get('hierarchy')
+    normal_lane_width = normal_lane_width_by_hierarchy.get(
+        edge_hierarchy,
+        normal_lane_width_by_hierarchy[hierarchy.LOCAL_ROAD]
+    )
+
+    print(edge['hierarchy'], normal_lane_width)
+
     # left/right lanes: cycling lanes that are not included in the osm lanes tag
     left_lanes_list = []
     forward_lanes_list = []
@@ -238,10 +246,10 @@ def _generate_lanes_for_edge(edge):
         #    right_lanes_list.extend([LANETYPE_FOOT + DIRECTION_BOTH])
 
         backward_lanes_list.extend(
-            [Lane(_LANETYPE_MOTORIZED, _DIRECTION_BACKWARD) for i in range(n_lanes_motorized_backward)]
+            [Lane(_LANETYPE_MOTORIZED, _DIRECTION_BACKWARD, width=normal_lane_width) for i in range(n_lanes_motorized_backward)]
         )
         backward_lanes_list.extend(
-            [Lane(LANETYPE_DEDICATED_PT, _DIRECTION_BACKWARD) for i in range(n_lanes_dedicated_pt_backward)]
+            [Lane(LANETYPE_DEDICATED_PT, _DIRECTION_BACKWARD, width=normal_lane_width) for i in range(n_lanes_dedicated_pt_backward)]
         )
 
         start_both_dir_lanes = len(backward_lanes_list)
@@ -254,10 +262,10 @@ def _generate_lanes_for_edge(edge):
 
         start_forward_lanes = start_both_dir_lanes + len(both_dir_lanes_list)
         forward_lanes_list.extend(
-            [Lane(LANETYPE_DEDICATED_PT, _DIRECTION_FORWARD) for i in range(n_lanes_dedicated_pt_forward)]
+            [Lane(LANETYPE_DEDICATED_PT, _DIRECTION_FORWARD, width=normal_lane_width) for i in range(n_lanes_dedicated_pt_forward)]
         )
         forward_lanes_list.extend(
-            [Lane(_LANETYPE_MOTORIZED, _DIRECTION_FORWARD) for i in range(n_lanes_motorized_forward)]
+            [Lane(_LANETYPE_MOTORIZED, _DIRECTION_FORWARD, width=normal_lane_width) for i in range(n_lanes_motorized_forward)]
         )
 
     # Everything else
@@ -277,7 +285,7 @@ def _generate_lanes_for_edge(edge):
             elif lane == 'designated' and i < start_forward_lanes:
                 both_dir_lanes_list[i-start_both_dir_lanes] = Lane(LANETYPE_DEDICATED_PT, DIRECTION_BOTH)
             elif lane == 'designated' and i < start_forward_lanes + len(forward_lanes_list):
-                forward_lanes_list[i-start_forward_lanes] = Lane(LANETYPE_DEDICATED_PT, _DIRECTION_FORWARD)
+                forward_lanes_list[i-start_forward_lanes] = Lane(LANETYPE_DEDICATED_PT, _DIRECTION_FORWARD, width=normal_lane_width)
 
     elif edge.get('vehicle:lanes'):
         osm_bus_lanes = edge.get('vehicle:lanes', '').split('|')
@@ -287,22 +295,22 @@ def _generate_lanes_for_edge(edge):
             elif lane == 'no' and i < start_forward_lanes:
                 both_dir_lanes_list[i-start_both_dir_lanes] = Lane(LANETYPE_DEDICATED_PT, DIRECTION_BOTH)
             elif lane == 'no' and i < start_forward_lanes + len(forward_lanes_list):
-                forward_lanes_list[i-start_forward_lanes] = Lane(LANETYPE_DEDICATED_PT, _DIRECTION_FORWARD)
+                forward_lanes_list[i-start_forward_lanes] = Lane(LANETYPE_DEDICATED_PT, _DIRECTION_FORWARD, width=normal_lane_width)
 
     if edge.get('bus:lanes:forward'):
         osm_bus_lanes_forward = edge.get('bus:lanes:forward', '').split('|')
         for i, lane in enumerate(osm_bus_lanes_forward):
             if lane == 'designated' and i < len(forward_lanes_list):
-                forward_lanes_list[i] = Lane(LANETYPE_DEDICATED_PT, _DIRECTION_FORWARD)
+                forward_lanes_list[i] = Lane(LANETYPE_DEDICATED_PT, _DIRECTION_FORWARD, width=normal_lane_width)
 
     elif edge.get('vehicle:lanes:forward'):
         osm_vehicle_lanes_forward = edge.get('vehicle:lanes:forward', '').split('|')
         for i, lane in enumerate(osm_vehicle_lanes_forward):
             if lane == 'no' and i < len(forward_lanes_list):
-                forward_lanes_list[i] = Lane(LANETYPE_DEDICATED_PT, _DIRECTION_FORWARD)
+                forward_lanes_list[i] = Lane(LANETYPE_DEDICATED_PT, _DIRECTION_FORWARD, width=normal_lane_width)
 
     elif edge.get('busway:right') or edge.get('busway:both') or edge.get('busway'):
-        utils.set_last_or_append(forward_lanes_list, Lane(LANETYPE_DEDICATED_PT, _DIRECTION_FORWARD))
+        utils.set_last_or_append(forward_lanes_list, Lane(LANETYPE_DEDICATED_PT, _DIRECTION_FORWARD, width=normal_lane_width))
 
     # do the same in backward direction
     if edge.get('bus:lanes:backward'):
@@ -311,7 +319,7 @@ def _generate_lanes_for_edge(edge):
         osm_bus_lanes_backward.reverse()
         for i, lane in enumerate(osm_bus_lanes_backward):
             if lane == 'designated' and i < len(backward_lanes_list):
-                backward_lanes_list[i] = Lane(LANETYPE_DEDICATED_PT, _DIRECTION_BACKWARD)
+                backward_lanes_list[i] = Lane(LANETYPE_DEDICATED_PT, _DIRECTION_BACKWARD, width=normal_lane_width)
 
     elif edge.get('vehicle:lanes:backward'):
         osm_vehicle_lanes_backward = edge.get('vehicle:lanes:backward', '').split('|')
@@ -319,10 +327,10 @@ def _generate_lanes_for_edge(edge):
         osm_vehicle_lanes_backward.reverse()
         for i, lane in enumerate(osm_vehicle_lanes_backward):
             if lane == 'no' and i < len(backward_lanes_list):
-                backward_lanes_list[i] = Lane(LANETYPE_DEDICATED_PT, _DIRECTION_BACKWARD)
+                backward_lanes_list[i] = Lane(LANETYPE_DEDICATED_PT, _DIRECTION_BACKWARD, width=normal_lane_width)
 
     elif edge.get('busway:left') or edge.get('busway:both') or edge.get('busway'):
-        utils.set_last_or_append(backward_lanes_list, Lane(LANETYPE_DEDICATED_PT, _DIRECTION_BACKWARD))
+        utils.set_last_or_append(backward_lanes_list, Lane(LANETYPE_DEDICATED_PT, _DIRECTION_BACKWARD, width=normal_lane_width))
 
     # PART 5: RETURN
 
@@ -1051,6 +1059,21 @@ def filter_lanes_by_function(lanes, filter_function):
 
 
 def space_allocation_from_string(sa_string):
+    """
+    Converts a SpaceAllocation encoded in a string into a SpaceAllocation object
+
+    Parameters
+    ----------
+    sa_string: str
+
+    Returns
+    -------
+    SpaceAllocation
+    """
+
+    if sa_string in [None, '', 'nan']:
+        return
+
     lane_strings = sa_string.split(' | ')
     lanes = [
         Lane(s[0], s[1], status=s[2], width=utils.safe_float(s[3:])) if len(s) > 2

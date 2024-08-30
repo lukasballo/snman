@@ -1,4 +1,5 @@
 import osmnx as ox
+from . import hierarchy
 
 ox.config(log_console=False, use_cache=True)
 
@@ -85,6 +86,7 @@ DIRECTION_ORDER = ['<', '-', '>']
 KEY_LANES_DESCRIPTION = 'ln_desc'               # under which key is the existing lane configuration
 KEY_LANES_DESCRIPTION_AFTER = 'ln_desc_after'   # under which key is the lane configuration after rebuilding
 KEY_GIVEN_LANES_DESCRIPTION = 'given_lanes'
+KEY_FORCED_GIVEN_LANES_DESCRIPTION = 'forced_given_lanes'
 KEY_REVERSED = '_reversed'          # which key tells if the edge has been reversed
 
 KEY_SENSORS_FORWARD = 'sensors_forward'
@@ -129,15 +131,15 @@ LANE_TYPES = {
          'modes': [MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_CYCLING, MODE_FOOT]},
 
     LANETYPE_DEDICATED_PT + DIRECTION_FORWARD:
-        {'width': 3.0, 'order': 2, 'cycling_vod': 0, 'modes': [MODE_TRANSIT, MODE_FOOT]},
+        {'width': 3.0, 'order': 2, 'cycling_vod': 0, 'modes': [MODE_TRANSIT, MODE_CYCLING, MODE_FOOT]},
     LANETYPE_DEDICATED_PT + DIRECTION_BACKWARD:
-        {'width': 3.0, 'order': 2, 'cycling_vod': 0, 'modes': [MODE_TRANSIT, MODE_FOOT]},
+        {'width': 3.0, 'order': 2, 'cycling_vod': 0, 'modes': [MODE_TRANSIT, MODE_CYCLING, MODE_FOOT]},
     LANETYPE_DEDICATED_PT + DIRECTION_BOTH:
-        {'width': 4.5, 'order': 2, 'cycling_vod': 0, 'modes': [MODE_TRANSIT, MODE_FOOT]},
+        {'width': 4.5, 'order': 2, 'cycling_vod': 0, 'modes': [MODE_TRANSIT, MODE_CYCLING, MODE_FOOT]},
     LANETYPE_DEDICATED_PT + DIRECTION_FORWARD_OPTIONAL:
-        {'width': 3.0, 'order': 2, 'cycling_vod': 0, 'modes': [MODE_TRANSIT, MODE_FOOT]},
+        {'width': 3.0, 'order': 2, 'cycling_vod': 0, 'modes': [MODE_TRANSIT, MODE_CYCLING, MODE_FOOT]},
     LANETYPE_DEDICATED_PT + DIRECTION_BACKWARD_OPTIONAL:
-        {'width': 3.0, 'order': 2, 'cycling_vod': 0, 'modes': [MODE_TRANSIT, MODE_FOOT]},
+        {'width': 3.0, 'order': 2, 'cycling_vod': 0, 'modes': [MODE_TRANSIT, MODE_CYCLING, MODE_FOOT]},
 
     LANETYPE_CYCLING_LANE + DIRECTION_FORWARD:
         {'width': 1.5, 'order': 3, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING, MODE_FOOT]},
@@ -196,6 +198,13 @@ LANE_TYPES = {
     LANETYPE_NON_TRAFFIC + DIRECTION_BACKWARD:
         {'width': 0.0, 'order': 9, 'cycling_vod': 0, 'modes': [MODE_NON_TRAFFIC]},
 
+}
+
+
+normal_lane_width_by_hierarchy = {
+    hierarchy.MAIN_ROAD: 3.5,
+    hierarchy.LOCAL_ROAD: 3,
+    hierarchy.SERVICE: 3
 }
 
 

@@ -2,7 +2,9 @@ import copy, math
 import networkx as nx
 import numpy as np
 import geopandas as gpd
-from . import space_allocation, hierarchy, street_graph, graph, io, merge_edges, lane_graph, access_graph
+from numpy.f2py.auxfuncs import throw_error
+
+from . import space_allocation, hierarchy, street_graph, graph, io, merge_edges, lane_graph, access_graph, _errors
 from .constants import *
 from . import osmnx_customized as oxc
 
@@ -56,13 +58,14 @@ def multi_set_given_lanes(
         G,
         source_lanes_attribute=KEY_LANES_DESCRIPTION,
         target_lanes_attribute=KEY_GIVEN_LANES_DESCRIPTION,
+        forced_given_lanes_attribute=KEY_FORCED_GIVEN_LANES_DESCRIPTION,
         public_transit_mode='mandatory_like_existing',
         parking_mode='mandatory_like_existing',
         motorized_traffic_on_all_streets=False,
-        motorized_traffic_road_hierarchies=(hierarchy.LOCAL_ROAD, hierarchy.MAIN_ROAD, hierarchy.HIGHWAY),
+        motorized_traffic_road_hierarchies=(hierarchy.LOCAL_ROAD, hierarchy.MAIN_ROAD, hierarchy.HIGHWAY, hierarchy.SERVICE),
         motorized_traffic_lane_mode='separate_lanes',
         cycling_infra_road_hierarchies=(hierarchy.LOCAL_ROAD, hierarchy.MAIN_ROAD),
-        hierarchies_to_fix=(hierarchy.PATHWAY, hierarchy.SERVICE)
+        hierarchies_to_fix=(hierarchy.PATHWAY)
 ):
 
     """
@@ -102,12 +105,22 @@ def multi_set_given_lanes(
 
     for uvk, data in G.edges.items():
 
+        edge_hierarchy = data.get('hierarchy')
+        normal_lane_width = normal_lane_width_by_hierarchy.get(
+            edge_hierarchy,
+            normal_lane_width_by_hierarchy[hierarchy.LOCAL_ROAD]
+        )
+
         source_lanes = data[source_lanes_attribute]
         target_lanes = space_allocation.SpaceAllocation([])
 
         # for streets with "hierarchy to fix" keep everything as it is
         if data.get('hierarchy') in hierarchies_to_fix:
             target_lanes = copy.deepcopy(source_lanes)
+
+        # transfer forced given lanes if they are defined
+        elif type(data.get(forced_given_lanes_attribute)) == space_allocation.SpaceAllocation:
+            target_lanes = data.get(forced_given_lanes_attribute)
 
         else:
             # -- Add dedicated public transit lanes --
@@ -117,11 +130,11 @@ def multi_set_given_lanes(
                 if public_transit_mode == 'all_dedicated':
                     if data.get('pt_backward'):
                         target_lanes.append(
-                            space_allocation.Lane(LANETYPE_DEDICATED_PT, DIRECTION_BACKWARD, status=STATUS_OPTIONAL)
+                            space_allocation.Lane(LANETYPE_DEDICATED_PT, DIRECTION_BACKWARD, status=STATUS_OPTIONAL, width=normal_lane_width)
                         )
                     if data.get('pt_forward'):
                         target_lanes.append(
-                            space_allocation.Lane(LANETYPE_DEDICATED_PT, DIRECTION_FORWARD, status=STATUS_OPTIONAL)
+                            space_allocation.Lane(LANETYPE_DEDICATED_PT, DIRECTION_FORWARD, status=STATUS_OPTIONAL, width=normal_lane_width)
                         )
                 # mandatory_like_existing: all existing pt lanes remain as they are
                 elif public_transit_mode == 'mandatory_like_existing':
@@ -150,25 +163,38 @@ def multi_set_given_lanes(
                 if motorized_traffic_lane_mode == 'separate_lanes':
                     use_direction = DIRECTION_TBD
                 elif motorized_traffic_lane_mode == 'bidirectional_lanes':
-                    use_direction = DIRECTION_BOTH
+                    use_direction = DIRECTION_TBD
+                    #use_direction = DIRECTION_BOTH
                 else:
-                    print('not implemented')
+                    raise _errors.OptionNotImplemented(
+                        f"Motorized traffic lane mode {motorized_traffic_lane_mode} is not implemented."
+                    )
 
                 # motorized_traffic_on_all_streets=True: ensure every street is accessible to car traffic
                 # if it is not already
                 if motorized_traffic_on_all_streets:
                     if data.get('hierarchy') in motorized_traffic_road_hierarchies:
                         if math.inf in [car_cost_backward, car_cost_forward]:
-                            target_lanes.append(
-                                space_allocation.Lane(LANETYPE_MOTORIZED, use_direction, status=STATUS_FIXED)
-                            )
+                            if use_direction != DIRECTION_BOTH:
+                                target_lanes.append(
+                                    space_allocation.Lane(LANETYPE_MOTORIZED, use_direction, status=STATUS_FIXED, width=normal_lane_width)
+                                )
+                            else:
+                                target_lanes.append(
+                                    space_allocation.Lane(LANETYPE_MOTORIZED, use_direction, status=STATUS_FIXED)
+                                )
                 # motorized_traffic_on_all_streets=False: add optional lane to every street
                 else:
                     if data.get('hierarchy') in motorized_traffic_road_hierarchies:
                         if math.inf in [car_cost_backward, car_cost_forward]:
-                            target_lanes.append(
-                                space_allocation.Lane(LANETYPE_MOTORIZED, use_direction, status=STATUS_OPTIONAL)
-                            )
+                            if use_direction != DIRECTION_BOTH:
+                                target_lanes.append(
+                                    space_allocation.Lane(LANETYPE_MOTORIZED, use_direction, status=STATUS_OPTIONAL, width=normal_lane_width)
+                                )
+                            else:
+                                target_lanes.append(
+                                    space_allocation.Lane(LANETYPE_MOTORIZED, use_direction, status=STATUS_OPTIONAL)
+                                )
 
             # -- Add cycling lanes --
 
@@ -470,6 +496,7 @@ def _remove_car_lanes(
             bc = nx.edge_betweenness_centrality(M, k, weight='cost_' + MODE_PRIVATE_CARS, seed=9)
             nx.set_edge_attributes(L, bc, 'bc_' + MODE_PRIVATE_CARS)
 
+
         # calculate excess width (how much wider are the new lanes than the old ones)
         for uvk, data in G.edges.items():
             width_before = data[width_attribute]
@@ -480,10 +507,10 @@ def _remove_car_lanes(
         # create a list of unfixed car edges, these are removal candidates
         removal_candidates_car = list(filter(
             lambda edge:
-            (edge[1]['lane'].status != STATUS_FIXED or edge[1]['lane'].direction == DIRECTION_TBD)
-            and edge[1]['lanetype'] in {LANETYPE_MOTORIZED, LANETYPE_HIGHWAY},
-            #and G.edges[(edge[1]['u_G'], edge[1]['v_G'], edge[1]['k_G'])]['_after_excess_width_m'] > 0,
-            L.edges.items()
+                (edge[1]['lane'].status != STATUS_FIXED or edge[1]['lane'].direction == DIRECTION_TBD)
+                and edge[1]['lanetype'] in {LANETYPE_MOTORIZED, LANETYPE_HIGHWAY},
+                #and G.edges[(edge[1]['u_G'], edge[1]['v_G'], edge[1]['k_G'])]['_after_excess_width_m'] > 0,
+                L.edges.items()
         ))
 
         # stop here if no removal candidates exist
@@ -566,16 +593,21 @@ def _remove_car_lanes(
                 # convert to forward and make twin factor 1
                 L.edges[remove_edge_uvk]['lane'].direction = DIRECTION_FORWARD
                 L.edges[remove_edge_uvk]['twin_factor'] = 1
-
-                # make first instance and adjust lane key
-                old_instance = L.edges[remove_edge_uvk]['instance']
                 L.edges[remove_edge_uvk]['instance'] = 1
-                remove_edge_uvk_old = copy.deepcopy(remove_edge_uvk)
-                remove_edge_uvk = list(remove_edge_uvk)
-                remove_edge_uvk[2] = remove_edge_uvk[2] + '-' + str(old_instance)
-                L.add_edge(*remove_edge_uvk, **L.edges[remove_edge_uvk_old])
-                L.remove_edge(*remove_edge_uvk_old)
 
+                # if there is an opposite instance that was already converted into a forward lane, assign a new key
+                # (having two forward lanes with the same key causes trouble downstream)
+                if opposite_edge_uvk in L.edges and L.edges[opposite_edge_uvk]['lane'].direction == DIRECTION_FORWARD:
+                    remove_edge_uvk_old = copy.deepcopy(remove_edge_uvk)
+                    # tuple -> list, so that we can do item assignment
+                    remove_edge_uvk = list(remove_edge_uvk)
+                    remove_edge_uvk[2] = remove_edge_uvk[2] + 'a'
+                    # to change the key, we need to create a new edge and delete the old one
+                    L.add_edge(*remove_edge_uvk, **L.edges[remove_edge_uvk_old])
+                    print(remove_edge_uvk)
+                    L.remove_edge(*remove_edge_uvk_old)
+
+            # write the check results into the edge attributes for debugging
             L.edges[remove_edge_uvk]['_disconnects_graph'] = edges_disconnect_graph
             L.edges[remove_edge_uvk]['_breaks_transit'] = edge_breaks_transit
             L.edges[remove_edge_uvk]['_last_dir_of_mandatory'] = is_last_direction_of_mandatory_lane
@@ -620,7 +652,7 @@ def _narrow_down_car_lanes(
 
         u, v, k = uvk
         lanes = lane_graph.get_street_lanes(L, *uvk)
-        motorized_lanes = {uvk: data for uvk, data in lanes.items() if data['lanetype'] == LANETYPE_MOTORIZED}
+        motorized_lanes = {uvk: data for uvk, data in lanes.items() if data['lane'].lanetype == LANETYPE_MOTORIZED}
         has_forward = False
         has_backward = False
         instance = 1
@@ -630,19 +662,21 @@ def _narrow_down_car_lanes(
             if lane_u == v and lane_v == u:
                 has_backward = True
         if has_forward and has_backward and len(motorized_lanes) == 2:
+            # take the k of the first lane as the future id
             lane_id = list(motorized_lanes.keys())[0][2]
+            # take the first lane as a template
             template_data = L.edges[list(motorized_lanes.keys())[0]]
             del template_data['instance']
-            template_data['direction'] = DIRECTION_BOTH
-            template_data['width'] = LANE_TYPES[LANETYPE_MOTORIZED + DIRECTION_BOTH]['width']
             template_data['lane'] = space_allocation.Lane(LANETYPE_MOTORIZED, DIRECTION_BOTH)
+            template_data['width'] = template_data['lane'].width
+            template_data['direction'] = template_data['lane'].direction
             template_data['twin_factor'] = 0.5
             template_data['lane_id'] = lane_id
             for motorized_lane_uvk, motorized_lane_data in motorized_lanes.items():
                 L.remove_edge(*motorized_lane_uvk)
                 L.add_edge(
                     *motorized_lane_uvk[0:2], lane_id,
-                    **template_data, instance=instance
+                    **copy.deepcopy(template_data), instance=instance
                 )
                 instance += 1
 
@@ -889,7 +923,7 @@ def _adjust_width_of_lanes(
         data['_after_width_total_m'] = width_after
         data['_after_excess_width_m'] = excess_width
 
-        if excess_width < 0:
+        if excess_width != 0:
             lanes = lane_graph.get_street_lanes(L, *uvk)
             # filter
             if lanetypes:
@@ -954,7 +988,7 @@ def multi_rebuild_region(
         access_needs,
         hierarchies_to_include=hierarchy.HIERARCHIES,
         hierarchies_to_fix=(),
-        add_fix_hierarchies=(hierarchy.PATHWAY, hierarchy.OTHER_HIERARCHY, hierarchy.SERVICE),
+        add_fix_hierarchies=(hierarchy.PATHWAY, hierarchy.OTHER_HIERARCHY),
         motorized_traffic_on_all_streets=False,
         given_lanes_function=multi_set_given_lanes,
         remove_car_lanes_mode=None,
@@ -966,6 +1000,7 @@ def multi_rebuild_region(
         needed_node_access_function=multi_set_needed_node_access,
         given_lanes_attribute=KEY_GIVEN_LANES_DESCRIPTION,
         target_lanes_attribute=KEY_LANES_DESCRIPTION_AFTER,
+        forced_given_lanes_attribute=KEY_FORCED_GIVEN_LANES_DESCRIPTION,
         # export_L=None, export_H=None,
         # export_when='before_and_after',
         verbose=False,
@@ -985,6 +1020,7 @@ def multi_rebuild_region(
         H,
         source_lanes_attribute=target_lanes_attribute,
         target_lanes_attribute=given_lanes_attribute,
+        forced_given_lanes_attribute=forced_given_lanes_attribute,
         hierarchies_to_fix=tuple(set(hierarchies_to_fix) | set(add_fix_hierarchies)),
         motorized_traffic_on_all_streets=motorized_traffic_on_all_streets,
         motorized_traffic_lane_mode=motorized_traffic_lane_mode,
@@ -1047,6 +1083,11 @@ def multi_rebuild_region(
     _remove_car_lanes(L, None, H, 'width', A, remove_car_lanes_mode, verbose=True)
     if save_steps_path:
         io.export_HLA(save_steps_path, '3', H=H, L=L, A=A, scaling_factor=save_steps_scaling_factor)
+    #if motorized_traffic_lane_mode == 'bidirectional_lanes':
+    #    print('NARROW DOWN CAR LANES')
+    #    _remove_car_lanes(L, None, H, 'width', A, remove_car_lanes_mode, verbose=True)
+    #    if save_steps_path:
+    #        io.export_HLA(save_steps_path, '3a', H=H, L=L, A=A, scaling_factor=save_steps_scaling_factor)
     print('REMOVE CYCLING LANES')
     _remove_cycling_lanes(L, None, H, 'width', verbose=True)
     if save_steps_path:
@@ -1085,10 +1126,17 @@ def multi_rebuild_region(
     if save_steps_path:
         io.export_HLA(save_steps_path, '8', H=H, L=L, A=A, scaling_factor=save_steps_scaling_factor)
 
+    I = copy.deepcopy(H)
+
+    # remove edges that must remain fixed
+    for uvk, data in H.edges.items():
+        if data['hierarchy'] in hierarchies_to_fix:
+            I.remove_edge(*uvk)
+
     # write rebuilt lanes from the subgraph into the main graph
     nx.set_edge_attributes(
         G,
-        copy.deepcopy(nx.get_edge_attributes(H, target_lanes_attribute)),
+        nx.get_edge_attributes(I, target_lanes_attribute),
         target_lanes_attribute
     )
 
@@ -1104,6 +1152,25 @@ def multi_rebuild_regions(
         target_lanes_attribute=KEY_LANES_DESCRIPTION_AFTER,
         **kwargs
 ):
+    """
+    Rebuilds the street space allocation by applying the given rebuilding regions, with their own settings.
+
+    Parameters
+    ----------
+    G: street_graph.StreetGraph
+    rebuilding_regions_gdf: gpd.GeoDataFrame
+    access_needs: gpd.GeoDataFrame
+    rebuilding_function: function
+        Here you can provide an own rebuilding function, as a plugin.
+        Otherwise, the default one, based on betweenness centrality will be used.
+    source_lanes_attribute: str
+        In which attribute are the status quo lanes stored
+    target_lanes_attribute: str
+        Into which attribute should we write the rebuilt lanes
+    kwargs: **kwargs
+        additional arguments for the **multi_rebuild_region()** function
+    """
+
     # initialize the target lanes attribute as a copy of the given lanes
     nx.set_edge_attributes(
         G,

@@ -68,6 +68,7 @@ def create_street_graph_from_OSM(perimeter_geometry, CRS_internal, return_raw=Fa
         # prepare traffic_signals attribute
         data['traffic_signals'] = 1 * (data.get('highway') == 'traffic_signals')
 
+    hierarchy.add_hierarchy(G)
     street_graph.convert_crs(G, CRS_internal)
     street_graph.fill_wrong_edge_geometries(G)
     space_allocation.generate_lanes(G)
@@ -88,6 +89,7 @@ def load_street_graph(
             KEY_LANES_DESCRIPTION: space_allocation.space_allocation_from_string,
             KEY_LANES_DESCRIPTION_AFTER: space_allocation.space_allocation_from_string,
             KEY_GIVEN_LANES_DESCRIPTION: space_allocation.space_allocation_from_string,
+            KEY_FORCED_GIVEN_LANES_DESCRIPTION: space_allocation.space_allocation_from_string,
             'layers': ast.literal_eval
         }
 ):
@@ -305,7 +307,7 @@ def load_intersections(path, crs=DEFAULT_CRS):
     return intersections
 
 
-def load_rebuilding_regions(path, crs=DEFAULT_CRS, only_active=False, filter_ids=None):
+def load_rebuilding_regions(path, crs=DEFAULT_CRS, projects=None, only_active=False, filter_ids=None):
     """
     Load a geofile (shp, gpkg, etc.) with rebuilding regions. These will be used to define areas where the streets
     should be rebuilt. In each rebuilding region, you can also specify which street hierarchies should be considered
@@ -333,6 +335,9 @@ def load_rebuilding_regions(path, crs=DEFAULT_CRS, only_active=False, filter_ids
     """
 
     rebuilding_regions = import_geofile_to_gdf(path, crs=crs, index='id')
+
+    if projects:
+        rebuilding_regions = rebuilding_regions.query(f"project in {projects}")
 
     if only_active:
         rebuilding_regions = rebuilding_regions.query(f"active == True")
@@ -409,14 +414,48 @@ def load_parking_spots(path, crs=DEFAULT_CRS):
     return parking_spots
 
 
-def load_lane_edits(path, crs=DEFAULT_CRS):
+def load_lane_edits(path, lane_columns=('lanes',), crs=DEFAULT_CRS):
+    """
+    Loads a geofile with manual lane edits
+
+    Parameters
+    ----------
+    path: str
+    lane_columns: list
+        which columns contain lane lists, these will be converted into SpaceAllocation
+    crs: int
+
+    Returns
+    -------
+    gpd.GeoDataFrame
+    """
+
     lane_edits = import_geofile_to_gdf(path, crs=crs)
-    # convert the lists encoded as strings into lists
-    lane_edits['add_lanes'] = (lane_edits['add_lanes']
-                               .apply(lambda x: x.split(',') if isinstance(x, str) else []))
-    lane_edits['replace_lanes'] = (lane_edits['replace_lanes']
-                                   .apply(lambda x: x.split(',') if isinstance(x, str) else []))
-    lane_edits['fid'] = lane_edits.index
+
+    # convert strings to SpaceAllocation
+    for column in lane_columns:
+        lane_edits[column] = lane_edits[column].apply(
+            lambda x: space_allocation.space_allocation_from_string(x)
+        )
+
+    return lane_edits
+
+
+def load_hierarchy_edits(path, crs=DEFAULT_CRS):
+    """
+    Loads a geofile with manual hierarchy edits
+
+    Parameters
+    ----------
+    path: str
+    crs: int
+
+    Returns
+    -------
+    gpd.GeoDataFrame
+    """
+
+    lane_edits = import_geofile_to_gdf(path, crs=crs)
     return lane_edits
 
 
@@ -592,7 +631,8 @@ def export_graph(
 def export_street_graph(
     G, path_edges, path_nodes, edge_columns=None, node_columns=None,
     stringify_attributes=(
-            KEY_LANES_DESCRIPTION, KEY_LANES_DESCRIPTION_AFTER, KEY_GIVEN_LANES_DESCRIPTION,
+            KEY_LANES_DESCRIPTION, KEY_LANES_DESCRIPTION_AFTER,
+            KEY_GIVEN_LANES_DESCRIPTION, KEY_FORCED_GIVEN_LANES_DESCRIPTION,
             KEY_SENSORS_FORWARD, KEY_SENSORS_BACKWARD,
             '_extension', '_intermediary_nodes', 'highway', 'layers'
     ),
