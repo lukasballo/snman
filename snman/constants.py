@@ -202,7 +202,7 @@ LANE_TYPES = {
 
 
 normal_lane_width_by_hierarchy = {
-    hierarchy.MAIN_ROAD: 3.5,
+    hierarchy.MAIN_ROAD: 3,
     hierarchy.LOCAL_ROAD: 3,
     hierarchy.SERVICE: 3
 }

@@ -151,16 +151,20 @@ def match_linestrings(
 
         edge_values = {}
         for index, edge in source.iterrows():
+            # value from the source edge
             value = edge[config['source_column']]
             node_pairs = edge['node_pairs']
             if len(node_pairs) < 1:
                 continue
             for node_pair in node_pairs:
+                # target edge
                 u = node_pair[0]
                 v = node_pair[1]
                 if edge_values.get((u, v)) is None:
                     edge_values[(u, v)] = []
-                edge_values[(u, v)].append(value)
+                edge_values[(u, v)].append(
+                    copy.deepcopy(value)
+                )
 
         # aggregate the target data using one of the following functions
         for uvk, data in G.edges.items():
