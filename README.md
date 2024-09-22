@@ -53,8 +53,10 @@ if you work with networks that cover entire cities.
 
 ## Contact
 
-For questions or contributions, please contact
-[Lukas Ballo](https://www.ivt.ethz.ch/personen/profil.lukas-ballo.html).
+**SNMan** is still under development. We put a great effort into documentation. However, if the examples are not
+clear enough, please reach out to
+[Lukas Ballo](https://www.ivt.ethz.ch/personen/profil.lukas-ballo.html)
+for assistance on setting up your working environment.
 
 
 ## License and Citations
