@@ -42,10 +42,13 @@ ETH Zurich, Department of Civil and Environmental Engineering.
 
 ## Usage
 
+For a basic setup of your programming environment (Pycharm, Git, Miniconda, etc.), please refer to the file
+`documentation/environment_setup.md`.
+
 The following Jupyter notebook files are available for a quick start:
   * **prepare_network.ipynb**: Downloads the network data from OSM and prepares it for the rebuilding process
     by running a number of processing steps, including the snman simplification
-  * **rebuilding_network.ipynb**: Executes the rebuilding process
+  * **rebuild_network.ipynb**: Executes the rebuilding process
 
 Please note that the network preparation and the rebuilding process may take several hours to execute,
 if you work with networks that cover entire cities.
