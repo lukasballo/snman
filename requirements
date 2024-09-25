@@ -1,11 +1,13 @@
 jupyter
+notebook
 pyproj
 rasterio
 networkx
-shapely
 geopandas
 leuvenmapmatching
 osmnx
 smopy
 rtree
 gdal
+fiona
+pyogrio

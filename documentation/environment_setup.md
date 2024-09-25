@@ -86,10 +86,11 @@ If you get an error message like
 `JVMNotFoundException: No JVM shared library found...`, download and install Java and set the `JAVA_HOME` path using the following steps
 
 1. Search for your java installation path, it will be typically something like
-   `C:\Program Files (x86)\Common Files\Java\jre1.8.0_421\bin\`.
+   `C:\Program Files\Microsoft\jdk-21.0.4.7-hotspot\bin\`.
 2. Open Start and type 'path'
 3. Click on 'Edit system environment variables'
 4. Click on 'Environment variables'
 5. Under system variables (bottom half), click on 'add...'
-6. name it `JAVA_HOME` and paste the path
-7. Reboot
+6. name it `JAVA_HOME` and paste the path, without the `bin`,
+7. like `C:\Program Files\Microsoft\jdk-21.0.4.7-hotspot`
+8. Reboot
