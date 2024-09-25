@@ -11,3 +11,4 @@ rtree
 gdal
 fiona
 pyogrio
+r5py

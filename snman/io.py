@@ -729,6 +729,13 @@ def export_lane_geometries(L, path_edges, path_nodes, scaling=1, include_opposit
                 offset = -data['horizontal_position_scaled']
             try:
                 data['geometry'] = data['geometry'].offset_curve(offset)
+
+                # In older geos versions, the linestring gets reversed when the offset is negative,
+                # see here: https://shapely.readthedocs.io/en/stable/reference/shapely.offset_curve.html
+                # In that case, we have to reverse it back:
+                if offset < 0 and shapely.geos_version < (3,11,0):
+                    data['geometry'] = shapely.reverse(data['geometry'])
+
             except shapely.errors.GEOSException:
                 print(uvk, 'geometry offset failed')
 
