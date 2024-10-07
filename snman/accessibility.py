@@ -7,7 +7,7 @@ import datetime
 import r5py
 import shapely as shp
 import math
-import osmnx_customized as oxc
+from snman import osmnx_customized as oxc
 import networkx as nx
 
 
