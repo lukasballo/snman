@@ -25,6 +25,7 @@ from . import stats
 from . import street_graph_node
 from . import street_graph_edge
 from . import fitting
+from . import accessibility
 
 
 

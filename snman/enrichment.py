@@ -10,6 +10,7 @@ import pandas as pd
 import geopandas as gpd
 import networkx as nx
 import warnings
+
 from . import utils, space_allocation, street_graph, io, enrichment
 from . import osmnx_customized as oxc
 from .constants import *
@@ -68,6 +69,8 @@ def match_linestrings(
     The spatial join is made using LeuvenMapMatching:
     https://github.com/wannesm/LeuvenMapMatching
 
+    # TODO: Clean up the aggregation functions
+
     Parameters
     ----------
     G : nx.MultiGraph
@@ -75,7 +78,8 @@ def match_linestrings(
     source : gpd.GeoDataFrame
         data source
     column_configs : list
-        a list of dictionaries, see example
+        a list of dictionaries, following aggregation functions are supported:
+        avg, max, list, add_lanes, replace_lanes
 
     Examples
     --------
@@ -84,7 +88,7 @@ def match_linestrings(
     >>>     {'source_column': 'DTV_ALLE',   'target_column': 'adt_avg',         'agg': 'avg' },
     >>>     {'source_column': 'DTV_ALLE',   'target_column': 'adt_max',         'agg': 'max' },
     >>>     {'source_column': 'FROMNODENO', 'target_column': 'npvm_fromnodeno', 'agg': 'list'},
-    >>>     {'source_column': 'TONODENO',   'target_column': 'npvm_tonodeno',   'agg': 'list'}
+    >>>     {'source_column': 'lanes',      'target_column': 'ln_desc',         'agg': 'replace_lanes'}
     >>> ]
 
     """
@@ -102,13 +106,13 @@ def match_linestrings(
         map_con.add_node(id, (data['y'], data['x']))
 
     # keep only edges accessible to at least one of the provided modes
+    H = copy.deepcopy(G)
     if modes:
-        H = copy.deepcopy(G)
         street_graph.filter_lanes_by_modes(H, modes, lane_description_key=lanes_key)
 
     if _save_map:
-        I = copy.deepcopy(G)
-        I.remove_edges_from(G.edges())
+        I = copy.deepcopy(H)
+        I.remove_edges_from(H.edges())
 
     # add edges to the in-memory map
     for uvk, data in H.edges.items():
@@ -138,6 +142,8 @@ def match_linestrings(
             max_dist2
         ), axis=1)
 
+    #print(source['node_pairs'])
+
     # transfer the attributes as specified in "column_configs"
     # note that there may be multiple values that will be transferred to a single target edge,
     # so they need to be aggregated (see next step)
@@ -145,44 +151,58 @@ def match_linestrings(
 
         edge_values = {}
         for index, edge in source.iterrows():
+            # value from the source edge
             value = edge[config['source_column']]
             node_pairs = edge['node_pairs']
             if len(node_pairs) < 1:
                 continue
             for node_pair in node_pairs:
+                # target edge
                 u = node_pair[0]
                 v = node_pair[1]
                 if edge_values.get((u, v)) is None:
                     edge_values[(u, v)] = []
-                edge_values[(u, v)].append(value)
+                edge_values[(u, v)].append(
+                    copy.deepcopy(value)
+                )
 
         # aggregate the target data using one of the following functions
         for uvk, data in G.edges.items():
+
             if config['agg'] == 'avg':
                 data[config['target_column'] + '_forward']  = mean(edge_values.get(uvk[:2], [0]))
                 data[config['target_column'] + '_backward'] = mean(edge_values.get(uvk[:2][::-1], [0]))
+
             if config['agg'] == 'max':
                 data[config['target_column'] + '_forward']  = max(edge_values.get(uvk[:2], [0]))
                 data[config['target_column'] + '_backward'] = max(edge_values.get(uvk[:2][::-1], [0]))
+
             if config['agg'] == 'count':
                 data[config['target_column'] + '_forward']  = len(edge_values.get(uvk[:2], []))
                 data[config['target_column'] + '_backward'] = len(edge_values.get(uvk[:2][::-1], []))
+
             if config['agg'] == 'list':
                 data[config['target_column'] + '_forward']  = str(edge_values.get(uvk[:2], []))
                 data[config['target_column'] + '_backward'] = str(edge_values.get(uvk[:2][::-1], []))
+
+            if config['agg'] == 'max_no_direction':
+                forward  = max(edge_values.get(uvk[:2], [0]))
+                backward = max(edge_values.get(uvk[:2][::-1], [0]))
+                data[config['target_column']] = max([str(forward), str(backward)])
+
             if config['agg'] == 'add_lanes':
-                forward = utils.flatten_list(edge_values.get(uvk[:2], []))
+                forward = space_allocation.SpaceAllocation(utils.flatten_list(edge_values.get(uvk[:2], [])))
                 data[config['target_column']].extend(forward)
-                backward = utils.flatten_list(edge_values.get(uvk[:2][::-1], []))
-                backward = space_allocation.reverse_lanes(backward)
+                backward = space_allocation.SpaceAllocation(utils.flatten_list(edge_values.get(uvk[:2][::-1], [])))
+                backward.reverse_allocation()
                 data[config['target_column']] = backward + data[config['target_column']]
+
             if config['agg'] == 'replace_lanes':
-                forward = list(utils.flatten_list(edge_values.get(uvk[:2], [])))
-                backward = list(utils.flatten_list(edge_values.get(uvk[:2][::-1], [])))
-                backward = space_allocation.reverse_lanes(backward)
+                forward = space_allocation.SpaceAllocation(utils.flatten_list(edge_values.get(uvk[:2], [])))
+                backward = space_allocation.SpaceAllocation(utils.flatten_list(edge_values.get(uvk[:2][::-1], [])))
+                backward.reverse_allocation()
                 if len(forward+backward) > 0:
-                    data[config['target_column']] = backward + forward
-                    #print(data[config['target_column']])
+                    data[config['target_column']] = space_allocation.SpaceAllocation(backward + forward)
 
 
 def _submit_linestring_to_matcher(matcher, geom, remove_short_overlaps, remove_sidetrips, max_distance):
@@ -201,6 +221,9 @@ def _submit_linestring_to_matcher(matcher, geom, remove_short_overlaps, remove_s
         matched node IDs
 
     """
+
+    #print('*')
+
     # convert any multilinestring to a linestring
     geom = utils.multilinestring_to_linestring(geom)
     path = geom.coords
@@ -248,28 +271,130 @@ def _submit_linestring_to_matcher(matcher, geom, remove_short_overlaps, remove_s
             return []
 
     matched_node_pairs = [(matched_nodes[i], matched_nodes[i + 1]) for i in range(len(matched_nodes) - 1)]
+    #print(f"matched node pairs: {matched_node_pairs}")
 
     # see the german term 'stichfahrt' for sidetrips
     if remove_sidetrips and len(matched_node_pairs) >= 2:
         matched_node_pairs_filtered = []
         # iterate over all pairs except the last one
-        for i, node_pair in enumerate(matched_node_pairs[:-2]):
-            next_node_pair = matched_node_pairs[i+1]
-            # check if the next pair is a reverse of this one which would make it a sidetrip
-            if node_pair[::-1] != next_node_pair:
-                matched_node_pairs_filtered.append(node_pair)
+        last_pair_was_removed = False
+        for i, node_pair in enumerate(matched_node_pairs):
+            next_node_pair = matched_node_pairs[i+1] if i+2 < len(matched_nodes) else None
+            if last_pair_was_removed == True:
+                last_pair_was_removed = False
+                # (don't add the node pair)
+            else:
+                # check if the next pair is a reverse of this one which would make it a sidetrip
+                if node_pair[::-1] == next_node_pair:
+                    last_pair_was_removed=True
+                    # (don't add the node pair)
+                else:
+                    matched_node_pairs_filtered.append(node_pair)
         # write the result back into the original list
         matched_node_pairs = matched_node_pairs_filtered
 
+    #print(f"after sidetrips removal: {matched_node_pairs}")
     return matched_node_pairs
 
 
-def match_lane_edits(G, lane_edits, lanes_key=KEY_LANES_DESCRIPTION, **mapmatching_arguments):
-    column_configs = [
-        {'source_column': 'add_lanes', 'target_column': lanes_key, 'agg': 'add_lanes'}
-    ]
+def match_lane_edits(
+        G, manual_lanes,
+        lanes_key=KEY_LANES_DESCRIPTION,
+        source_column='lanes',
+        **mapmatching_arguments
+):
+    """
+    Replaces lanes on edges of the street graph based on a geodataframe of manually drawn lines with the new lanes.
+    Each line in the geodataframe will be mapmathed onto the street graph automatically.
 
-    return match_linestrings(G, lane_edits, column_configs, lanes_key=lanes_key, **mapmatching_arguments)
+    Parameters
+    ----------
+    G: street_graph.StreetGraph
+    manual_lanes: gpd.GeoDataFrame
+        approximate lines with the necessary attribute containing the target lanes
+    lanes_key: str
+        which lanes key should be replaced
+    mapmatching_arguments: **kwargs
+        see leuven mapmatching
+    """
+
+    column_configs = [{'source_column': source_column, 'target_column': lanes_key, 'agg': 'replace_lanes'}]
+    match_linestrings(
+        G, manual_lanes, column_configs,
+        **mapmatching_arguments
+    )
+
+
+def match_hierarchy_edits(
+        G, manual_hierarchy,
+        source_column='hierarchy',
+        **mapmatching_arguments
+):
+    """
+    Replaces hierarchies of the street graph based on a geodataframe of manually drawn lines with the new lanes.
+    Each line in the geodataframe will be mapmathed onto the street graph automatically.
+
+    Parameters
+    ----------
+    G: street_graph.StreetGraph
+    manual_hierarchy: gpd.GeoDataFrame
+        approximate lines with the necessary attribute containing the target hierarchy
+    mapmatching_arguments: **kwargs
+        see leuven mapmatching
+    """
+
+    # store the old hierarchy
+    for uvk, data in G.edges.items():
+        data['_hierarchy_old'] = data['hierarchy']
+
+    # for all unmatched edges, the matcher will overwrite the hierarchy values with '0'
+    column_configs = [{'source_column': source_column, 'target_column': 'hierarchy', 'agg': 'max_no_direction'}]
+    match_linestrings(
+        G, manual_hierarchy, column_configs,
+        **mapmatching_arguments
+    )
+
+    # overwrite the '0' values with old hierarchy values
+    for uvk, data in G.edges.items():
+        if data['hierarchy'] == '0':
+            data['hierarchy'] = data['_hierarchy_old']
+
+
+def match_width(
+        G, manual_hierarchy,
+        source_column='width',
+        **mapmatching_arguments
+):
+    """
+    Replaces widths of the street graph based on a geodataframe of manually drawn lines with the new lanes.
+    Each line in the geodataframe will be mapmathed onto the street graph automatically.
+
+    Parameters
+    ----------
+    G: street_graph.StreetGraph
+    manual_hierarchy: gpd.GeoDataFrame
+        approximate lines with the necessary attribute containing the target width
+    mapmatching_arguments: **kwargs
+        see leuven mapmatching
+    """
+
+    # store the old hierarchy
+    for uvk, data in G.edges.items():
+        data['_width_old'] = data.get('width')
+
+    # for all unmatched edges, the matcher will overwrite the hierarchy values with '0'
+    column_configs = [{'source_column': source_column, 'target_column': 'width', 'agg': 'max_no_direction'}]
+    match_linestrings(
+        G, manual_hierarchy, column_configs,
+        **mapmatching_arguments
+    )
+
+    # overwrite the '0' values with old width values
+    for uvk, data in G.edges.items():
+        if data['width'] == '0':
+            data['width'] = data['_width_old']
+        data['width'] = utils.safe_float(data['width'])
+        data['_width_old'] = utils.safe_float(data['_width_old'])
 
 
 def match_parking_spots(
@@ -277,15 +402,33 @@ def match_parking_spots(
         parking_space_length=7, parking_space_length_for_one_lane=24,
         remove_previous_parking=True
 ):
+    """
+    Match on-street parking spots provided as points onto the street graph as added parking lanes.
+    The resulting density of parking spots will be automatically converted to a number of parking lanes.
+    No parking lanes will be added if the density os very low.
+
+    Parameters
+    ----------
+    G: street_graph.StreetGraph
+    parking_spots: gpd.GeoDataFrame
+        a points dataset with parking spots
+    parking_space_length: float
+        typical parking space length
+    parking_space_length_for_one_lane: float
+        typical parking space length for a single parking lane
+    remove_previous_parking: bool
+        if true, all previously existing parking lanes will be overwritten
+    """
 
     # copy the parking spaces dataset and convert the points into zero-length linestrings
     # that can be matched onto the edges
-    parking_spots = copy.deepcopy(parking_spots)
+    parking_spots = copy.deepcopy(parking_spots.reset_index())
+    parking_spots['id'] = parking_spots.index
     parking_spots.geometry = parking_spots.geometry.apply(lambda x: shp.LineString([x, x]))
 
     parking_count_key = '_n_parking_spots'
     column_configs = [
-        {'source_column': 'id1', 'target_column': parking_count_key, 'agg': 'count'}
+        {'source_column': 'id', 'target_column': parking_count_key, 'agg': 'count'}
     ]
 
     # create a copy of the street graph that only contains ground-level edges
@@ -330,9 +473,16 @@ def match_parking_spots(
             data[KEY_LANES_DESCRIPTION].append(space_allocation.Lane(LANETYPE_PARKING_PARALLEL, DIRECTION_FORWARD))
 
 
-def match_public_transit_zvv(G, pt_routes, max_dist=400, max_dist_init=500, max_lattice_width=5):
+def match_public_transit_zvv(
+        G, pt_routes,
+        max_dist=400,
+        max_dist_init=500,
+        max_lattice_width=5,
+        route_number_column='LINIENNUMM',
+        direction_column='RICHTUNG'
+):
     """
-    Match ZVV public transit routes onto the street graph using mapmatching.
+    Match public transit routes onto the street graph using mapmatching.
 
     Parameters
     ----------
@@ -340,6 +490,14 @@ def match_public_transit_zvv(G, pt_routes, max_dist=400, max_dist_init=500, max_
         street graph
     routes : gpd.GeoDataFrame
         transit routes
+    max_dist : int
+        see settings of the leuven mapmatcher
+    max_lattice_width : int
+        see settings of the leuven mapmatcher
+    route_number_column : str
+        which column in the routes dataset holds the route number
+    direction_column : str
+        which column in the routes dataset holds the route direction id
 
     Returns
     -------
@@ -349,8 +507,8 @@ def match_public_transit_zvv(G, pt_routes, max_dist=400, max_dist_init=500, max_
     pt_routes = pt_routes.explode(ignore_index=True)
 
     column_configs = [
-        {'source_column': 'LINIENNUMM', 'target_column': '_pt_routes', 'agg': 'list'},
-        {'source_column': 'RICHTUNG', 'target_column': '_pt_directions', 'agg': 'list'},
+        {'source_column': route_number_column, 'target_column': '_pt_routes', 'agg': 'list'},
+        {'source_column': direction_column, 'target_column': '_pt_directions', 'agg': 'list'},
     ]
 
     match_linestrings(

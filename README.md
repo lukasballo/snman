@@ -1,87 +1,72 @@
 # SNMan
 
-**SNMan** (Street Network Manipulator) is a Python toolkit that lets you model urban mobility transitions
-by rebuilding street networks according to custom design rules.
-For instance, you can use it to model new networks of cycling or transit infrastructure built
-by reallocating existing road space from other modes.
+**SNMan** (Street Network Manipulator) is a Python toolkit that lets you model urban mobility transitions in
+a process of rapid experimentation. 
+It creates alternative transportation networks through reallocating road space on existing streets. 
+For instance, you can use it to model possible networks of cycling or transit infrastructure while ensuring
+connectivity and capacity for motorized traffic.
 
-It lets you export the updated street networks in various formats, including OSM
-that can be used in other tools of your choice for further analysis (e.g., MATSim, SUMO, etc.).
+The underlying data is acquired from OpenStreetMap (OSM) and can be optionally enriched by additional data sources,
+such as on-street parking, transit routes, or actual street widths.
+But SNMan will also work if none of this data is available by extracting as much data as possible from OSM.
 
-SNMnan is being developed as part of the [E-Bike City](https://ebikecity.baug.ethz.ch/en/) project of
+For the generation of transport networks, you can define a set of design rules and manual constraints.
+By defining smaller rebuilding zones, you can work with street networks of any size, including entire cities.
+
+The updated networks can be exported into standard Geofiles, as well as the OSM format that can be used in
+transport modelling tools like MATSim or SUMO.
+
+For details on the underlying methodologies, please refer to the working paper at the bottom of this page.
+
+**SNMnan** is being developed as part of the [E-Bike City](https://ebikecity.baug.ethz.ch/en/) project of
 ETH Zurich, Department of Civil and Environmental Engineering.
+
+
+## Starter data pack and directory structure, download [here](https://polybox.ethz.ch/index.php/s/Uf7LOFrGj3n27oT)
+
+  * **inputs**: Input files such as perimeters, intersection polygons, and
+    on-street parking spaces in Zurich
+  * **process**: A directory for pre-processed networks
+  * **outputs**: Networks after the rebuilding process, based on pre-processed networks
+  * **snman_admin_gui.qgz**: A QGIS project file for viewing and editing the input/output files
 
 
 ## Getting Started
 
-  * Install Python 3.9
-  * Make sure you have installed the dependencies in the *dependencies* file
-  * Pull the *main-v2* branch of this repository
-  * Use the Jupyter notebooks under examples, start with *prepare_simplified_street_graph.ipynb*
-  * Make sure to change the *data_directory* variable in both files to match the path of your *data_directory*
+
+  * Install Python 3.9 and QGIS, we recommend using miniconda
+  * Make sure you have installed the dependencies in the **requirements** file.
+  * Use the Jupyter notebooks under **examples**, see the next section
+  * Install any further missing dependencies
 
 
 ## Usage
 
+For a basic setup of your programming environment (Pycharm, Git, Miniconda, etc.), please refer to the file
+`documentation/environment_setup.md`.
+
 The following Jupyter notebook files are available for a quick start:
-  * *prepare_simplified_street_graph.ipynb*: Downloads the network data within
-    the specified perimeter from OSM, builds a simplified street graph
-    (where each intersection is exacly one node), and enriches the data with other sources, such as
-    given public transit routes, elevation, official on-street parking data, traffic volumes, etc.
-  * *rebuild_street_graph_multi.ipynb*: Rebuilds the street graph according to a set of rules.
+  * **prepare_network.ipynb**: Downloads the network data from OSM and prepares it for the rebuilding process
+    by running a number of processing steps, including the snman simplification
+  * **rebuild_network.ipynb**: Executes the rebuilding process
 
-The outputs are generated in *gpkg* format. Use QGIS to view them.
-
-
-## Changing the process inputs
-
-The following inputs require a geodata starter kit.
-Reach out to [Lukas Ballo](https://www.ivt.ethz.ch/personen/profil.lukas-ballo.html to get the newest version.
-
-Input geofiles (under *INPUTS* in *snman_detailed.qgz*).
-For an explanation of the columns in each file see
-the documentation of each corresponding load function under snman.io, e.g., `snman.io.load_rebuilding_regions()`
-  * **rebuilding_regions**: Areas where the streets should be rebuilt
-  * **perimeters**: Perimeters for loading OSM data and generating the simplified street network
-    (set the active perimeter in *prepare_simplified_street_graph.ipynb* in section *LOAD DATA*)
-  * **intersection_polygons**: Manual override of the automatically detected intersection geometries in the simplification
-  * **measurement_regions**: Regions where graph measures should be calculated
-
-
-## Features
-
-SNMan is built on top of [OSMNx](https://osmnx.readthedocs.io/en/stable/), [GeoPandas](https://geopandas.org/), [NetworkX](https://networkx.org/), and [matplotlib](https://matplotlib.org/) and interacts with [OpenStreetMap](https://www.openstreetmap.org/) APIs to:
-
-  * Download street networks
-  * Simplify street graphs to obtain exactly one edge per street and one node per intersection (using a process that
-    was further developed from OSMNx)
-  * Match traffic volumes onto the network
-  * Reallocate street space using customizable design rules
-  * Automatically arrange a system one-way streets
-  * Export as GeoPackage and OSM
-  * Calculate metrics of the resulting networks
-
-Planned:
-
-  * Export as [GMNS](https://github.com/zephyr-data-specs/GMNS) format
-  * Accessibility analyses and data export for time cartograms
+Please note that the network preparation and the rebuilding process may take several hours to execute,
+if you work with networks that cover entire cities.
 
 
 ## Contact
 
-For questions or contributions, please contact
-[Lukas Ballo](https://www.ivt.ethz.ch/personen/profil.lukas-ballo.html).
+**SNMan** is still under development. We put a great effort into documentation. However, if the examples are not
+clear enough, please reach out to
+[Lukas Ballo](https://www.ivt.ethz.ch/personen/profil.lukas-ballo.html)
+for assistance on setting up your working environment.
 
 
-## License
+## License and Citations
 
-SNMan is licensed under the MIT license. OpenStreetMap's open data [license](https://www.openstreetmap.org/copyright/)
-requires that derivative works provide proper attribution.
+SNMan is released under the MIT license. If you use **SNMan** in your work, please cite this working paper:
 
-
-## Citing and further information
-
-  * Ballo, L. and K.W. Axhausen (2023)
-    Modeling sustainable mobility futures using an automated process
-    of road space reallocation in urban street networks: A case study in Zurich,
-    *103rd Annual Meeting of the Transportation Research Board*, Washington DC, January 2024.
+Ballo, L., M. Raubal and K.W. Axhausen (2024)
+[Designing an E-Bike City: An automated process for network-wide multimodal road space reallocation](
+https://www.research-collection.ethz.ch/handle/20.500.11850/679713),
+*Arbeitsberichte Verkehrs- und Raumplanung*,  **1881**.

@@ -3,7 +3,6 @@ from . import geometry_tools, space_allocation, utils, street_graph, lane_graph
 from .constants import *
 import geopandas as gpd
 import pandas as pd
-import pyproj
 import shapely.ops
 import shapely.geometry
 import shapely
@@ -14,6 +13,10 @@ import copy
 import numpy as np
 import json
 import ast
+import os
+import importlib.resources as pkg_resources
+import subprocess
+
 
 # - CREATING BASIC DATASETS --------------------------------------------------------------------------------------------
 
@@ -65,7 +68,9 @@ def create_street_graph_from_OSM(perimeter_geometry, CRS_internal, return_raw=Fa
         # prepare traffic_signals attribute
         data['traffic_signals'] = 1 * (data.get('highway') == 'traffic_signals')
 
+    hierarchy.add_hierarchy(G)
     street_graph.convert_crs(G, CRS_internal)
+    street_graph.fill_wrong_edge_geometries(G)
     space_allocation.generate_lanes(G)
     street_graph.filter_lanes_by_modes(G, {MODE_TRANSIT, MODE_PRIVATE_CARS, MODE_CYCLING, MODE_CAR_PARKING})
 
@@ -84,6 +89,7 @@ def load_street_graph(
             KEY_LANES_DESCRIPTION: space_allocation.space_allocation_from_string,
             KEY_LANES_DESCRIPTION_AFTER: space_allocation.space_allocation_from_string,
             KEY_GIVEN_LANES_DESCRIPTION: space_allocation.space_allocation_from_string,
+            KEY_FORCED_GIVEN_LANES_DESCRIPTION: space_allocation.space_allocation_from_string,
             'layers': ast.literal_eval
         }
 ):
@@ -122,16 +128,63 @@ def load_street_graph(
         if key in nodes_gdf:
             nodes_gdf[key] = nodes_gdf[key].apply(fn)
 
-    G = street_graph.StreetGraph(crs=crs)
-    nodes_gdf.apply(lambda n: G.add_node(n.name, **n), axis=1)
-    edges_gdf.apply(lambda e: G.add_edge(*e.name, **e), axis=1)
+    G = street_graph.street_graph_from_gdf(nodes_gdf, edges_gdf)
 
     return G
 
 
+def load_lane_graph(
+        edges_path, nodes_path, crs=DEFAULT_CRS,
+        unstringify_attributes={
+            'lane': space_allocation.lane_from_string,
+            'layers': ast.literal_eval
+        }
+):
+    """
+    Load a pre-generated lane graph that has been saved as geofile (shp, gpkg, etc.)
+
+    Parameters
+    ----------
+    edges_path : string
+        path to the file containing the edges
+    nodes_path : string
+        path to the file containing the nodes
+    unstringify_attributes : dict
+        defines which function should be applied to each attribute to unstringify it
+    crs : int
+        target coordinate reference system of the imported street graph
+
+    Returns
+    -------
+    L : lane_graph.LaneGraph
+    """
+
+    edges_gdf = import_geofile_to_gdf(edges_path, crs=crs).replace(np.nan, None)
+    edges_gdf['u'] = edges_gdf['u'].astype(int)
+    edges_gdf['v'] = edges_gdf['v'].astype(int)
+    edges_gdf['key'] = edges_gdf['key'].astype(str)
+    edges_gdf.set_index(['u', 'v', 'key'], inplace=True)
+
+    nodes_gdf = import_geofile_to_gdf(nodes_path, crs=crs).replace(np.nan, None)
+    nodes_gdf['osmid'] = nodes_gdf['osmid'].astype(int)
+    nodes_gdf.set_index('osmid', inplace=True)
+
+    for key, fn in unstringify_attributes.items():
+        if key in edges_gdf:
+            edges_gdf[key] = edges_gdf[key].apply(fn)
+        if key in nodes_gdf:
+            nodes_gdf[key] = nodes_gdf[key].apply(fn)
+
+    L = lane_graph.LaneGraph(crs=crs)
+    nodes_gdf.apply(lambda n: L.add_node(n.name, **n), axis=1)
+    edges_gdf.apply(lambda e: L.add_edge(*e.name, **e), axis=1)
+
+    return L
+
+
 def import_geofile_to_gdf(file_path, crs=DEFAULT_CRS, index=None, filter_index=None, perimeter=None):
     """
-    Import a geofile (shp, gpkg, etc.) as a GeoDataFrame
+    Import a geofile (shp, gpkg, etc.) or a parquet file (gzip) as a GeoDataFrame
 
     Parameters
     ----------
@@ -151,7 +204,11 @@ def import_geofile_to_gdf(file_path, crs=DEFAULT_CRS, index=None, filter_index=N
         resulting GeoDataFrame
     """
 
-    gdf = gpd.read_file(file_path).to_crs(crs)
+    if file_path[-5:] == '.gzip':
+        gdf = gpd.read_parquet(file_path)
+    else:
+        gdf = gpd.read_file(file_path).to_crs(crs)
+
     if index is not None:
         gdf = gdf.set_index(index)
 
@@ -250,7 +307,7 @@ def load_intersections(path, crs=DEFAULT_CRS):
     return intersections
 
 
-def load_rebuilding_regions(path, crs=DEFAULT_CRS, only_active=False, filter_ids=None):
+def load_rebuilding_regions(path, crs=DEFAULT_CRS, projects=None, only_active=False, filter_ids=None):
     """
     Load a geofile (shp, gpkg, etc.) with rebuilding regions. These will be used to define areas where the streets
     should be rebuilt. In each rebuilding region, you can also specify which street hierarchies should be considered
@@ -278,6 +335,9 @@ def load_rebuilding_regions(path, crs=DEFAULT_CRS, only_active=False, filter_ids
     """
 
     rebuilding_regions = import_geofile_to_gdf(path, crs=crs, index='id')
+
+    if projects:
+        rebuilding_regions = rebuilding_regions.query(f"project in {projects}")
 
     if only_active:
         rebuilding_regions = rebuilding_regions.query(f"active == True")
@@ -354,14 +414,48 @@ def load_parking_spots(path, crs=DEFAULT_CRS):
     return parking_spots
 
 
-def load_lane_edits(path, crs=DEFAULT_CRS):
+def load_lane_edits(path, lane_columns=('lanes',), crs=DEFAULT_CRS):
+    """
+    Loads a geofile with manual lane edits
+
+    Parameters
+    ----------
+    path: str
+    lane_columns: list
+        which columns contain lane lists, these will be converted into SpaceAllocation
+    crs: int
+
+    Returns
+    -------
+    gpd.GeoDataFrame
+    """
+
     lane_edits = import_geofile_to_gdf(path, crs=crs)
-    # convert the lists encoded as strings into lists
-    lane_edits['add_lanes'] = (lane_edits['add_lanes']
-                               .apply(lambda x: x.split(',') if isinstance(x, str) else []))
-    lane_edits['replace_lanes'] = (lane_edits['replace_lanes']
-                                   .apply(lambda x: x.split(',') if isinstance(x, str) else []))
-    lane_edits['fid'] = lane_edits.index
+
+    # convert strings to SpaceAllocation
+    for column in lane_columns:
+        lane_edits[column] = lane_edits[column].apply(
+            lambda x: space_allocation.space_allocation_from_string(x)
+        )
+
+    return lane_edits
+
+
+def load_hierarchy_edits(path, crs=DEFAULT_CRS):
+    """
+    Loads a geofile with manual hierarchy edits
+
+    Parameters
+    ----------
+    path: str
+    crs: int
+
+    Returns
+    -------
+    gpd.GeoDataFrame
+    """
+
+    lane_edits = import_geofile_to_gdf(path, crs=crs)
     return lane_edits
 
 
@@ -537,7 +631,8 @@ def export_graph(
 def export_street_graph(
     G, path_edges, path_nodes, edge_columns=None, node_columns=None,
     stringify_attributes=(
-            KEY_LANES_DESCRIPTION, KEY_LANES_DESCRIPTION_AFTER, KEY_GIVEN_LANES_DESCRIPTION,
+            KEY_LANES_DESCRIPTION, KEY_LANES_DESCRIPTION_AFTER,
+            KEY_GIVEN_LANES_DESCRIPTION, KEY_FORCED_GIVEN_LANES_DESCRIPTION,
             KEY_SENSORS_FORWARD, KEY_SENSORS_BACKWARD,
             '_extension', '_intermediary_nodes', 'highway', 'layers'
     ),
@@ -634,11 +729,47 @@ def export_lane_geometries(L, path_edges, path_nodes, scaling=1, include_opposit
                 offset = -data['horizontal_position_scaled']
             try:
                 data['geometry'] = data['geometry'].offset_curve(offset)
+
+                # In older geos versions, the linestring gets reversed when the offset is negative,
+                # see here: https://shapely.readthedocs.io/en/stable/reference/shapely.offset_curve.html
+                # In that case, we have to reverse it back:
+                if offset < 0 and shapely.geos_version < (3,11,0):
+                    data['geometry'] = shapely.reverse(data['geometry'])
+
             except shapely.errors.GEOSException:
                 print(uvk, 'geometry offset failed')
 
 
     export_lane_graph(M, path_edges, path_nodes, crs=crs)
+
+
+def export_HLA(path, step, H=None, L=None, A=None, scaling_factor=1):
+    if H:
+        # Export street graph
+        export_street_graph(
+            H,
+            os.path.join(path, f'{step}_H_edges.gpkg'),
+            os.path.join(path, f'{step}_H_nodes.gpkg')
+        )
+
+    if L:
+        # Export lane geometries
+        export_lane_geometries(
+            L,
+            os.path.join(path, f'{step}_L_edges.gpkg'),
+            os.path.join(path, f'{step}_L_nodes.gpkg'),
+            scaling=scaling_factor
+        )
+
+    if A:
+        # Save graph
+        export_graph(
+            A,
+            os.path.join(path, f'{step}_A_edges.gpkg'),
+            os.path.join(path, f'{step}_A_nodes.gpkg'),
+            reset_index=True,
+            stringify_attributes=['osmid', 'u', 'v', 'has_parking_spots']
+        )
 
 
 def export_gdf(gdf, path, columns=[], crs=None):
@@ -676,7 +807,14 @@ def export_osm_xml(
         tag_all_nodes=False,
         key_lanes_description=KEY_LANES_DESCRIPTION,
         as_oneway_links=False,
-        modes=(MODE_TRANSIT, MODE_CYCLING, MODE_PRIVATE_CARS)
+        modes=(MODE_TRANSIT, MODE_CYCLING, MODE_PRIVATE_CARS),
+        overwrite_highway=False,
+        dont_overwrite_highway=(),
+        set_maxspeed_by_cost=False,
+        floor_maxspeed=0.5,
+        ceil_maxspeed=120,
+        neutral_speed_kmh=None,
+        raw_graph=False
 ):
     """
     Generates an OSM file from the street graph
@@ -695,32 +833,70 @@ def export_osm_xml(
         which attribute should be used for the lanes
     as_oneway_links : bool
         if true, every link with bidirectional traffic will be exported as two one-way links
+    modes : list
+        which modes should be included
+    overwrite_highway : bool or str
+        set all highway tag values to this value, do nothing if False,
+        this setting is needed to encode a cycling network as travel lanes for routing with link costs in R5
+    dont_overwrite_highway : list
+        which highway tag values should not be overwritten
+    set_maxspeed_by_cost : bool or str
+        set maxspeed of links according to their length and a cost attribute defined here,
+        do nothing if False
+    floor_maxspeed : float
+        the maxspeed will be no lower than this number
+    ceil_maxspeed : float
+        the maxspeed will be no higher than this number
+    neutral_speed_kmh : int
+        only valid if set_maxspeed_by_cost is set
+    raw_graph : bool
+        If True, ignore any lanes and use the graph as is, i.e. every edge will be converted into one osm way.
+        Please note that filtering by mode and creating one-way links will not work.
 
     Returns
     -------
     None
     """
 
-    # keep only the relevant modes
-    H = street_graph.filter_lanes_by_modes(
-        G,
-        modes,
-        lane_description_key=key_lanes_description
-    )
+    H = copy.deepcopy(G)
 
-    if as_oneway_links:
-        H = street_graph.separate_edges_for_lane_directions(H, lanes_key=key_lanes_description)
-    else:
-        H = copy.deepcopy(H)
+    if not raw_graph:
+
+        # keep only the relevant modes
+        street_graph.filter_lanes_by_modes(
+            H,
+            modes,
+            operator='or',
+            lane_description_key=key_lanes_description
+        )
+
+        if as_oneway_links:
+            H = street_graph.separate_edges_for_lane_directions(H, lanes_key=key_lanes_description)
+        else:
+            H = copy.deepcopy(H)
+
+        # ensure right edge directions, tags and crs
+        street_graph.organize_edge_directions(H, method='by_osm_convention', key_lanes_description=key_lanes_description)
+        street_graph.add_edge_costs(H, lanes_description=key_lanes_description)
+        space_allocation.update_osm_tags(H, lanes_description_key=key_lanes_description)
+
+    street_graph.convert_crs(H, 'epsg:4326')
 
     # initial ID value for new OSM objects, avoid duplicity with graph node ids
     max_node_id = max(list(H.nodes))
     osm_id = itertools.count(max_node_id * 100)
 
-    # ensure right edge directions, tags and crs
-    street_graph.organize_edge_directions(H, method='by_osm_convention', key_lanes_description=key_lanes_description)
-    space_allocation.update_osm_tags(H, lanes_description_key=key_lanes_description)
-    street_graph.convert_crs(H, 'epsg:4326')
+
+    if overwrite_highway:
+        for uvk, data in H.edges.items():
+            if data['highway'] not in dont_overwrite_highway:
+                data['highway'] = overwrite_highway
+
+    # remove all maxspeed tags to avoid duplicities
+    if set_maxspeed_by_cost:
+        for uvk, data in H.edges.items():
+            if 'maxspeed' in data.keys():
+                del data['maxspeed']
 
     # create the overall structure of the XML
     tree = ET.ElementTree('tree')
@@ -761,9 +937,9 @@ def export_osm_xml(
             if i in {0, 1}:
                 node_id = uvk[i]
                 # avoid id=0
-                node_points[node_id + 1] = shapely.Point(H.nodes[node_id]['x'], H.nodes[node_id]['y'])
+                node_points[node_id+1] = shapely.Point(H.nodes[node_id]['x'], H.nodes[node_id]['y'])
                 # add node along the way, use the existing node id
-                ET.SubElement(way, 'nd', attrib={'ref': str(node_id + 1)})
+                ET.SubElement(way, 'nd', attrib={'ref': str(node_id+1)})
 
             # intermediary nodes
             elif i == 'intermediary_nodes':
@@ -777,12 +953,24 @@ def export_osm_xml(
 
         # way tags
         for tag in tags:
-            # skip if the tag is not defined for this way
-            if data.get(tag, None) is None:
+            if tag == 'maxspeed' and set_maxspeed_by_cost:
+                if neutral_speed_kmh:
+                    neutral_speed_ms = neutral_speed_kmh / 3.6
+                else:
+                    neutral_speed_ms = 1
+                tag_value = 3.6 * neutral_speed_ms * data['length'] / data[set_maxspeed_by_cost]
+                # avoid 0 speeds
+                tag_value = max([tag_value, floor_maxspeed])
+                tag_value = min([tag_value, ceil_maxspeed])
+                tag_value = str(tag_value)
+            elif data.get(tag, None) is not None:
+                tag_value = str(data.get(tag, ''))
+            else:
                 continue
+
             ET.SubElement(way, 'tag', attrib={
                 'k': tag,
-                'v': str(data.get(tag, ''))
+                'v': tag_value
             })
 
         if uv_tags:
@@ -796,10 +984,11 @@ def export_osm_xml(
         for mode in modes:
             for direction in [DIRECTION_BACKWARD, DIRECTION_FORWARD]:
                 tag = 'cost_' + mode + '_' + direction
-                value = str(data.get('cost_' + key_lanes_description + '_' + mode + '_' + direction, ''))
+                value = str(data.get('cost_' + key_lanes_description + '_' + mode + '_' + direction))
                 ET.SubElement(way, 'tag', attrib={'k': tag, 'v': value})
 
     # add nodes
+    node_points = dict(sorted(node_points.items()))
     for node_id, point in node_points.items():
         node = ET.SubElement(osm, 'node', attrib={
             'id': str(node_id),
@@ -821,6 +1010,39 @@ def export_osm_xml(
     ET.indent(tree)
     tree.write(path, encoding='UTF-8', xml_declaration=True)
 
+
+def osm_to_pbf(osm_file, dry_run=False):
+    """
+    Converts an osm file to pbf, using the osmconvert.exe utility.
+
+    Using the wizzard of the utility:
+        1. copy the osm file into this directory
+        2. run osmconvert64-0.8.8p.exe¨
+        3. press 'a' and enter
+        4. enter the osm file name and press enter
+        5. press 1
+        6. press 3
+
+    Alternatively, you can use the following command:
+
+        osmconvert before_oneway_links.osm --out-pbf -o=before_oneway_links_01.pbf
+        Parameters
+    ----------
+    osm_file: str
+        Path to the osm file. The resulting pbf file will be written to the same directory
+    dry_run: bool
+        if true, output the command string instead of running osmconvert
+    """
+
+    current_file_path = os.path.abspath(__file__)
+    current_directory = os.path.dirname(current_file_path)
+
+    osmconvert = os.path.join(current_directory, 'osmconvert.exe')
+    command = f'"{osmconvert}" "{osm_file}" --out-pbf -o="{osm_file}.pbf"'
+    if dry_run:
+        return command
+    else:
+        subprocess.run(command, capture_output=True, text=True)
 
 def _iterable_columns_from_strings(df, columns, method='separator', separator=','):
     """

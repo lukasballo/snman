@@ -79,7 +79,7 @@ def create_access_graph(L, access_needs, radius=100):
     return A
 
 
-def gravity_model(A, iterations=50):
+def gravity_model(A, iterations=15):
     # apply cost function on edges
     for uv, data in A.edges.items():
         data['f_cost'] = math.exp(-0.1 * data['distance'])
@@ -120,7 +120,6 @@ def gravity_model(A, iterations=50):
             'parking_spots'] * edge_data['f_cost']
 
     # Calculate under-/ over-assignment
-
     for i, data in A.nodes.items():
         data['_assigned_parking_spots'] = A.get_assigned_parking_spots(i)
         data['_parking_overassignment'] = data['_assigned_parking_spots'] - data['parking_spots']
@@ -134,12 +133,12 @@ def gravity_model(A, iterations=50):
         data['_overassignment_in_neighbors'] = sum_over_attribute_of_neighbors(A, i, '_parking_overassignment')
 
 
-def effect_of_parking_removal_on_underassignment(A, ii):
+def effect_of_parking_removal_on_underassignment(A, ii, iterations=15):
     B = copy.deepcopy(
         A.subgraph(set(A.nodes).difference(set(ii)))
     )
 
-    gravity_model(B)
+    gravity_model(B, iterations=iterations)
 
     underassignment_A = sum([min(data['_parking_overassignment'], 0) for uv, data in A.nodes.items()])
     underassignment_B = sum([min(data['_parking_overassignment'], 0) for uv, data in B.nodes.items()])
