@@ -59,7 +59,8 @@ def match_linestrings(
         remove_sidetrips=True,
         lanes_key = KEY_LANES_DESCRIPTION,
         modes = None,
-        _save_map=None,
+        verbose = False,
+        _save_map = None,
         **distance_matcher_args
 ):
     """
@@ -132,15 +133,22 @@ def match_linestrings(
     # create a matcher
     matcher = DistanceMatcher(map_con, **distance_matcher_args)
 
-    # submit all source linestrings to the matcher
-    source['node_pairs'] = source.apply(
-        lambda x: _submit_linestring_to_matcher(
+    i = 0
+    def submit_source(src):
+
+        if verbose:
+            print(f'submitting linestring {++i}/{len(source.shape[0])}')
+
+        return _submit_linestring_to_matcher(
             matcher,
-            x['geometry'],
+            src['geometry'],
             remove_short_overlaps,
             remove_sidetrips,
             max_dist2
-        ), axis=1)
+        )
+
+    # submit all source linestrings to the matcher
+    source['node_pairs'] = source.apply(submit_source, axis=1)
 
     #print(source['node_pairs'])
 
@@ -475,9 +483,9 @@ def match_parking_spots(
 
 def match_public_transit_zvv(
         G, pt_routes,
-        max_dist=400,
-        max_dist_init=500,
-        max_lattice_width=5,
+        max_dist=200,
+        max_dist_init=400,
+        max_lattice_width=20,
         route_number_column='LINIENNUMM',
         direction_column='RICHTUNG'
 ):
