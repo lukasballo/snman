@@ -61,23 +61,27 @@ typically `C:\Users\lukas\miniconda3\Scripts\conda.exe`
 
 Click on 'Load Environments', select 'Existing environment' and 'snman'.
 
-Now, open the terminal in Pycharm (one of the buttons bottom left) and install the dependencies in the
-**requirements** file. For each dependency,
-first try to install it using conda, such as the following example:
+
+# Install Dependencies #
+
+Now, open the terminal in Pycharm and install the required packages. First, install gdal using conda:
 
 ```
-conda install geopandas
+conda install gdal
 ```
 
-Some packages are not available on conda (e.g., osmnx, r5py). For these use pip:
+Then, automatically install all dependencies from the **requirements** file:
 
 ```
-pip install osmnx
+pip install -r requirements
 ```
 
-Now, try to run the Jupyter Notebook `examples/prepare_network.ipynb`
+Now, try to run the Jupyter Notebook `examples/prepare_network.ipynb`.
+If you get an error about missing packages, install them:
 
-If you get an error about missing packages, install them using the steps above.
+```
+pip install <package name>
+```
 
 
 # Java #
