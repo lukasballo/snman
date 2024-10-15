@@ -134,6 +134,47 @@ def reverse_linestring(geometry):
     return shp.ops.substring(geometry, 1, 0, normalized=True)
 
 
+def get_polygon_axis(polygon):
+
+    # Get the exterior coordinates of the rectangle
+    rectangle = polygon.minimum_rotated_rectangle
+    coords = list(rectangle.exterior.coords)
+
+    # Identify the edges (as LineStrings)
+    edges = [shp.LineString([coords[i], coords[i + 1]]) for i in range(len(coords) - 1)]
+
+    # Sort the edges based on their length
+    sorted_edges = sorted(edges, key=lambda x: x.length)
+
+    # The first two in the sorted list will be the shorter edges
+    shorter_edges = sorted_edges[:4]
+
+    axis = shp.LineString([
+        shp.line_interpolate_point(shorter_edges[0], 0.5, normalized=True),
+        shp.line_interpolate_point(shorter_edges[1], 0.5, normalized=True)
+    ])
+
+    return axis
+
+
+def random_points_in_polygon(polygon, number):
+    """
+    Adapted from https://www.matecdev.com/posts/random-points-in-polygon.html
+
+    Parameters
+    ----------
+    polygon: shp.Polygon
+    number: int
+    """
+
+    points = []
+    minx, miny, maxx, maxy = polygon.bounds
+    while len(points) < number:
+        pnt = shp.Point(np.random.uniform(minx, maxx), np.random.uniform(miny, maxy))
+        if polygon.contains(pnt):
+            points.append(pnt)
+    return shp.MultiPoint(points)
+
 def linestring_angle(geometry):
     dx = geometry.coords[-1][0] - geometry.coords[0][0]
     dy = geometry.coords[-1][1] - geometry.coords[0][1]

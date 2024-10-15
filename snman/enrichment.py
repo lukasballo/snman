@@ -11,7 +11,9 @@ import geopandas as gpd
 import networkx as nx
 import warnings
 
-from . import utils, space_allocation, street_graph, io, enrichment
+from numpy.f2py.auxfuncs import throw_error
+
+from . import utils, space_allocation, street_graph, io, geometry_tools, _errors
 from . import osmnx_customized as oxc
 from .constants import *
 
@@ -182,40 +184,52 @@ def match_linestrings(
                     copy.deepcopy(value)
                 )
 
-        # Aggregate the target data using one of the following functions.
-        # Go through the shortest edges first so that in case of parallel edges,
-        # the value gets assigned to the shortest path
-        for uvk, data in sorted(G.edges.items(), key=lambda x: x[1]['geometry'].length):
+        # aggregate the target data using one of the following functions
+        for uvk, data in G.edges.items():
 
             if config['agg'] == 'avg':
                 data[config['target_column'] + '_forward']  = mean(edge_values.get(uvk[:2], [0]))
                 data[config['target_column'] + '_backward'] = mean(edge_values.get(uvk[:2][::-1], [0]))
 
-            if config['agg'] == 'max':
+            elif config['agg'] == 'max':
                 data[config['target_column'] + '_forward']  = max(edge_values.get(uvk[:2], [0]))
                 data[config['target_column'] + '_backward'] = max(edge_values.get(uvk[:2][::-1], [0]))
 
-            if config['agg'] == 'count':
+            elif config['agg'] == 'sum':
+                data[config['target_column'] + '_forward'] = sum(edge_values.get(uvk[:2], [0]))
+                data[config['target_column'] + '_backward'] = sum(edge_values.get(uvk[:2][::-1], [0]))
+
+            elif config['agg'] == 'count':
                 data[config['target_column'] + '_forward']  = len(edge_values.get(uvk[:2], []))
                 data[config['target_column'] + '_backward'] = len(edge_values.get(uvk[:2][::-1], []))
 
-            if config['agg'] == 'list':
+            elif config['agg'] == 'list':
                 data[config['target_column'] + '_forward']  = str(edge_values.get(uvk[:2], []))
                 data[config['target_column'] + '_backward'] = str(edge_values.get(uvk[:2][::-1], []))
 
-            if config['agg'] == 'max_no_direction':
+            elif config['agg'] == 'max_no_direction':
                 forward  = max(edge_values.get(uvk[:2], [0]))
                 backward = max(edge_values.get(uvk[:2][::-1], [0]))
                 data[config['target_column']] = max([str(forward), str(backward)])
 
-            if config['agg'] == 'add_lanes':
+            elif config['agg'] == 'list_no_direction':
+                forward  = edge_values.get(uvk[:2], [])
+                backward = edge_values.get(uvk[:2][::-1], [])
+                data[config['target_column']] = str(forward + backward)
+
+            elif config['agg'] == 'has_match_no_direction':
+                forward  = edge_values.get(uvk[:2], False)
+                backward = edge_values.get(uvk[:2][::-1], False)
+                data[config['target_column']] = not (forward is False and backward is False)
+
+            elif config['agg'] == 'add_lanes':
                 forward = space_allocation.SpaceAllocation(utils.flatten_list(edge_values.get(uvk[:2], [])))
                 data[config['target_column']].extend(forward)
                 backward = space_allocation.SpaceAllocation(utils.flatten_list(edge_values.get(uvk[:2][::-1], [])))
                 backward.reverse_allocation()
                 data[config['target_column']] = backward + data[config['target_column']]
 
-            if config['agg'] == 'replace_lanes':
+            elif config['agg'] == 'replace_lanes':
                 forward = space_allocation.SpaceAllocation(utils.flatten_list(edge_values.get(uvk[:2], [])))
                 backward = space_allocation.SpaceAllocation(utils.flatten_list(edge_values.get(uvk[:2][::-1], [])))
                 backward.reverse_allocation()
@@ -421,38 +435,18 @@ def match_width(
         data['_width_old'] = utils.safe_float(data['_width_old'])
 
 
-def match_parking_spots(
+def _match_parking_generic(
         G, parking_spots,
+        source_column,
+        agg,
         parking_space_length=7, parking_space_length_for_one_lane=24,
         remove_previous_parking=True
 ):
-    """
-    Match on-street parking spots provided as points onto the street graph as added parking lanes.
-    The resulting density of parking spots will be automatically converted to a number of parking lanes.
-    No parking lanes will be added if the density os very low.
-
-    Parameters
-    ----------
-    G: street_graph.StreetGraph
-    parking_spots: gpd.GeoDataFrame
-        a points dataset with parking spots
-    parking_space_length: float
-        typical parking space length
-    parking_space_length_for_one_lane: float
-        typical parking space length for a single parking lane
-    remove_previous_parking: bool
-        if true, all previously existing parking lanes will be overwritten
-    """
-
-    # copy the parking spaces dataset and convert the points into zero-length linestrings
-    # that can be matched onto the edges
-    parking_spots = copy.deepcopy(parking_spots.reset_index())
-    parking_spots['id'] = parking_spots.index
-    parking_spots.geometry = parking_spots.geometry.apply(lambda x: shp.LineString([x, x]))
 
     parking_count_key = '_n_parking_spots'
+
     column_configs = [
-        {'source_column': 'id', 'target_column': parking_count_key, 'agg': 'count'}
+        {'source_column': source_column, 'target_column': parking_count_key, 'agg': agg}
     ]
 
     # create a copy of the street graph that only contains ground-level edges
@@ -497,6 +491,102 @@ def match_parking_spots(
             data[KEY_LANES_DESCRIPTION].append(space_allocation.Lane(LANETYPE_PARKING_PARALLEL, DIRECTION_FORWARD))
 
 
+def match_parking_spots_lines(
+        G, parking_spots,
+        capacity_column='capacity',
+        **kwargs
+):
+    """
+    Not reliable, due to double counting of parking spots
+    """
+
+    _match_parking_generic(
+        G, parking_spots,
+        source_column=capacity_column,
+        agg='sum',
+        **kwargs
+    )
+
+
+def match_parking_spots_polygons(
+        G, parking_spots,
+        capacity_column='capacity',
+        **kwargs
+):
+    """
+    Not reliable, due to double counting of parking spots
+    """
+
+    parking_spots = copy.deepcopy(parking_spots)
+    parking_spots.geometry = parking_spots.geometry.apply(
+        lambda poly: geometry_tools.get_polygon_axis(poly)
+    )
+
+    _match_parking_generic(
+        G, parking_spots,
+        source_column=capacity_column,
+        agg='sum',
+        **kwargs
+    )
+
+
+def match_parking_spots_polygons_points_sampling(
+        G, parking_spots,
+        capacity_column='capacity',
+        **kwargs
+):
+
+    parking_spots = copy.deepcopy(parking_spots)
+    parking_spots.geometry = parking_spots.apply(
+        lambda row: geometry_tools.random_points_in_polygon(row['geometry'], row[capacity_column]),
+        axis=1
+    )
+
+    parking_spots = parking_spots.explode().reset_index(drop=True)
+    parking_spots['id'] = parking_spots.index
+
+    match_parking_spots(
+        G, parking_spots,
+        **kwargs
+    )
+
+
+def match_parking_spots(
+        G, parking_spots,
+        id_column='id',
+        **kwargs
+):
+    """
+    Match on-street parking spots provided as points onto the street graph as added parking lanes.
+    The resulting density of parking spots will be automatically converted to a number of parking lanes.
+    No parking lanes will be added if the density os very low.
+
+    Parameters
+    ----------
+    G: street_graph.StreetGraph
+    parking_spots: gpd.GeoDataFrame
+        a points dataset with parking spots
+    parking_space_length: float
+        typical parking space length
+    parking_space_length_for_one_lane: float
+        typical parking space length for a single parking lane
+    remove_previous_parking: bool
+        if true, all previously existing parking lanes will be overwritten
+    """
+
+    # copy the parking spaces dataset and convert the points into zero-length linestrings
+    # that can be matched onto the edges
+    parking_spots = copy.deepcopy(parking_spots.reset_index())
+    parking_spots['id'] = parking_spots.index
+    parking_spots.geometry = parking_spots.geometry.apply(lambda x: shp.LineString([x, x]))
+
+    _match_parking_generic(
+        G, parking_spots,
+        source_column=id_column,
+        agg='count',
+        **kwargs
+    )
+
 def match_public_transit_zvv(
         G, pt_routes,
         route_number_column='LINIENNUMM',
@@ -505,12 +595,17 @@ def match_public_transit_zvv(
 ):
     """
     Match public transit routes onto the street graph using mapmatching.
+    The geodata must follow the same structure as the ZVV dataset of Zurich:
+    https://www.stadt-zuerich.ch/geodaten/download/108
+     * Every route direction is represented by a separate feature with proper directions
+     * The features can be linestrings or polylinestrings. In case of the latter they are automatically dissolved into
+       single linestrings
 
     Parameters
     ----------
     G : nx.MultiDiGraph
         street graph
-    routes : gpd.GeoDataFrame
+    pt_routes : gpd.GeoDataFrame
         transit routes
     max_dist : int
         see settings of the leuven mapmatcher
@@ -520,12 +615,9 @@ def match_public_transit_zvv(
         which column in the routes dataset holds the route number
     direction_column : str
         which column in the routes dataset holds the route direction id
-
-    Returns
-    -------
-
     """
 
+    # convert multilinestrings into linestrings
     pt_routes = pt_routes.explode(ignore_index=True)
 
     column_configs = [
@@ -544,6 +636,58 @@ def match_public_transit_zvv(
         data['pt_backward'] = data['_pt_routes_backward'] != '[]'
         # for backward compatibility, to be removed later
         data['pt_bus'] = data['pt_forward'] or data['pt_backward']
+
+
+def match_public_transit_simple(
+        G, pt_routes,
+        max_dist=400,
+        max_dist_init=500,
+        max_lattice_width=5,
+        route_number_column='route',
+        is_bidirectional_column='both_directions'
+):
+    """
+    Matches public transit routes onto the network. The format must be as follows:
+     * Each route section is represented as a separate linestring
+     * An attribute defines whether the section is bidirectional or not
+
+    This function is suited for manually created public transit routes datasets.
+
+    Parameters
+    ----------
+    G : nx.MultiDiGraph
+        street graph
+    pt_routes : gpd.GeoDataFrame
+        transit routes
+    max_dist : int
+        see settings of the leuven mapmatcher
+    max_lattice_width : int
+        see settings of the leuven mapmatcher
+    route_number_column : str
+        which column in the routes dataset holds the route number
+    is_bidirectional_column : str
+        which column says whether the route section is bidirectional (True) or not (False)
+    """
+
+    # create opposite geometry for each bidirectional segment
+    selected_rows = pt_routes[pt_routes['both_directions'] == True]
+    selected_rows['geometry'] = selected_rows['geometry'].apply(lambda geom: geom.reverse())
+    selected_rows['direction'] = 2
+
+    # append the opposite geometries to the original ones
+    pt_routes = pd.concat([pt_routes, selected_rows], ignore_index=True)
+    pt_routes = gpd.GeoDataFrame(pt_routes)
+    pt_routes['direction'] = pt_routes['direction'].fillna(1)
+
+    # use the zvv function for matching
+    match_public_transit_zvv(
+            G, pt_routes,
+            max_dist=max_dist,
+            max_dist_init=max_dist_init,
+            max_lattice_width=max_lattice_width,
+            route_number_column='route',
+            direction_column='direction'
+    )
 
 
 def match_sensors(G, sensors_df):

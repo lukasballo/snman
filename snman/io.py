@@ -182,7 +182,7 @@ def load_lane_graph(
     return L
 
 
-def import_geofile_to_gdf(file_path, crs=DEFAULT_CRS, index=None, filter_index=None, perimeter=None, **kwargs):
+def import_geofile_to_gdf(file_path, crs=DEFAULT_CRS, index=None, filter_index=None, perimeter=None):
     """
     Import a geofile (shp, gpkg, etc.) or a parquet file (gzip) as a GeoDataFrame
 
@@ -205,9 +205,9 @@ def import_geofile_to_gdf(file_path, crs=DEFAULT_CRS, index=None, filter_index=N
     """
 
     if file_path[-5:] == '.gzip':
-        gdf = gpd.read_parquet(file_path, **kwargs)
+        gdf = gpd.read_parquet(file_path)
     else:
-        gdf = gpd.read_file(file_path, **kwargs).to_crs(crs)
+        gdf = gpd.read_file(file_path).to_crs(crs)
 
     if index is not None:
         gdf = gdf.set_index(index)
@@ -216,7 +216,8 @@ def import_geofile_to_gdf(file_path, crs=DEFAULT_CRS, index=None, filter_index=N
         gdf = gdf.filter(items=filter_index, axis=0)
 
     if perimeter is not None:
-        gdf = gdf.overlay(perimeter, how='intersection')
+        gdf.geometry = gdf.geometry.apply(lambda route: shapely.intersection(route, perimeter))
+        gdf = gdf[~shapely.is_empty(gdf.geometry)]
 
     return gdf
 
