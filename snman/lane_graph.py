@@ -43,7 +43,7 @@ def create_lane_graph(
             if lane == '':
                 continue
 
-            reverse = lane.direction in {DIRECTION_BACKWARD, DIRECTION_BACKWARD_OPTIONAL}
+            reverse = lane.direction in {DIRECTION_BACKWARD}
 
             if reverse:
                 lane.reverse_direction()

@@ -61,6 +61,9 @@ def match_linestrings(
         modes = None,
         verbose = False,
         _save_map = None,
+        max_dist=200,
+        max_dist_init=400,
+        max_lattice_width=20,
         **distance_matcher_args
 ):
     """
@@ -131,17 +134,22 @@ def match_linestrings(
         io.export_street_graph(I, *_save_map)
 
     # create a matcher
-    matcher = DistanceMatcher(map_con, **distance_matcher_args)
+    matcher = DistanceMatcher(
+        map_con,
+        max_dist=max_dist,
+        max_dist_init=max_dist_init,
+        max_lattice_width=max_lattice_width,
+        **distance_matcher_args
+    )
 
-    i = 0
-    def submit_source(src):
+    def submit_source(row):
 
         if verbose:
-            print(f'submitting linestring {++i}/{len(source.shape[0])}')
+            print(f'submitting linestring {row.name}')
 
         return _submit_linestring_to_matcher(
             matcher,
-            src['geometry'],
+            row['geometry'],
             remove_short_overlaps,
             remove_sidetrips,
             max_dist2
@@ -174,8 +182,10 @@ def match_linestrings(
                     copy.deepcopy(value)
                 )
 
-        # aggregate the target data using one of the following functions
-        for uvk, data in G.edges.items():
+        # Aggregate the target data using one of the following functions.
+        # Go through the shortest edges first so that in case of parallel edges,
+        # the value gets assigned to the shortest path
+        for uvk, data in sorted(G.edges.items(), key=lambda x: x[1]['geometry'].length):
 
             if config['agg'] == 'avg':
                 data[config['target_column'] + '_forward']  = mean(edge_values.get(uvk[:2], [0]))
@@ -211,6 +221,12 @@ def match_linestrings(
                 backward.reverse_allocation()
                 if len(forward+backward) > 0:
                     data[config['target_column']] = space_allocation.SpaceAllocation(backward + forward)
+
+            # delete the values that were used in this step. this avoids that they will be matched onto multiple edges
+            if edge_values.get(uvk[:2], None) is not None:
+                del edge_values[uvk[:2]]
+            if edge_values.get(uvk[:2][::-1], None) is not None:
+                del edge_values[uvk[:2][::-1]]
 
 
 def _submit_linestring_to_matcher(matcher, geom, remove_short_overlaps, remove_sidetrips, max_distance):
@@ -483,11 +499,9 @@ def match_parking_spots(
 
 def match_public_transit_zvv(
         G, pt_routes,
-        max_dist=200,
-        max_dist_init=400,
-        max_lattice_width=20,
         route_number_column='LINIENNUMM',
-        direction_column='RICHTUNG'
+        direction_column='RICHTUNG',
+        **matcher_kwargs
 ):
     """
     Match public transit routes onto the street graph using mapmatching.
@@ -520,9 +534,9 @@ def match_public_transit_zvv(
     ]
 
     match_linestrings(
-        G, pt_routes, column_configs, remove_short_overlaps=False,
+        G, pt_routes, column_configs, remove_short_overlaps=True,
         modes=(MODE_TRANSIT, MODE_PRIVATE_CARS),
-        max_dist=max_dist, max_dist_init=max_dist_init, max_lattice_width=max_lattice_width
+        **matcher_kwargs
     )
 
     for uvk, data in G.edges.items():

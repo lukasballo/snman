@@ -354,6 +354,10 @@ def load_rebuilding_regions(path, crs=DEFAULT_CRS, projects=None, only_active=Fa
         rebuilding_regions['hierarchies_to_fix'].apply(
             lambda x: set(x.split(',')) if isinstance(x, str) and len(x) > 0 else set()
         )
+    rebuilding_regions['hierarchies_with_cycling_lanes'] = \
+        rebuilding_regions['hierarchies_with_cycling_lanes'].apply(
+            lambda x: set(x.split(',')) if isinstance(x, str) and len(x) > 0 else set()
+        )
     rebuilding_regions = rebuilding_regions.sort_values(['order'])
     return rebuilding_regions
 

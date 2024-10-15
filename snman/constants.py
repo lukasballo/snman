@@ -10,25 +10,16 @@ DIRECTION_FORWARD = '>'
 DIRECTION_BACKWARD = '<'
 DIRECTION_BOTH = '-'
 DIRECTION_TBD = '?'
-DIRECTION_FORWARD_OPTIONAL = ')'
-DIRECTION_BACKWARD_OPTIONAL = '('
-DIRECTION_BOTH_OPTIONAL = '/'
-DIRECTION_TBD_OPTIONAL = '*'
 DIRECTIONS = {
     DIRECTION_FORWARD, DIRECTION_BACKWARD, DIRECTION_BOTH, DIRECTION_TBD,
-    DIRECTION_FORWARD_OPTIONAL, DIRECTION_BACKWARD_OPTIONAL, DIRECTION_BOTH_OPTIONAL, DIRECTION_TBD_OPTIONAL
-}
-TENTATIVE_DIRECTIONS = {
-    DIRECTION_TBD, DIRECTION_TBD_OPTIONAL, DIRECTION_BOTH_OPTIONAL,
-    DIRECTION_FORWARD_OPTIONAL, DIRECTION_BACKWARD_OPTIONAL
 }
 
 ALTERNATIVE_DIRECTIONS = {
     DIRECTION_FORWARD: {
-        DIRECTION_BOTH, DIRECTION_TBD, DIRECTION_BOTH_OPTIONAL, DIRECTION_FORWARD_OPTIONAL, DIRECTION_TBD_OPTIONAL
+        DIRECTION_BOTH, DIRECTION_TBD
     },
     DIRECTION_BACKWARD: {
-        DIRECTION_BOTH, DIRECTION_TBD, DIRECTION_BOTH_OPTIONAL, DIRECTION_BACKWARD_OPTIONAL, DIRECTION_TBD_OPTIONAL
+        DIRECTION_BOTH, DIRECTION_TBD
     }
 }
 
@@ -116,19 +107,6 @@ LANE_TYPES = {
         {'width': 3.0, 'order': 1, 'cycling_vod': 0,
          'modes': [MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_CYCLING, MODE_FOOT]},
 
-    LANETYPE_MOTORIZED + DIRECTION_FORWARD_OPTIONAL:
-        {'width': 3.0, 'order': 1, 'cycling_vod': 0,
-         'modes': [MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_CYCLING, MODE_FOOT]},
-    LANETYPE_MOTORIZED + DIRECTION_BACKWARD_OPTIONAL:
-        {'width': 3.0, 'order': 1, 'cycling_vod': 0,
-         'modes': [MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_CYCLING, MODE_FOOT]},
-    LANETYPE_MOTORIZED + DIRECTION_BOTH_OPTIONAL:
-        {'width': 4.5, 'order': 1, 'cycling_vod': 0,
-         'modes': [MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_CYCLING, MODE_FOOT]},
-    # optional lane with undecided direction
-    LANETYPE_MOTORIZED + DIRECTION_TBD_OPTIONAL:
-        {'width': 3.0, 'order': 1, 'cycling_vod': 0,
-         'modes': [MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_CYCLING, MODE_FOOT]},
 
     LANETYPE_DEDICATED_PT + DIRECTION_FORWARD:
         {'width': 3.0, 'order': 2, 'cycling_vod': 0, 'modes': [MODE_TRANSIT, MODE_CYCLING, MODE_FOOT]},
@@ -136,18 +114,10 @@ LANE_TYPES = {
         {'width': 3.0, 'order': 2, 'cycling_vod': 0, 'modes': [MODE_TRANSIT, MODE_CYCLING, MODE_FOOT]},
     LANETYPE_DEDICATED_PT + DIRECTION_BOTH:
         {'width': 4.5, 'order': 2, 'cycling_vod': 0, 'modes': [MODE_TRANSIT, MODE_CYCLING, MODE_FOOT]},
-    LANETYPE_DEDICATED_PT + DIRECTION_FORWARD_OPTIONAL:
-        {'width': 3.0, 'order': 2, 'cycling_vod': 0, 'modes': [MODE_TRANSIT, MODE_CYCLING, MODE_FOOT]},
-    LANETYPE_DEDICATED_PT + DIRECTION_BACKWARD_OPTIONAL:
-        {'width': 3.0, 'order': 2, 'cycling_vod': 0, 'modes': [MODE_TRANSIT, MODE_CYCLING, MODE_FOOT]},
 
     LANETYPE_CYCLING_LANE + DIRECTION_FORWARD:
         {'width': 1.5, 'order': 3, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING, MODE_FOOT]},
     LANETYPE_CYCLING_LANE + DIRECTION_BACKWARD:
-        {'width': 1.5, 'order': 3, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING, MODE_FOOT]},
-    LANETYPE_CYCLING_LANE + DIRECTION_FORWARD_OPTIONAL:
-        {'width': 1.5, 'order': 3, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING, MODE_FOOT]},
-    LANETYPE_CYCLING_LANE + DIRECTION_BACKWARD_OPTIONAL:
         {'width': 1.5, 'order': 3, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING, MODE_FOOT]},
     LANETYPE_CYCLING_LANE + DIRECTION_BOTH:
         {'width': 2.0, 'order': 3, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING, MODE_FOOT]},
@@ -182,8 +152,6 @@ LANE_TYPES = {
 
     LANETYPE_PARKING_PARALLEL + DIRECTION_BOTH:
         {'width': 2, 'order': 8, 'cycling_vod': 0, 'modes': [MODE_CAR_PARKING]},
-    LANETYPE_PARKING_PARALLEL + DIRECTION_BOTH_OPTIONAL:
-        {'width': 2, 'order': 8, 'cycling_vod': 0, 'modes': [MODE_CAR_PARKING]},
     LANETYPE_PARKING_DIAGONAL + DIRECTION_BOTH:
         {'width': 4.5, 'order': 8, 'cycling_vod': 0, 'modes': [MODE_CAR_PARKING]},
     LANETYPE_PARKING_PERPENDICULAR + DIRECTION_BOTH:
@@ -194,9 +162,9 @@ LANE_TYPES = {
         {'width': 2, 'order': 8, 'cycling_vod': 0, 'modes': [MODE_CAR_PARKING]},
 
     LANETYPE_NON_TRAFFIC + DIRECTION_FORWARD:
-        {'width': 0.0, 'order': 9, 'cycling_vod': 0, 'modes': [MODE_NON_TRAFFIC]},
+        {'width': 1, 'order': 9, 'cycling_vod': 0, 'modes': [MODE_NON_TRAFFIC]},
     LANETYPE_NON_TRAFFIC + DIRECTION_BACKWARD:
-        {'width': 0.0, 'order': 9, 'cycling_vod': 0, 'modes': [MODE_NON_TRAFFIC]},
+        {'width': 1, 'order': 9, 'cycling_vod': 0, 'modes': [MODE_NON_TRAFFIC]},
 
 }
 

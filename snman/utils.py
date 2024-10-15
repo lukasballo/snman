@@ -61,7 +61,7 @@ def safe_int(s, fallback_value=None):
 def safe_float(s, fallback_value=None):
     try:
         return float(s)
-    except ValueError:
+    except ValueError or TypeError:
         return fallback_value
 
 

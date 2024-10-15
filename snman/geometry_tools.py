@@ -3,6 +3,8 @@ import shapely as shp
 import numpy as np
 import math
 
+from . import utils
+
 
 def remove_multipart_geometries(G):
     """
@@ -130,3 +132,16 @@ def ensure_multilinestring(geometry):
 
 def reverse_linestring(geometry):
     return shp.ops.substring(geometry, 1, 0, normalized=True)
+
+
+def linestring_angle(geometry):
+    dx = geometry.coords[-1][0] - geometry.coords[0][0]
+    dy = geometry.coords[-1][1] - geometry.coords[0][1]
+    angle = np.degrees(np.arctan(
+        utils.safe_division(dy,dx)
+    ))
+    if dx < 0:
+        angle += 180
+    if angle < 0:
+        angle += 360
+    return angle

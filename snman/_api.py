@@ -26,6 +26,8 @@ from . import street_graph_node
 from . import street_graph_edge
 from . import fitting
 from . import accessibility
+from . import utils
+from . import geometry_tools
 
 
 

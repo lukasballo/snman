@@ -61,10 +61,11 @@ def multi_set_given_lanes(
         forced_given_lanes_attribute=KEY_FORCED_GIVEN_LANES_DESCRIPTION,
         public_transit_mode='mandatory_like_existing',
         parking_mode='mandatory_like_existing',
+        cycling_infrastructure_mode='optional',
         motorized_traffic_on_all_streets=False,
         motorized_traffic_road_hierarchies=(hierarchy.LOCAL_ROAD, hierarchy.MAIN_ROAD, hierarchy.HIGHWAY, hierarchy.SERVICE),
         motorized_traffic_lane_mode='separate_lanes',
-        cycling_infra_road_hierarchies=(hierarchy.LOCAL_ROAD, hierarchy.MAIN_ROAD),
+        hierarchies_with_cycling_lanes=(hierarchy.LOCAL_ROAD, hierarchy.MAIN_ROAD),
         hierarchies_to_fix=(hierarchy.PATHWAY)
 ):
 
@@ -163,8 +164,7 @@ def multi_set_given_lanes(
                 if motorized_traffic_lane_mode == 'separate_lanes':
                     use_direction = DIRECTION_TBD
                 elif motorized_traffic_lane_mode == 'bidirectional_lanes':
-                    use_direction = DIRECTION_TBD
-                    #use_direction = DIRECTION_BOTH
+                    use_direction = DIRECTION_BOTH
                 else:
                     raise _errors.OptionNotImplemented(
                         f"Motorized traffic lane mode {motorized_traffic_lane_mode} is not implemented."
@@ -181,7 +181,7 @@ def multi_set_given_lanes(
                                 )
                             else:
                                 target_lanes.append(
-                                    space_allocation.Lane(LANETYPE_MOTORIZED, use_direction, status=STATUS_FIXED)
+                                    space_allocation.Lane(LANETYPE_MOTORIZED, use_direction, status=STATUS_ONE_DIRECTION_MANDATORY)
                                 )
                 # motorized_traffic_on_all_streets=False: add optional lane to every street
                 else:
@@ -198,8 +198,15 @@ def multi_set_given_lanes(
 
             # -- Add cycling lanes --
 
+            # in this mode, all mixed cycling and pedestrian paths (X lanes) will be kept
+            if cycling_infrastructure_mode=='x_mandatory_like_existing':
+                existing_x_lanes = space_allocation.filter_lanes_by_lanetypes(
+                    source_lanes, {LANETYPE_FOOT_CYCLING_MIXED},
+                )
+                target_lanes += existing_x_lanes
+
             if 1:
-                if data.get('hierarchy') in cycling_infra_road_hierarchies:
+                if data.get('hierarchy') in hierarchies_with_cycling_lanes:
                     if data.get('hierarchy') == hierarchy.MAIN_ROAD:
                         # twice the standard width in each direction on main roads
                         factor = 2
@@ -207,10 +214,12 @@ def multi_set_given_lanes(
                         # standard width on other roads
                         factor = 2
 
+                    # Bike lane widths are set to a small value to avoid removing substandard infrastructure
+                    # TODO: Make the bike lane widths user-defined
                     target_lanes += [
                         space_allocation.Lane(
                             LANETYPE_CYCLING_LANE, DIRECTION_BACKWARD,
-                            status=STATUS_OPTIONAL, width=1.3
+                            status=STATUS_OPTIONAL, width=0.9
                         )
                         for i in range(factor)
                     ]
@@ -218,7 +227,7 @@ def multi_set_given_lanes(
                     target_lanes += [
                         space_allocation.Lane(
                             LANETYPE_CYCLING_LANE, DIRECTION_FORWARD,
-                            status=STATUS_OPTIONAL, width=1.3
+                            status=STATUS_OPTIONAL, width=0.9
                         )
                         for i in range(factor)
                     ]
@@ -254,6 +263,10 @@ def multi_set_given_lanes(
             #target_lanes.append(
             #    space_allocation.Lane(LANETYPE_NON_TRAFFIC, DIRECTION_FORWARD, status=STATUS_OPTIONAL)
             #)
+
+            # reorder the lanes to match a convention
+            seed_side = space_allocation.assign_seed_side(data['geometry'])
+            target_lanes = space_allocation._reorder_lanes_on_edge(target_lanes, seed_side=seed_side)
 
         data[target_lanes_attribute] = target_lanes
 
@@ -608,10 +621,10 @@ def _remove_car_lanes(
                     L.remove_edge(*remove_edge_uvk_old)
 
             # write the check results into the edge attributes for debugging
-            L.edges[remove_edge_uvk]['_disconnects_graph'] = edges_disconnect_graph
-            L.edges[remove_edge_uvk]['_breaks_transit'] = edge_breaks_transit
-            L.edges[remove_edge_uvk]['_last_dir_of_mandatory'] = is_last_direction_of_mandatory_lane
-            L.edges[remove_edge_uvk]['_has_dependent_parking'] = has_dependent_parking_lanes
+            L.edges[remove_edge_uvk]['_disconnects_graph'] = str(edges_disconnect_graph)
+            L.edges[remove_edge_uvk]['_breaks_transit'] = str(edge_breaks_transit)
+            L.edges[remove_edge_uvk]['_last_dir_of_mandatory'] = str(is_last_direction_of_mandatory_lane)
+            L.edges[remove_edge_uvk]['_has_dependent_parking'] = str(has_dependent_parking_lanes)
 
             if verbose:
                 print('fixed', remove_edge_uvk)
@@ -623,11 +636,20 @@ def _remove_car_lanes(
             if verbose:
                 print('removed', remove_edge_uvk)
 
-            # if direction is both and opposite instance exists, make it forward and instance 1
-            if L.edges[remove_edge_uvk]['lane'].direction == DIRECTION_BOTH and L.has_edge(*opposite_edge_uvk):
+            # if direction is both and opposite instance exists, make the opposite instance forward and instance no. 1
+            if (
+                    L.edges[remove_edge_uvk]['lane'].direction == DIRECTION_BOTH
+                    and L.has_edge(*opposite_edge_uvk)
+            ):
                 L.edges[opposite_edge_uvk]['lane'].direction = DIRECTION_FORWARD
                 L.edges[opposite_edge_uvk]['lane'].set_default_width()
                 L.edges[opposite_edge_uvk]['instance'] = 1
+                # if the original lane has one direction mandatory, make the remaining lane fixed
+                if L.edges[remove_edge_uvk]['lane'].status in [STATUS_FIXED, STATUS_ONE_DIRECTION_MANDATORY]:
+                    L.edges[opposite_edge_uvk]['lane'].direction = DIRECTION_FORWARD
+                    L.edges[opposite_edge_uvk]['lane'].set_default_width()
+                    L.edges[opposite_edge_uvk]['lane'].status = STATUS_FIXED
+                    L.edges[opposite_edge_uvk]['_last_dir_of_mandatory_from_bidir'] = str(True)
 
             L.remove_edge(*remove_edge_uvk)
             uv_changed = remove_edge_uvk[0:2]
@@ -994,6 +1016,7 @@ def multi_rebuild_region(
         remove_car_lanes_mode=None,
         motorized_traffic_lane_mode='separate_lanes',
         public_transit_mode='mandatory_like_existing',
+        cycling_infrastructure_mode='optional',
         parking_mode='everywhere_by_need',
         parking_radius=200,
         gravity_iterations=15,
@@ -1005,8 +1028,10 @@ def multi_rebuild_region(
         # export_when='before_and_after',
         verbose=False,
         save_steps_path=None,
-        save_steps_scaling_factor=1
+        save_steps_scaling_factor=1,
+        **kwargs
 ):
+
     print('truncating street graph')
     H = oxc.truncate.truncate_graph_polygon(G, polygon, quadrat_width=100, retain_all=True)
     H = street_graph.filter_by_hierarchy(H, hierarchies_to_include)
@@ -1026,6 +1051,8 @@ def multi_rebuild_region(
         motorized_traffic_lane_mode=motorized_traffic_lane_mode,
         public_transit_mode=public_transit_mode,
         parking_mode=parking_mode,
+        cycling_infrastructure_mode=cycling_infrastructure_mode,
+        **kwargs
     )
 
     # for each node, set whether it must be accessible by each mode
@@ -1066,7 +1093,7 @@ def multi_rebuild_region(
     for uvk, data in L.edges.items():
         if not (
                 data['lane'].lanetype == LANETYPE_PARKING_PARALLEL
-                or (data['lane'].status == STATUS_FIXED and data['lane'].lanetype == LANETYPE_MOTORIZED)
+                or (data['lane'].status in [STATUS_FIXED, STATUS_ONE_DIRECTION_MANDATORY] and data['lane'].lanetype == LANETYPE_MOTORIZED)
         ):
             M.remove_edge(*uvk)
 
@@ -1074,7 +1101,6 @@ def multi_rebuild_region(
 
     for i, data in L.nodes.items():
         data['needs_access_by_private_cars'] = M.has_node(i)
-        data['_test'] = M.has_node(i)
 
     if save_steps_path:
         io.export_HLA(save_steps_path, '2', L=L, A=A, scaling_factor=save_steps_scaling_factor)
@@ -1195,6 +1221,8 @@ def multi_rebuild_regions(
             parking_radius=region['parking_radius'],
             remove_car_lanes_mode=region['remove_car_lanes_mode'],
             motorized_traffic_lane_mode=region['motorized_traffic_lane_mode'],
+            hierarchies_with_cycling_lanes=region['hierarchies_with_cycling_lanes'],
+            cycling_infrastructure_mode=region['cycling_infrastructure_mode'],
             **kwargs
         ),
         axis=1
