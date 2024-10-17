@@ -209,10 +209,10 @@ def multi_set_given_lanes(
                 if data.get('hierarchy') in hierarchies_with_cycling_lanes:
                     if data.get('hierarchy') == hierarchy.MAIN_ROAD:
                         # twice the standard width in each direction on main roads
-                        factor = 2
+                        factor = 1
                     else:
                         # standard width on other roads
-                        factor = 2
+                        factor = 1
 
                     # Bike lane widths are set to a small value to avoid removing substandard infrastructure
                     # TODO: Make the bike lane widths user-defined
@@ -254,6 +254,8 @@ def multi_set_given_lanes(
                     target_lanes.append(
                         space_allocation.Lane(LANETYPE_PARKING_PARALLEL, DIRECTION_FORWARD, status=STATUS_BY_NEED)
                     )
+                    #print(space_allocation.Lane(LANETYPE_PARKING_PARALLEL, DIRECTION_FORWARD, status=STATUS_BY_NEED))
+                    #print(target_lanes)
                 else:
                     print('parking mode not implemented:', parking_mode)
                     return
@@ -269,6 +271,7 @@ def multi_set_given_lanes(
             target_lanes = space_allocation._reorder_lanes_on_edge(target_lanes, seed_side=seed_side)
 
         data[target_lanes_attribute] = target_lanes
+        #print(target_lanes)
 
 
 def get_effective_subgraph(L, weight=None, node_inclusion=None):

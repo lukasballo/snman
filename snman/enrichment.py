@@ -440,7 +440,8 @@ def _match_parking_generic(
         source_column,
         agg,
         parking_space_length=7, parking_space_length_for_one_lane=24,
-        remove_previous_parking=True
+        remove_previous_parking=True,
+        parking_type='car'
 ):
 
     parking_count_key = '_n_parking_spots'
@@ -482,13 +483,21 @@ def _match_parking_generic(
             n_parking_lanes = 1
 
         if remove_previous_parking:
+            if parking_type == 'car':
+                remove_modes = {MODE_CAR_PARKING}
+            elif parking_type == 'bicycle':
+                remove_modes = {MODE_BICYCLE_PARKING}
             data[KEY_LANES_DESCRIPTION] = space_allocation.filter_lanes_by_modes(
                 data[KEY_LANES_DESCRIPTION],
-                MODES.difference({MODE_CAR_PARKING})
+                MODES.difference(remove_modes)
             )
 
         for i in range(n_parking_lanes):
-            data[KEY_LANES_DESCRIPTION].append(space_allocation.Lane(LANETYPE_PARKING_PARALLEL, DIRECTION_FORWARD))
+            if parking_type == 'car':
+                lanetype = LANETYPE_PARKING_PARALLEL
+            elif parking_type == 'bicycle':
+                lanetype = LANETYPE_BICYCLE_PARKING
+            data[KEY_LANES_DESCRIPTION].append(space_allocation.Lane(lanetype, DIRECTION_FORWARD))
 
 
 def match_parking_spots_lines(

@@ -875,6 +875,8 @@ def _reorder_lanes_on_edge(lanes, how='standard', seed_side='left'):
     n_mixed_total = len([l for l in cycling_lanes if l.lanetype == LANETYPE_FOOT_CYCLING_MIXED])
     n_cars = len(list(utils.flatten_list(sorted_lanes[MODE_PRIVATE_CARS])))
 
+    #TODO: Consider also the lane status when concolidating, this section must remain disabled until it's fixed
+    """
     # consolidate parking lanes, merge all parking lanes into a single with adjusted width
     parking_lanes =(
             sorted_lanes[MODE_CAR_PARKING][DIRECTION_FORWARD]
@@ -885,6 +887,7 @@ def _reorder_lanes_on_edge(lanes, how='standard', seed_side='left'):
         consolidated_parking = Lane(LANETYPE_PARKING_PARALLEL, DIRECTION_FORWARD)
         consolidated_parking.width = width
         sorted_lanes[MODE_CAR_PARKING][DIRECTION_FORWARD] = [consolidated_parking]
+    """
 
     new_allocation = copy.deepcopy(lanes)
     new_allocation[:] = []

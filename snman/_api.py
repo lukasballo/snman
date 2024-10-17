@@ -18,7 +18,6 @@ from . import enrichment
 from . import simplification
 from . import merge_edges
 from . import graph
-from . import distribution
 from . import rebuilding
 from . import space_allocation
 from . import stats

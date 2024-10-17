@@ -28,6 +28,7 @@ MODE_CYCLING = 'cycling'
 MODE_PRIVATE_CARS = 'private_cars'
 MODE_TRANSIT = 'transit'
 MODE_CAR_PARKING = 'car_parking'
+MODE_BICYCLE_PARKING = 'bicycle_parking'
 MODE_NON_TRAFFIC = 'non_traffic'
 MODES = {MODE_FOOT, MODE_CYCLING, MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_CAR_PARKING, MODE_NON_TRAFFIC}
 ACTIVE_MODES = {MODE_FOOT, MODE_CYCLING}
@@ -44,6 +45,7 @@ LANETYPE_FOOT = 'F'                 # Pedestrians only
 LANETYPE_PARKING_PARALLEL = 'R'     # On-street parking
 LANETYPE_PARKING_PERPENDICULAR = 'N'    # On-street parking
 LANETYPE_PARKING_DIAGONAL = 'D'     # On-street parking
+LANETYPE_BICYCLE_PARKING = 'B'      # Bicycle parking
 LANETYPE_NON_TRAFFIC = 'Z'          # No traffic, e.g., greenery or community spaces
 
 PARALLEL_PARKING_CAR_LENGTH = 5
@@ -160,6 +162,12 @@ LANE_TYPES = {
         {'width': 2, 'order': 8, 'cycling_vod': 0, 'modes': [MODE_CAR_PARKING]},
     LANETYPE_PARKING_PARALLEL + DIRECTION_BACKWARD:
         {'width': 2, 'order': 8, 'cycling_vod': 0, 'modes': [MODE_CAR_PARKING]},
+
+
+    LANETYPE_BICYCLE_PARKING + DIRECTION_FORWARD:
+        {'width': 2, 'order': 8, 'cycling_vod': 0, 'modes': [MODE_BICYCLE_PARKING]},
+    LANETYPE_BICYCLE_PARKING + DIRECTION_BACKWARD:
+        {'width': 2, 'order': 8, 'cycling_vod': 0, 'modes': [MODE_BICYCLE_PARKING]},
 
     LANETYPE_NON_TRAFFIC + DIRECTION_FORWARD:
         {'width': 1, 'order': 9, 'cycling_vod': 0, 'modes': [MODE_NON_TRAFFIC]},
