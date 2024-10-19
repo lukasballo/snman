@@ -748,7 +748,7 @@ def export_lane_geometries(L, path_edges, path_nodes, scaling=1, include_opposit
     export_lane_graph(M, path_edges, path_nodes, crs=crs)
 
 
-def export_HLA(path, step, H=None, L=None, A=None, scaling_factor=1):
+def export_HLA(path, step, H=None, L=None, A=None, B=None, scaling_factor=1):
     if H:
         # Export street graph
         export_street_graph(
@@ -772,6 +772,16 @@ def export_HLA(path, step, H=None, L=None, A=None, scaling_factor=1):
             A,
             os.path.join(path, f'{step}_A_edges.gpkg'),
             os.path.join(path, f'{step}_A_nodes.gpkg'),
+            reset_index=True,
+            stringify_attributes=['osmid', 'u', 'v', 'has_parking_spots']
+        )
+
+    if B:
+        # Save graph
+        export_graph(
+            B,
+            os.path.join(path, f'{step}_B_edges.gpkg'),
+            os.path.join(path, f'{step}_B_nodes.gpkg'),
             reset_index=True,
             stringify_attributes=['osmid', 'u', 'v', 'has_parking_spots']
         )

@@ -14,17 +14,20 @@ def get_edges_by_node(G, i):
     return edges
 
 
-def get_present_parking_spots(L, uvk):
+def get_present_parking_spots(L, uvk, vehicle_length):
     data = L.edges[uvk]
     length = data['length']
-    return length / PARALLEL_PARKING_CAR_LENGTH
+    return length / vehicle_length
 
 
-def create_access_graph(L, access_needs, radius=100):
-    access_needs_buffered = copy.copy(access_needs)
+def create_access_graph(
+        L, access_needs, radius=100,
+        lanetype=LANETYPE_PARKING_PARALLEL, vehicle_length=PARALLEL_PARKING_CAR_LENGTH
+):
+    access_needs_buffered = copy.deepcopy(access_needs)
     access_needs_buffered.geometry = access_needs.buffer(radius)
     access_needs_buffered['need_id'] = access_needs_buffered.index
-    A = AccessGraph(crs=L.graph['crs'])
+    A = AccessGraph(crs=L.graph['crs'], lanetype=lanetype, vehicle_length=vehicle_length)
 
     # add residential locations as nodes
     access_needs.apply(
@@ -41,7 +44,7 @@ def create_access_graph(L, access_needs, radius=100):
 
     # add parking lanes as nodes
     for uvk, data in L.edges.items():
-        if data['lanetype'] == LANETYPE_PARKING_PARALLEL:
+        if data['lanetype'] == lanetype:
             point = data['geometry'].interpolate(0.5, normalized=True)
             A.add_node(
                 uvk,
@@ -54,7 +57,7 @@ def create_access_graph(L, access_needs, radius=100):
             A.update_lane(L, uvk)
 
     # build possible location-street pairs
-    L_edges = oxc.utils_graph.graph_to_gdfs(L, nodes=False).query('lanetype=="R"')
+    L_edges = oxc.utils_graph.graph_to_gdfs(L, nodes=False).query(f'lanetype=="{lanetype}"')
     joined = gpd.sjoin(access_needs_buffered.reset_index(), L_edges.reset_index(), how='inner', op='intersects')
     joined['uvk'] = joined.apply(
         lambda x: tuple(x[['u', 'v', 'key']]),
@@ -152,12 +155,14 @@ def effect_of_parking_removal_on_underassignment(A, ii, iterations=15):
 
 class AccessGraph(nx.Graph, graph.SNManGenericGraph):
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, lanetype=None, vehicle_length=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.lanetype = lanetype
+        self.vehicle_length = vehicle_length
 
     def update_lane(self, L, uvk):
         data = self.nodes[uvk]
-        data['parking_spots'] = get_present_parking_spots(L, uvk)
+        data['parking_spots'] = get_present_parking_spots(L, uvk, self.vehicle_length)
 
     def get_assigned_parking_spots(self, i):
         pairs = get_edges_by_node(self, i)

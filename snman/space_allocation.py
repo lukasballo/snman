@@ -931,9 +931,11 @@ def _reorder_lanes_on_edge(lanes, how='standard', seed_side='left'):
             sorted_lanes[MODE_FOOT][DIRECTION_BOTH][left_start::2],
             sorted_lanes[MODE_CYCLING][DIRECTION_BOTH][left_start::2],
 
+            sorted_lanes[MODE_BICYCLE_PARKING][DIRECTION_BACKWARD],
             sorted_lanes[MODE_CYCLING][DIRECTION_BACKWARD],
             sorted_lanes[MODE_NON_TRAFFIC][DIRECTION_BACKWARD],
             sorted_lanes[MODE_NON_TRAFFIC][DIRECTION_FORWARD],
+            sorted_lanes[MODE_CAR_PARKING][DIRECTION_BACKWARD],
             sorted_lanes[MODE_PRIVATE_CARS][DIRECTION_BACKWARD],
             sorted_lanes[MODE_TRANSIT][DIRECTION_BACKWARD],
 
@@ -946,6 +948,7 @@ def _reorder_lanes_on_edge(lanes, how='standard', seed_side='left'):
             sorted_lanes[MODE_PRIVATE_CARS][DIRECTION_FORWARD],
             sorted_lanes[MODE_CAR_PARKING][DIRECTION_FORWARD],
             sorted_lanes[MODE_CYCLING][DIRECTION_FORWARD],
+            sorted_lanes[MODE_BICYCLE_PARKING][DIRECTION_FORWARD],
 
             sorted_lanes[MODE_CYCLING][DIRECTION_BOTH][right_start::2],
             sorted_lanes[MODE_FOOT][DIRECTION_BOTH][right_start::2]
@@ -1129,7 +1132,8 @@ def adjust_lane_widths_to_street(
         G, *uvk,
         lanes_key=KEY_LANES_DESCRIPTION,
         street_width_attribute='width',
-        filter_lanetypes=None
+        filter_lanetypes=None,
+        fill_out_with_non_traffic=False
 ):
 
     data = G.edges[uvk]
@@ -1138,6 +1142,11 @@ def adjust_lane_widths_to_street(
     street_width = data[street_width_attribute]
     total_lane_width = sum([lane.width for lane in lanes])
     excess_width = total_lane_width - street_width
+
+    if excess_width > 0 and fill_out_with_non_traffic:
+
+        filter_lanetypes = {LANETYPE_NON_TRAFFIC}
+        lanes += Lane(LANETYPE_NON_TRAFFIC, DIRECTION_FORWARD, width=0)
 
     if excess_width != 0:
 
@@ -1172,7 +1181,7 @@ class Lane:
         self.lanetype = lanetype
         self.direction = direction
         self.status = status
-        if width:
+        if width is not None:
             self.width = width
         else:
             self.set_default_width()
@@ -1258,3 +1267,6 @@ class SpaceAllocation(list):
         """
         self.reverse()
         [lane.reverse_direction() for lane in self]
+
+    def get_total_width(self):
+        return sum([lane.width for lane in self])

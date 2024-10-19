@@ -456,10 +456,15 @@ def _match_parking_generic(
         if data.get('layer') != 0:
             H.remove_edge(*uvk)
 
+    if parking_type == 'car':
+        modes = [MODE_PRIVATE_CARS]
+    elif parking_type == 'bicycle':
+        modes = [MODE_CYCLING]
+
     # match on the ground-level street graph
     match_linestrings(
         H, parking_spots, column_configs, remove_short_overlaps=False,
-        modes=[MODE_PRIVATE_CARS, MODE_TRANSIT],
+        modes=modes,
         max_dist=30, max_dist_init=30, max_lattice_width=5
     )
 
