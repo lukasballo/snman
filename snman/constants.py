@@ -51,7 +51,7 @@ LANETYPE_PARKING_DIAGONAL = 'D'     # On-street parking
 LANETYPE_BICYCLE_PARKING = 'B'      # Bicycle parking
 LANETYPE_NON_TRAFFIC = 'Z'          # No traffic, e.g., greenery or community spaces
 
-PARALLEL_PARKING_CAR_LENGTH = 6.5
+PARALLEL_PARKING_CAR_LENGTH = 6
 BICYCLE_WIDTH_IN_RACK = 0.7
 
 STATUS_FIXED = '*'

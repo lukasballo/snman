@@ -189,7 +189,7 @@ def calculate_stats(L, mode):
                         e['length']
                         for uvk, e
                         in L.edges.items()
-                        if e['lane'].width > 0 and e['instance'] == 1
+                        if e['lane'].width > 0 #and e['instance'] == 1
                     ]
                 ) / 1000,
                 3
@@ -213,21 +213,9 @@ def calculate_stats(L, mode):
                         e['length'] * (e['primary_mode'] == mode)
                         for uvk, e
                         in L.edges.items()
-                        if e['lane'].width > 0 and e['instance'] == 1
+                        if e['lane'].width > 0 #and e['instance'] == 1
                     ]
                 ) / 1000,
-                3
-            ),
-        'as_primary_mode_lane_surface_km2':
-            round(
-                sum(
-                    [
-                        e['length'] * e['lane'].width * (e['primary_mode'] == mode)
-                        for uvk, e
-                        in L.edges.items()
-                        if e['instance'] == 1
-                    ]
-                ) / pow(1000, 2),
                 3
             ),
         'as_primary_mode_lane_surface_km2':
@@ -249,7 +237,7 @@ def calculate_stats(L, mode):
                         e['bc']
                         for uvk, e
                         in L.edges.items()
-                        if e['instance'] == 1
+                        #if e['instance'] == 1
                     ]
                 ) /
                 sum(
@@ -257,7 +245,7 @@ def calculate_stats(L, mode):
                         1
                         for uvk, e
                         in L.edges.items()
-                        if e['instance'] == 1
+                        #if e['instance'] == 1
                     ]
                 ),
                 5

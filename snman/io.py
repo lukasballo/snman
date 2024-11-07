@@ -749,7 +749,7 @@ def export_lane_geometries(L, path_edges, path_nodes, scaling=1, include_opposit
 
 
 def export_HLA(path, step, H=None, L=None, A=None, B=None, scaling_factor=1):
-    if H:
+    if H is not None:
         # Export street graph
         export_street_graph(
             H,
@@ -757,7 +757,7 @@ def export_HLA(path, step, H=None, L=None, A=None, B=None, scaling_factor=1):
             os.path.join(path, f'{step}_H_nodes.gpkg')
         )
 
-    if L:
+    if L is not None:
         # Export lane geometries
         export_lane_geometries(
             L,
@@ -766,7 +766,7 @@ def export_HLA(path, step, H=None, L=None, A=None, B=None, scaling_factor=1):
             scaling=scaling_factor
         )
 
-    if A:
+    if A is not None:
         # Save graph
         export_graph(
             A,
@@ -776,7 +776,7 @@ def export_HLA(path, step, H=None, L=None, A=None, B=None, scaling_factor=1):
             stringify_attributes=['osmid', 'u', 'v', 'has_parking_spots']
         )
 
-    if B:
+    if B is not None:
         # Save graph
         export_graph(
             B,

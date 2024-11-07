@@ -267,14 +267,33 @@ def multi_set_given_lanes(
 
             # -- Add bicycle parking --
 
-            if bicycle_parking_mode == 'mandatory_like_existing':
-                existing_bicycle_parking_lanes = space_allocation.filter_lanes_by_lanetypes(
-                    source_lanes, {LANETYPE_BICYCLE_PARKING}
-                )
-                for lane in existing_bicycle_parking_lanes:
-                    lane = copy.deepcopy(lane)
-                    lane.status = STATUS_FIXED
-                    target_lanes.append(lane)
+            # -- Add parking --
+            if 1:
+                if bicycle_parking_mode == 'none':
+                    pass
+                elif bicycle_parking_mode in ['mandatory_like_existing', 'optional_like_existing', 'existing_by_need']:
+                    if bicycle_parking_mode == 'mandatory_like_existing':
+                        status = STATUS_FIXED
+                    elif bicycle_parking_mode == 'optional_like_existing':
+                        status = STATUS_OPTIONAL
+                    elif bicycle_parking_mode == 'existing_by_need':
+                        status = STATUS_BY_NEED
+                    existing_parking_lanes = space_allocation.filter_lanes_by_modes(
+                        source_lanes, {MODE_BICYCLE_PARKING}, operator='exact'
+                    )
+                    for lane in existing_parking_lanes:
+                        lane = copy.deepcopy(lane)
+                        lane.status = status
+                        target_lanes.append(lane)
+                elif bicycle_parking_mode == 'everywhere_by_need':
+                    target_lanes.append(
+                        space_allocation.Lane(LANETYPE_BICYCLE_PARKING, DIRECTION_FORWARD, status=STATUS_BY_NEED)
+                    )
+                    #print(space_allocation.Lane(LANETYPE_PARKING_PARALLEL, DIRECTION_FORWARD, status=STATUS_BY_NEED))
+                    #print(target_lanes)
+                else:
+                    print('bicycle parking mode not implemented:', parking_mode)
+                    return
 
             # -- Add non-traffic space --
 
@@ -734,6 +753,7 @@ def _remove_parking(
         A,
         gravity_iterations=15,
         lanetype=LANETYPE_PARKING_PARALLEL,
+        replace_removed_lane_with=None,
         verbose=False
 ):
     """
@@ -758,7 +778,7 @@ def _remove_parking(
         removal_candidates_parking = list(filter(
             lambda edge:
                 edge[1]['lane'].status != STATUS_FIXED
-                and edge[1]['lanetype'] in {lanetype},
+                and edge[1]['lane'].lanetype in {lanetype},
                 #and G.edges[(edge[1]['u_G'], edge[1]['v_G'], edge[1]['k_G'])]['_after_excess_width_m'] > 0,
             L.edges.items()
         ))
@@ -779,7 +799,17 @@ def _remove_parking(
         if access_graph.effect_of_parking_removal_on_underassignment(
                 A, [remove_edge_uvk], iterations=gravity_iterations
         ) == 0:
-            L.remove_edge(*remove_edge_uvk)
+            if replace_removed_lane_with is None:
+                L.remove_edge(*remove_edge_uvk)
+            else:
+                # TODO: Remember that all other edge attributes remain unchanged.
+                # In the future, we need to create a more systematic way of adding and changing lanes in the lane graph.
+                replace_removed_lane_with = copy.deepcopy(replace_removed_lane_with)
+                L.edges[remove_edge_uvk]['lane'] = replace_removed_lane_with
+                L.edges[remove_edge_uvk]['lanetype'] = replace_removed_lane_with.lanetype
+                L.edges[remove_edge_uvk]['width'] = replace_removed_lane_with.width
+                print('converted', remove_edge_uvk)
+
             A.remove_node(remove_edge_uvk)
             access_graph.gravity_model(A, iterations=gravity_iterations)
 
@@ -951,6 +981,56 @@ def _merge_transit_with_car_lanes(
     return L
 
 
+def _remove_non_traffic_lanes(
+        L, L_existing,
+        G, width_attribute,
+        verbose=False
+):
+    """
+    a helper for multi_rebuild(), takes care of the non-traffic lanes removal
+    """
+
+    i = 1
+    while True:
+
+        if verbose:
+            print('iteration', i)
+        i += 1
+
+        # calculate excess width (how much wider are the new lanes than the old ones)
+        for uvk, data in G.edges.items():
+            width_before = data[width_attribute]
+            width_after = lane_graph.calculate_street_width(L, *uvk)
+            data['_after_width_total_m'] = width_after
+            data['_after_excess_width_m'] = width_after - width_before
+
+        # create a list of unfixed edges, these are removal candidates
+        removal_candidates = list(filter(
+            lambda edge:
+                edge[1]['lane'].status != STATUS_FIXED
+                and edge[1]['lane'].lanetype in {LANETYPE_NON_TRAFFIC}
+                and G.edges[(edge[1]['u_G'], edge[1]['v_G'], edge[1]['k_G'])]['_after_excess_width_m'] > 0,
+            L.edges.items()
+        ))
+
+        # stop here if no removal candidates exist
+        if len(removal_candidates) == 0:
+            break
+
+        # sort by excess width
+        removal_candidates = sorted(
+            removal_candidates,
+            key=lambda x: G.edges[(x[1]['u_G'], x[1]['v_G'], x[1]['k_G'])]['_after_excess_width_m'],
+        )
+
+        removal_candidate= removal_candidates[-1]
+        remove_edge_uvk = removal_candidate[0]
+
+        L.remove_edge(*remove_edge_uvk)
+        if verbose:
+                print('removed', remove_edge_uvk)
+
+
 def _adjust_width_of_lanes(
         L, L_existing,
         G, width_attribute,
@@ -991,17 +1071,24 @@ def _adjust_width_of_lanes(
         # filter
         if lanetypes:
             lanes = {uvk: data for uvk, data in lanes.items() if data['lane'].lanetype in lanetypes}
-        total_width = sum([data['lane'].width for uvk, data in lanes.items()])
+        total_width = sum([data['lane'].width for uvk, data in lanes.items() if data['instance'] == 1])
 
         for lane_uvk, lane_data in lanes.items():
+            u,v,k = lane_uvk
+            # determine whether the lane has only one or two instances
+            instances = 2 if L.has_edge(v, u, k) else 1
             if verbose:
                 print(uvk, -excess_width)
             if total_width == 0:
-                lane_data['lane'].width = lane_data['lane'].width - excess_width / len(lanes)
+                # distribute the missing lane width evenly
+                lane_data['lane'].width = -excess_width / len(lanes)
             else:
                 lane_data['lane'].width = lane_data['lane'].width - excess_width * lane_data['lane'].width / total_width
             lane_data['width'] = lane_data['lane'].width
             lane_data['lane'].status = STATUS_FIXED
+            #lane_data['_total_width'] = total_width
+            #lane_data['_instances'] = instances
+            #lane_data['_excess_width'] = excess_width
 
 
 """
@@ -1063,7 +1150,6 @@ def multi_rebuild_region(
         motorized_traffic_lane_mode='separate_lanes',
         public_transit_mode='mandatory_like_existing',
         cycling_infrastructure_mode='optional',
-        parking_mode='everywhere_by_need',
         car_parking_radius=200,
         bicycle_parking_radius=200,
         gravity_iterations=15,
@@ -1072,6 +1158,8 @@ def multi_rebuild_region(
         target_lanes_attribute=KEY_LANES_DESCRIPTION_AFTER,
         forced_given_lanes_attribute=KEY_FORCED_GIVEN_LANES_DESCRIPTION,
         fill_out_with_non_traffic=True,
+        replace_removed_car_parking_lanes_with=None,
+        replace_removed_bicycle_parking_lanes_with=None,
         # export_L=None, export_H=None,
         # export_when='before_and_after',
         verbose=False,
@@ -1098,7 +1186,6 @@ def multi_rebuild_region(
         motorized_traffic_on_all_streets=motorized_traffic_on_all_streets,
         motorized_traffic_lane_mode=motorized_traffic_lane_mode,
         public_transit_mode=public_transit_mode,
-        parking_mode=parking_mode,
         cycling_infrastructure_mode=cycling_infrastructure_mode,
         **kwargs
     )
@@ -1126,30 +1213,49 @@ def multi_rebuild_region(
         print('no edges')
         return
 
-    A = access_graph.create_access_graph(
-        L, gpd.clip(car_access_needs, polygon), radius=car_parking_radius
-    )
-    B = access_graph.create_access_graph(
-        L, gpd.clip(bicycle_access_needs, polygon), radius=bicycle_parking_radius,
-        lanetype=LANETYPE_BICYCLE_PARKING, vehicle_length=BICYCLE_WIDTH_IN_RACK
-    )
-    access_graph.gravity_model(A, iterations=gravity_iterations)
-    access_graph.gravity_model(B, iterations=gravity_iterations)
+    # Remove lanes in steps
+
+    if car_access_needs is not None:
+        A = access_graph.create_access_graph(
+            L, gpd.clip(car_access_needs, polygon), radius=car_parking_radius
+        )
+        access_graph.gravity_model(A, iterations=gravity_iterations)
+    else:
+        A = None
 
     # Given lanes
     if save_steps_path:
-        io.export_HLA(save_steps_path, '1', H=H, L=L, A=A, B=B, scaling_factor=save_steps_scaling_factor)
+        io.export_HLA(save_steps_path, '1', H=H, L=L, A=A, scaling_factor=save_steps_scaling_factor)
 
-    # Remove lanes in steps
-    print('REMOVE CAR PARKING')
-    _remove_parking(
-        L, None, H, 'width', A, gravity_iterations=gravity_iterations, verbose=True
-    )
-    print('REMOVE BICYCLE PARKING')
-    _remove_parking(
-        L, None, H, 'width', B, gravity_iterations=gravity_iterations, verbose=True,
-        lanetype=LANETYPE_BICYCLE_PARKING
-    )
+    if car_access_needs is not None:
+        print('REMOVE CAR PARKING')
+        _remove_parking(
+            L, None, H, 'width', A,
+            replace_removed_lane_with=replace_removed_car_parking_lanes_with,
+            gravity_iterations=gravity_iterations, verbose=True
+        )
+
+    if bicycle_access_needs is not None:
+        B = access_graph.create_access_graph(
+            L, gpd.clip(bicycle_access_needs, polygon), radius=bicycle_parking_radius,
+            lanetype=LANETYPE_BICYCLE_PARKING, vehicle_length=BICYCLE_WIDTH_IN_RACK
+        )
+        access_graph.gravity_model(B, iterations=gravity_iterations)
+    else:
+        B = None
+
+    # Given lanes
+    if save_steps_path:
+        io.export_HLA(save_steps_path, '1b', H=H, L=L, A=A, B=B, scaling_factor=save_steps_scaling_factor)
+
+    if bicycle_access_needs is not None:
+        print('REMOVE BICYCLE PARKING')
+        _remove_parking(
+            L, None, H, 'width', B,
+            replace_removed_lane_with=replace_removed_bicycle_parking_lanes_with,
+            lanetype=LANETYPE_BICYCLE_PARKING,
+            gravity_iterations=gravity_iterations, verbose=True,
+        )
 
     # determine which nodes must be accessible by car, e.g., due to parking lanes
     M = copy.deepcopy(L)
@@ -1185,6 +1291,8 @@ def multi_rebuild_region(
     _merge_transit_with_car_lanes(L, None, H, 'width', verbose=True)
     if save_steps_path:
         io.export_HLA(save_steps_path, '5', H=H, L=L, A=A, B=B, scaling_factor=save_steps_scaling_factor)
+    print('REMOVE NON-TRAFFIC LANES')
+    _remove_non_traffic_lanes(L, None, H, 'width', verbose=True)
     print('ADJUST WIDTH OF LANES')
     # at first, try to fill out with non-traffic
     if fill_out_with_non_traffic:
@@ -1192,7 +1300,7 @@ def multi_rebuild_region(
             L, None, H, 'width', lanetypes={LANETYPE_NON_TRAFFIC},
             only_too_narrow=True, verbose=True
         )
-    # second, try wo wide cycling lanes
+    # second, try wo widen cycling lanes
     _adjust_width_of_lanes(
         L, None, H, 'width', lanetypes={LANETYPE_CYCLING_LANE},
         only_too_narrow=True, verbose=True
