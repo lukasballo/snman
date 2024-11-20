@@ -928,14 +928,17 @@ def _reorder_lanes_on_edge(lanes, how='standard', seed_side='left'):
 
         ordered_lanes = [
 
+            sorted_lanes[MODE_NON_TRAFFIC][DIRECTION_BACKWARD][left_start::2],
+            sorted_lanes[MODE_NON_TRAFFIC][DIRECTION_FORWARD][left_start::2],
             sorted_lanes[MODE_FOOT][DIRECTION_BOTH][left_start::2],
-            sorted_lanes[MODE_CYCLING][DIRECTION_BOTH][left_start::2],
 
-            sorted_lanes[MODE_BICYCLE_PARKING][DIRECTION_BACKWARD],
+            sorted_lanes[MODE_BICYCLE_PARKING][DIRECTION_BACKWARD][left_start::2],
+            sorted_lanes[MODE_BICYCLE_PARKING][DIRECTION_FORWARD][left_start::2],
+            sorted_lanes[MODE_CYCLING][DIRECTION_BOTH][left_start::2],
             sorted_lanes[MODE_CYCLING][DIRECTION_BACKWARD],
-            sorted_lanes[MODE_NON_TRAFFIC][DIRECTION_BACKWARD],
-            sorted_lanes[MODE_NON_TRAFFIC][DIRECTION_FORWARD],
-            sorted_lanes[MODE_CAR_PARKING][DIRECTION_BACKWARD],
+
+            sorted_lanes[MODE_CAR_PARKING][DIRECTION_BACKWARD][left_start::2],
+            sorted_lanes[MODE_CAR_PARKING][DIRECTION_FORWARD][left_start::2],
             sorted_lanes[MODE_PRIVATE_CARS][DIRECTION_BACKWARD],
             sorted_lanes[MODE_TRANSIT][DIRECTION_BACKWARD],
 
@@ -946,12 +949,17 @@ def _reorder_lanes_on_edge(lanes, how='standard', seed_side='left'):
 
             sorted_lanes[MODE_TRANSIT][DIRECTION_FORWARD],
             sorted_lanes[MODE_PRIVATE_CARS][DIRECTION_FORWARD],
-            sorted_lanes[MODE_CAR_PARKING][DIRECTION_FORWARD],
-            sorted_lanes[MODE_CYCLING][DIRECTION_FORWARD],
-            sorted_lanes[MODE_BICYCLE_PARKING][DIRECTION_FORWARD],
+            sorted_lanes[MODE_CAR_PARKING][DIRECTION_FORWARD][right_start::2],
+            sorted_lanes[MODE_CAR_PARKING][DIRECTION_BACKWARD][right_start::2],
 
+            sorted_lanes[MODE_CYCLING][DIRECTION_FORWARD],
             sorted_lanes[MODE_CYCLING][DIRECTION_BOTH][right_start::2],
-            sorted_lanes[MODE_FOOT][DIRECTION_BOTH][right_start::2]
+            sorted_lanes[MODE_BICYCLE_PARKING][DIRECTION_BACKWARD][right_start::2],
+            sorted_lanes[MODE_BICYCLE_PARKING][DIRECTION_FORWARD][right_start::2],
+
+            sorted_lanes[MODE_FOOT][DIRECTION_BOTH][right_start::2],
+            sorted_lanes[MODE_NON_TRAFFIC][DIRECTION_BACKWARD][right_start::2],
+            sorted_lanes[MODE_NON_TRAFFIC][DIRECTION_FORWARD][right_start::2],
 
         ]
 

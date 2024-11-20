@@ -21,12 +21,13 @@ def get_present_parking_spots(L, uvk, vehicle_length):
 
 
 def create_access_graph(
-        L, access_needs, radius=100,
+        L, access_needs, offstreet_parking=None,
+        radius=100,
         lanetype=LANETYPE_PARKING_PARALLEL, vehicle_length=PARALLEL_PARKING_CAR_LENGTH
 ):
-    access_needs_buffered = copy.deepcopy(access_needs)
-    access_needs_buffered.geometry = access_needs.buffer(radius)
-    access_needs_buffered['need_id'] = access_needs_buffered.index
+    #access_needs_buffered = copy.deepcopy(access_needs)
+    #access_needs_buffered.geometry = access_needs.buffer(radius)
+    #access_needs_buffered['need_id'] = access_needs_buffered.index
     A = AccessGraph(crs=L.graph['crs'], lanetype=lanetype, vehicle_length=vehicle_length)
 
     # add residential locations as nodes
@@ -41,6 +42,20 @@ def create_access_graph(
         ),
         axis=1
     )
+
+    # add offstreet parking as nodes
+    if offstreet_parking is not None:
+        offstreet_parking.apply(
+            lambda x: A.add_node(
+                f"offstreet_parking_{x.name}",
+                geometry=x['geometry'],
+                x=x['geometry'].x,
+                y=x['geometry'].y,
+                type=x['type'],
+                parking_spots=x['parking_spots']
+            ),
+            axis=1
+        )
 
     # add parking lanes as nodes
     for uvk, data in L.edges.items():
@@ -57,23 +72,33 @@ def create_access_graph(
             A.update_lane(L, uvk)
 
     # build possible location-street pairs
-    L_edges = oxc.utils_graph.graph_to_gdfs(L, nodes=False).query(f'lanetype=="{lanetype}"')
-    joined = gpd.sjoin(access_needs_buffered.reset_index(), L_edges.reset_index(), how='inner', op='intersects')
-    joined['uvk'] = joined.apply(
-        lambda x: tuple(x[['u', 'v', 'key']]),
-        axis=1
-    )
-    pairs = joined[['uvk', 'need_id', 'parking_spots_needed']]
+    #L_edges = oxc.utils_graph.graph_to_gdfs(L, nodes=False).query(f'lanetype=="{lanetype}"')
+
+    A_nodes = oxc.utils_graph.graph_to_gdfs(A, edges=False)
+    has_parking_spots = A_nodes.query("type=='has_parking_spots'")
+    has_parking_spots['supply_id'] = has_parking_spots.index
+
+    needs_parking_spots = A_nodes.query("type=='needs_parking_spots'")
+    needs_parking_spots.geometry = needs_parking_spots.buffer(radius)
+    needs_parking_spots['need_id'] = needs_parking_spots.index
+    needs_parking_spots['parking_spots_needed'] = needs_parking_spots['parking_spots']
+
+    joined = gpd.sjoin(needs_parking_spots.reset_index(), has_parking_spots.reset_index(), how='inner', op='intersects')
+    #joined['uvk'] = joined.apply(
+    #    lambda x: tuple(x[['u', 'v', 'key']]),
+    #    axis=1
+    #)
+    pairs = joined[['supply_id', 'need_id', 'parking_spots_needed']]
 
     #print(pairs)
 
     # add location-street pairs
     pairs.reset_index().apply(
         lambda x: A.add_edge(
-            x['need_id'], x['uvk'],
+            x['need_id'], x['supply_id'],
             needs_parking_spots=x['need_id'],
-            has_parking_spots=x['uvk'],
-            distance=shapely.distance(A.nodes[x['need_id']]['geometry'], A.nodes[x['uvk']]['geometry']),
+            has_parking_spots=x['supply_id'],
+            distance=shapely.distance(A.nodes[x['need_id']]['geometry'], A.nodes[x['supply_id']]['geometry']),
             parking_spots_assigned=x['parking_spots_needed']
         ),
         axis=1
@@ -167,3 +192,13 @@ class AccessGraph(nx.Graph, graph.SNManGenericGraph):
     def get_assigned_parking_spots(self, i):
         pairs = get_edges_by_node(self, i)
         return sum([pair['parking_spots_assigned'] for pair in pairs.values()])
+
+    def get_total_parking_spots(self):
+        return sum(
+            [data['parking_spots'] for uv, data in self.nodes.items() if data['type'] == 'has_parking_spots']
+        )
+
+    def get_total_needed_parking_spots(self):
+        return sum(
+            [data['parking_spots'] for uv, data in self.nodes.items() if data['type'] == 'needs_parking_spots']
+        )

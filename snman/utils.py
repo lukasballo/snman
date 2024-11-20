@@ -172,3 +172,26 @@ def get_nth_element_of_list(my_list, n):
         return my_list[n]
     else:
         return None
+
+
+def merge_dicts(dicts, ignored_values=(None, '', [], '[]')):
+    """
+    Merges a list of dictionaries using the *update()* method, while ignoring a list of values
+
+    Parameters
+    ----------
+    dicts: list
+        the list of dictionaries
+    ignored_values: list
+        which values should be ignored
+
+    Returns
+    -------
+    dict
+    """
+
+    merged_dict = {}
+    for d in dicts:
+        d = {k: v for k, v in d.items() if not any(v is val for val in ignored_values)}
+        merged_dict.update(d)
+    return merged_dict

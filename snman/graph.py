@@ -85,6 +85,9 @@ def keep_only_the_largest_connected_component(G, weak=False):
     H : copy of subgraph representing the largest connected component
     """
 
+    if len(G.nodes) == 0:
+        return G.subgraph([])
+
     if G.is_directed():
         if weak:
             nodes = max(nx.weakly_connected_components(G), key=len)

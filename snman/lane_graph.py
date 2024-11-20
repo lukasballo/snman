@@ -1,7 +1,7 @@
 import copy
 
 from . import osmnx_customized as oxc
-from . import space_allocation, geometry_tools, graph, street_graph
+from . import space_allocation, geometry_tools, graph, street_graph, utils
 from .constants import *
 import networkx as nx
 import numpy as np
@@ -158,9 +158,12 @@ def calculate_stats(L, mode):
 
     L = copy.deepcopy(L)
 
+    if len(L.edges) == 0:
+        return {}
+
     # calculate the approximate area as a convex hull of all nodes
     points_gpd = oxc.graph_to_gdfs(L, edges=False)
-    area_km2 = points_gpd.geometry.unary_union.convex_hull.area / pow(1000, 2)
+    area_m2 = points_gpd.geometry.unary_union.convex_hull.area
 
     # set betweenness centrality
     nx.set_edge_attributes(L, nx.edge_betweenness_centrality(L, normalized=True, weight='cost_'+mode), 'bc')
@@ -170,68 +173,53 @@ def calculate_stats(L, mode):
         '_mode': mode,
         'usable_N_nodes': len(L.nodes),
         'usable_N_edges':
-            round(
-                sum(
-                    [
-                        1
-                        for uvk, e
-                        in L.edges.items()
-                        if e['instance'] == 1
-                    ]
-                ),
-                3
+            sum(
+                [
+                    1
+                    for uvk, e
+                    in L.edges.items()
+                    if e['instance'] == 1
+                ]
             ),
-        'convex_hull_km2': area_km2,
-        'usable_lane_km':
-            round(
-                sum(
-                    [
-                        e['length']
-                        for uvk, e
-                        in L.edges.items()
-                        if e['lane'].width > 0 #and e['instance'] == 1
-                    ]
-                ) / 1000,
-                3
+        'convex_hull_m2': area_m2,
+        'usable_lane_m':
+            sum(
+                [
+                    e['length']
+                    for uvk, e
+                    in L.edges.items()
+                    if e['lane'].width > 0 #and e['instance'] == 1
+                ]
             ),
-        'usable_lane_surface_km2':
-            round(
-                sum(
-                    [
-                        e['length'] * e['lane'].width
-                        for uvk, e
-                        in L.edges.items()
-                        if e['instance'] == 1
-                    ]
-                ) / pow(1000, 2),
-                3
+        'usable_lane_surface_m2':
+            sum(
+                [
+                    e['length'] * e['lane'].width
+                    for uvk, e
+                    in L.edges.items()
+                    if e['instance'] == 1
+                ]
             ),
-        'as_primary_mode_lane_km':
-            round(
-                sum(
-                    [
-                        e['length'] * (e['primary_mode'] == mode)
-                        for uvk, e
-                        in L.edges.items()
-                        if e['lane'].width > 0 #and e['instance'] == 1
-                    ]
-                ) / 1000,
-                3
+        'as_primary_mode_lane_m':
+            sum(
+                [
+                    e['length'] * (e['primary_mode'] == mode)
+                    for uvk, e
+                    in L.edges.items()
+                    if e['lane'].width > 0 #and e['instance'] == 1
+                ]
             ),
-        'as_primary_mode_lane_surface_km2':
-            round(
-                sum(
-                    [
-                        e['length'] * e['lane'].width * (e['primary_mode'] == mode)
-                        for uvk, e
-                        in L.edges.items()
-                        if e['instance'] == 1
-                    ]
-                ) / pow(1000, 2),
-                3
+        'as_primary_mode_lane_surface_m2':
+            sum(
+                [
+                    e['length'] * e['lane'].width * (e['primary_mode'] == mode)
+                    for uvk, e
+                    in L.edges.items()
+                    if e['instance'] == 1
+                ]
             ),
         'avg_betweenness_centrality_norm':
-            round(
+            utils.safe_division(
                 sum(
                     [
                         e['bc']
@@ -239,7 +227,7 @@ def calculate_stats(L, mode):
                         in L.edges.items()
                         #if e['instance'] == 1
                     ]
-                ) /
+                ),
                 sum(
                     [
                         1
@@ -247,19 +235,12 @@ def calculate_stats(L, mode):
                         in L.edges.items()
                         #if e['instance'] == 1
                     ]
-                ),
-                5
+                )
             ),
-        'avg_shortest_path_vod_km':
-            round(
-                nx.average_shortest_path_length(L, 'cost_' + mode) / 1000,
-                3
-            ),
-        'avg_shortest_path_km':
-            round(
-                nx.average_shortest_path_length(L, 'length') / 1000,
-                3
-            ),
+        'avg_shortest_path_vod_m':
+            nx.average_shortest_path_length(L, 'cost_' + mode),
+        'avg_shortest_path_m':
+            nx.average_shortest_path_length(L, 'length')
     }
 
 

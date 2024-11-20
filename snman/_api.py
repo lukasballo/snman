@@ -27,7 +27,5 @@ from . import fitting
 from . import accessibility
 from . import utils
 from . import geometry_tools
-from . import network
-
 
 

@@ -363,8 +363,10 @@ def load_rebuilding_regions(path, crs=DEFAULT_CRS, projects=None, only_active=Fa
     return rebuilding_regions
 
 
-def load_measurement_regions(path, crs=DEFAULT_CRS, only_active=True, filter_names=None, set_filter=None):
-    measurement_regions = import_geofile_to_gdf(path, crs=crs, index='name')
+def load_measurement_regions(
+        path, crs=DEFAULT_CRS, only_active=True, filter_names=None, set_filter=None, name_column='name'
+):
+    measurement_regions = import_geofile_to_gdf(path, crs=crs, index=name_column)
     if filter_names:
         measurement_regions = measurement_regions.loc[filter_names]
     if only_active:
