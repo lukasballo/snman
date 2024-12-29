@@ -435,3 +435,74 @@ class LaneGraph(graph.SNManMultiDiGraph):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+
+def get_all_neighbor_edges(L, n, lanetype=None, separate_by_direction=False):
+
+    in_edges = list(L.in_edges(n, data=True, keys=True))
+    out_edges = list(L.out_edges(n, data=True, keys=True))
+
+    if lanetype is not None:
+        in_edges = list(filter(lambda e: e[3]['lane'].lanetype == lanetype, in_edges))
+        out_edges = list(filter(lambda e: e[3]['lane'].lanetype == lanetype, out_edges))
+
+    if separate_by_direction:
+        return [in_edges, out_edges]
+    else:
+        return in_edges + out_edges
+
+
+def get_all_neighbors(L, n, lanetype=None, separate_by_direction=False):
+
+    all_edges = get_all_neighbor_edges(L, n, lanetype=lanetype, separate_by_direction=separate_by_direction)
+
+    if separate_by_direction:
+        nodes = [[],[]]
+        for i in [0,1]:
+            for edge in all_edges[i]:
+                nodes[i].extend(edge[0:2])
+            nodes[i] = set(nodes[i]).difference({n})
+        return nodes
+
+    else:
+        nodes = []
+        for edge in all_edges:
+            nodes.extend(edge[0:2])
+
+        # remove this node
+        return set(nodes).difference({n})
+
+
+def remove_dangling_lanes_at_node(L, n, lanetype='L', recursive=False):
+
+    # check whether this is a degree=2 node in a street graph
+    if len(get_all_neighbors(L, n)) != 2:
+        return
+
+    in_nodes, out_nodes = get_all_neighbors(L, n, lanetype=lanetype, separate_by_direction=True)
+    all_nodes = get_all_neighbors(L, n, lanetype=lanetype)
+    all_nodes_M = get_all_neighbors(L, n, lanetype=LANETYPE_MOTORIZED)
+    if len(all_nodes_M) < 2:
+        return
+
+    if len(in_nodes) != len(out_nodes) or len(all_nodes) == 1:
+        all_edges = get_all_neighbor_edges(L, n, lanetype=lanetype)
+
+        # do nothing if the road hierarchy changes at this node
+        edge_osm_highways = {edge[3].get('osm_highway') for edge in all_edges}
+        if len(edge_osm_highways) > 1:
+            return
+
+        for e in all_edges:
+            L.remove_edge(*e[0:3])
+
+        if recursive:
+            for n in all_nodes:
+                remove_dangling_lanes_at_node(L, n, lanetype=lanetype, recursive=True)
+        else:
+            return all_nodes
+
+
+def remove_dangling_lanes(L, lanetype='L'):
+
+    for n, data in L.nodes.items():
+        res = remove_dangling_lanes_at_node(L, n, lanetype=lanetype, recursive=True)

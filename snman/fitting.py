@@ -7,6 +7,7 @@ from .constants import *
 def fit_edge(
         G, u, v, k, street_polygons_gdf,
         default_width_key=KEY_LANES_DESCRIPTION + '_width_total_m',
+        length_to_remove_at_ends=10,
         replace_geometry=False
 ):
     """
@@ -51,8 +52,9 @@ def fit_edge(
             range(0, line_length_rounded, step_length)
         )
 
-        interpolation_steps = interpolation_steps[10 < interpolation_steps]
-        interpolation_steps = interpolation_steps[interpolation_steps < line_length_rounded - 10]
+        # remove steps at the beginning and at the end
+        interpolation_steps = interpolation_steps[length_to_remove_at_ends < interpolation_steps]
+        interpolation_steps = interpolation_steps[interpolation_steps < line_length_rounded - length_to_remove_at_ends]
 
         cross_sections = [
             shp.LineString([
@@ -105,7 +107,7 @@ def fit_edge(
         pass
 
 
-def fit_edges(G, street_polygons_gdf):
+def fit_edges(G, street_polygons_gdf, verbose=False, **kwargs):
     """
     Fit the edges into street polygons and replace the width accordingly.
 
@@ -119,5 +121,6 @@ def fit_edges(G, street_polygons_gdf):
     """
 
     for uvk, data in G.edges.items():
-        #print(uvk)
-        fit_edge(G, *uvk, street_polygons_gdf)
+        if verbose:
+            print(uvk)
+        fit_edge(G, *uvk, street_polygons_gdf, **kwargs)

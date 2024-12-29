@@ -798,6 +798,8 @@ def is_backward_by_top_order_lanes(lanes):
 
 def add_pseudo_contraflow_cycling(G, lane_attribute=KEY_LANES_DESCRIPTION):
 
+    #TODO: Remove
+
     for uvk, data in G.edges.items():
 
         lanes = data[lane_attribute]
@@ -1014,8 +1016,6 @@ def _calculate_lane_cost(lane, length, slope, mode, direction=DIRECTION_FORWARD,
     float
     """
 
-    lane
-
     if include_tentative and lane.status != STATUS_FIXED:
         return np.Inf
 
@@ -1119,7 +1119,7 @@ def space_allocation_from_string(sa_string):
     SpaceAllocation
     """
 
-    if sa_string in [None, '', 'nan']:
+    if sa_string in [None, '', 'nan', 'None', '[None]']:
         return
 
     lane_strings = sa_string.split(' | ')

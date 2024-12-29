@@ -49,7 +49,8 @@ LANETYPE_PARKING_PARALLEL = 'R'     # On-street parking
 LANETYPE_PARKING_PERPENDICULAR = 'N'    # On-street parking
 LANETYPE_PARKING_DIAGONAL = 'D'     # On-street parking
 LANETYPE_BICYCLE_PARKING = 'B'      # Bicycle parking
-LANETYPE_NON_TRAFFIC = 'Z'          # No traffic, e.g., greenery or community spaces
+LANETYPE_NON_TRAFFIC = 'Z'          # No traffic
+LANETYPE_GREEN = 'E'                # Greenery
 
 PARALLEL_PARKING_CAR_LENGTH = 6
 BICYCLE_WIDTH_IN_RACK = 0.7
@@ -177,6 +178,11 @@ LANE_TYPES = {
         {'width': 1, 'order': 9, 'cycling_vod': 0, 'modes': [MODE_NON_TRAFFIC]},
     LANETYPE_NON_TRAFFIC + DIRECTION_BACKWARD:
         {'width': 1, 'order': 9, 'cycling_vod': 0, 'modes': [MODE_NON_TRAFFIC]},
+
+    LANETYPE_GREEN + DIRECTION_FORWARD:
+        {'width': 1, 'order': 10, 'cycling_vod': 0, 'modes': [MODE_NON_TRAFFIC]},
+    LANETYPE_GREEN + DIRECTION_BACKWARD:
+        {'width': 1, 'order': 10, 'cycling_vod': 0, 'modes': [MODE_NON_TRAFFIC]},
 
 }
 

@@ -195,3 +195,7 @@ def merge_dicts(dicts, ignored_values=(None, '', [], '[]')):
         d = {k: v for k, v in d.items() if not any(v is val for val in ignored_values)}
         merged_dict.update(d)
     return merged_dict
+
+
+def is_in_list(obj, lst):
+    return any(obj is item for item in lst)

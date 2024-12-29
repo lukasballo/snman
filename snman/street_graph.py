@@ -366,12 +366,24 @@ def reverse_edge(
         if allocation is not None:
             allocation.reverse_allocation()
 
-    # TODO: auto identify attributes to be reversed based on parts of their name, e.g, '>'/'<', or 'forward'/'backward'
-    # reverse sensors
+
+    # swap backward and forward attributes
+    data_original = copy.deepcopy(data)
+    for k, val in data_original.items():
+        if k.endswith('_forward'):
+            key_without_direction = k[:-8]
+            data[f'{key_without_direction}_backward'] = val
+        if k.endswith('_backward'):
+            key_without_direction = k[:-9]
+            data[f'{key_without_direction}_forward'] = val
+            
+
+    """
     sensors_forward = data.get('sensors_forward', [])
     sensors_backward = data.get('sensors_backward', [])
     data['sensors_forward'] = sensors_backward
     data['sensors_backward'] = sensors_forward
+    """
 
     # reverse geometry
     if data.get('geometry') and data.get('geometry') != shapely.ops.LineString():
@@ -480,7 +492,7 @@ def add_pseudo_cycling_lanes(G, lanes_description=KEY_LANES_DESCRIPTION):
             cycling_cost = calculate_edge_cost(G, *uvk, direction, MODE_CYCLING, lanes_description=lanes_description)
 
             if cycling_cost == np.Inf:
-                lanes.append(LANETYPE_CYCLING_PSEUDO + direction)
+                lanes.append(space_allocation.Lane(LANETYPE_CYCLING_PSEUDO, DIRECTION_FORWARD))
 
 
 def clone(G, edges=True):

@@ -4,6 +4,28 @@ from . import osmnx_customized as oxc
 from . import utils
 
 
+def match_points_to_nodes(points_gdf, G):
+    nodes = oxc.nearest_nodes(
+        G,
+        list(map(lambda geom: geom.x, points_gdf.geometry)),
+        list(map(lambda geom: geom.y, points_gdf.geometry)),
+        return_dist=True
+    )
+    points_gdf['node'] = nodes[0]
+    points_gdf['point_to_node_dist'] = nodes[1]
+    return points_gdf
+
+
+def match_point_to_node(point, G):
+    nodes = oxc.nearest_nodes(
+        G,
+        [point.x],
+        [point.y],
+        return_dist=False
+    )
+    return nodes[0]
+
+
 def weak_neighbors(G, node):
     """
     Returns neighbors of a node considering both incoming and outcoming edges

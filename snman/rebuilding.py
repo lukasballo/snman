@@ -3,6 +3,7 @@ import networkx as nx
 import numpy as np
 import geopandas as gpd
 from numpy.f2py.auxfuncs import throw_error
+import shapely as shp
 
 from . import space_allocation, hierarchy, street_graph, graph, io, merge_edges, lane_graph, access_graph, _errors, utils
 from .access_graph import effect_of_parking_removal_on_underassignment
@@ -39,6 +40,13 @@ def multi_set_needed_node_access(
     for mode in modes:
 
         H = copy.deepcopy(G)
+
+        for i, data in G.nodes.items():
+            # initialize
+            data['needs_access_by_' + mode] = False
+            if data.get('forced_needs_access_by_' + mode, False):
+                data['needs_access_by_' + mode] = True
+
         if method == 'maintain_access_to_nodes':
             H = street_graph.filter_lanes_by_modes(H, {mode}, lane_description_key=source_lanes_attribute)
 
@@ -52,7 +60,9 @@ def multi_set_needed_node_access(
             pass
 
         for i, data in H.nodes.items():
-            G.nodes[i]['needs_access_by_' + mode] = True
+            if G.nodes[i].get('forced_needs_access_by_' + mode, None) is None:
+                G.nodes[i]['needs_access_by_' + mode] = True
+
 
 
 def multi_set_given_lanes(
@@ -60,6 +70,7 @@ def multi_set_given_lanes(
         source_lanes_attribute=KEY_LANES_DESCRIPTION,
         given_lanes_attribute=KEY_GIVEN_LANES_DESCRIPTION,
         forced_given_lanes_attribute=KEY_FORCED_GIVEN_LANES_DESCRIPTION,
+        lanetypes_to_keep_despite_forced_allocation=None,
         public_transit_mode='mandatory_like_existing',
         parking_mode='mandatory_like_existing',
         bicycle_parking_mode='mandatory_like_existing',
@@ -130,6 +141,12 @@ def multi_set_given_lanes(
         # transfer forced given lanes if they are defined
         elif type(data.get(forced_given_lanes_attribute)) == space_allocation.SpaceAllocation:
             target_lanes = data.get(forced_given_lanes_attribute)
+
+            # keep selected lane types
+            if lanetypes_to_keep_despite_forced_allocation is not None:
+                for lane in copy.deepcopy(source_lanes):
+                    if lane.lanetype in lanetypes_to_keep_despite_forced_allocation:
+                        target_lanes.append(lane)
 
         else:
             # -- Add dedicated public transit lanes --
@@ -241,7 +258,6 @@ def multi_set_given_lanes(
                         factor = 1
 
                     # Bike lane widths are set to a small value to avoid removing substandard infrastructure
-                    # TODO: Make the bike lane widths user-defined
                     target_lanes += [
                         space_allocation.Lane(
                             LANETYPE_CYCLING_LANE, DIRECTION_BACKWARD,
@@ -327,6 +343,10 @@ def multi_set_given_lanes(
                     lane.status = STATUS_FIXED
                     target_lanes.append(lane)
 
+            if data.get('hierarchy') == hierarchy.LOCAL_ROAD:
+                target_lanes.append(
+                    space_allocation.Lane(LANETYPE_GREEN, DIRECTION_FORWARD, status=STATUS_BY_NEED, width=1.5)
+                )
 
             # reorder the lanes to match a convention
             seed_side = space_allocation.assign_seed_side(data['geometry'])
@@ -900,13 +920,24 @@ def _remove_cycling_lanes(
             data['_after_excess_width_m'] = width_after - width_before
 
 
-        #print('calculate cost inrease on removal')
+        #print('calculate cost increase on removal')
         # calculate cost increase on removal for each link
         # at first, do it for all edges but then only for those uv pairs where something changed
         for uvk, data in L.edges.items():
+            u, v, k = uvk
             if (iteration_step == 1 or uvk[0:2] == uv_changed or uvk[1::-1] == uv_changed)\
                     and data['lane'].lanetype == LANETYPE_CYCLING_LANE:
                 data['_cost_increase_by_removal'] = graph.cost_increase_by_edge_removal(L, *uvk, 'cost_cycling')
+                G_data = G.edges[(data['u_G'], data['v_G'], data['k_G'])]
+                grade = G_data.get('grade', 0)
+                if (
+                        (u == data['u_G'] and v == data['v_G'] and grade<0)
+                        or (v == data['u_G'] and u == data['v_G'] and grade>0)
+                ):
+                    # declining cycling lane, reduce the cost increase by removal a little bit
+                    # this way, it will be removed first before an inclining cycling lane
+                    data['_cost_increase_by_removal'] -= 1
+
 
         # create a list of unfixed edges, these are removal candidates
         removal_candidates_cycling = list(filter(
@@ -1210,6 +1241,9 @@ def multi_rebuild_region(
         car_access_needs=None,
         replace_removed_car_lanes_with=None,
         bicycle_access_needs=None,
+        remove_isolated_cycling_lanes=None,
+        green_space_needs=None,
+        green_focus_areas=None,
         max_cycling_lane_width=np.inf,
         car_parking_radius=300,
         car_parking_supply_factor=1,
@@ -1218,6 +1252,10 @@ def multi_rebuild_region(
         bicycle_parking_radius=50,
         bicycle_parking_supply_factor=1,
         replace_removed_bicycle_parking_with=None,
+        bicycle_parking_perimeters=None,
+        green_space_supply_factor=1,
+        green_space_radius=50,
+        replace_removed_green_space_with=None,
         gravity_iterations=15,
         remove_car_lanes_mode=None,
         fill_out_with_non_traffic=True,
@@ -1326,6 +1364,17 @@ def multi_rebuild_region(
             **region_settings
         )
 
+    # remove any bicycle parking outside of bicycle parking perimeters
+    if bicycle_parking_perimeters is not None:
+        all_perimeters = bicycle_parking_perimeters.unary_union
+        for uvk, data in copy.deepcopy(L.edges.items()):
+            if (
+                    data['lane'].lanetype == LANETYPE_BICYCLE_PARKING
+                    and data['lane'].status != STATUS_FIXED
+                    and not data['geometry'].within(all_perimeters)
+            ):
+                L.remove_edge(*uvk)
+
     if bicycle_access_needs is not None:
         bicycle_access_needs_clipped = gpd.clip(bicycle_access_needs, polygon)
         bicycle_access_needs_clipped['parking_spots_needed'] = bicycle_access_needs_clipped['parking_spots_needed'] * bicycle_parking_supply_factor
@@ -1337,7 +1386,6 @@ def multi_rebuild_region(
     else:
         B = None
 
-    # Given lanes
     if save_steps_path:
         io.export_HLA(save_steps_path, '1b', H=H, L=L, A=A, B=B, scaling_factor=save_steps_scaling_factor)
 
@@ -1352,6 +1400,48 @@ def multi_rebuild_region(
             ** region_settings
         )
 
+    # remove any green space outside of green space needs areas
+    if green_focus_areas is not None:
+        all_perimeters = green_focus_areas.unary_union
+        for uvk, data in copy.deepcopy(L.edges.items()):
+            if data['lane'].lanetype == LANETYPE_GREEN and not data['geometry'].within(all_perimeters):
+                L.remove_edge(*uvk)
+
+    if green_space_needs is not None:
+        green_space_needs_clipped = gpd.clip(green_space_needs, polygon)
+        if len(green_space_needs_clipped) > 0:
+            green_space_needs_clipped['parking_spots_needed'] = green_space_needs_clipped['parking_spots_needed'] * green_space_supply_factor
+            C = access_graph.create_access_graph(
+                L, green_space_needs_clipped, radius=green_space_radius,
+                lanetype=LANETYPE_GREEN, vehicle_length=1
+            )
+            access_graph.gravity_model(C, iterations=gravity_iterations)
+        else:
+            C = None
+    else:
+        C = None
+
+    # Given lanes
+    if save_steps_path:
+        io.export_HLA(save_steps_path, '1c', H=H, L=L, A=A, B=B, C=C, scaling_factor=save_steps_scaling_factor)
+
+    if C is not None:
+        print('REMOVE GREEN SPACES')
+        _remove_parking(
+            L, None, H, 'width', C,
+            lanetype=LANETYPE_GREEN,
+            gravity_iterations=gravity_iterations,
+            verbose=verbose,
+            replace_removed_lane_with=replace_removed_green_space_with,
+            ** region_settings
+        )
+    else:
+        # if no green spaces access graph C is provided, we delete all green spaces with status by need
+        print('REMOVE ALL GREEN SPACES')
+        for uvk, data in copy.deepcopy(L.edges.items()):
+            if data['lane'].lanetype == LANETYPE_GREEN and data['lane'].status == STATUS_BY_NEED:
+                L.remove_edge(*uvk)
+
     # determine which nodes must be accessible by car, e.g., due to parking lanes
     M = copy.deepcopy(L)
     for uvk, data in L.edges.items():
@@ -1364,7 +1454,7 @@ def multi_rebuild_region(
     graph.remove_isolated_nodes(M)
 
     for i, data in L.nodes.items():
-        data['needs_access_by_private_cars'] = M.has_node(i)
+        data['needs_access_by_private_cars'] = M.has_node(i) or data.get('forced_needs_access_by_private_cars', False)
 
     if save_steps_path:
         io.export_HLA(save_steps_path, '2', L=L, A=A, B=B, scaling_factor=save_steps_scaling_factor)
@@ -1386,12 +1476,14 @@ def multi_rebuild_region(
     print('MERGE TRANSIT AND CAR LANES')
     _merge_transit_with_car_lanes(L, None, H, 'width', verbose=True)
     if save_steps_path:
-        io.export_HLA(save_steps_path, '5', H=H, L=L, A=A, B=B, scaling_factor=save_steps_scaling_factor)
+        io.export_HLA(save_steps_path, '4', H=H, L=L, A=A, B=B, scaling_factor=save_steps_scaling_factor)
 
     print('REMOVE CYCLING LANES')
     _remove_cycling_lanes(L, None, H, 'width', verbose=True)
+    if remove_isolated_cycling_lanes is True:
+        lane_graph.remove_dangling_lanes(L, lanetype=LANETYPE_CYCLING_LANE)
     if save_steps_path:
-        io.export_HLA(save_steps_path, '4', H=H, L=L, A=A, B=B, scaling_factor=save_steps_scaling_factor)
+        io.export_HLA(save_steps_path, '5', H=H, L=L, A=A, B=B, scaling_factor=save_steps_scaling_factor)
 
     print('REMOVE NON-TRAFFIC LANES')
     _remove_non_traffic_lanes(L, None, H, 'width', verbose=True)
@@ -1420,8 +1512,12 @@ def multi_rebuild_region(
             only_too_narrow=True,
             verbose=True
         )
-    # if not possible, widen all other lanes proportionally
-    _adjust_width_of_lanes(L, None, H, 'width', verbose=True)
+    # if not possible, adjust all other lanes proportionally, except parking
+    _adjust_width_of_lanes(L, None, H, 'width', verbose=True, lanetypes={
+        LANETYPE_DEDICATED_PT, LANETYPE_MOTORIZED,
+        LANETYPE_CYCLING_TRACK, LANETYPE_CYCLING_LANE, LANETYPE_FOOT_CYCLING_MIXED,
+        LANETYPE_NON_TRAFFIC
+    })
 
     street_graph.lane_graph_to_street_graph(
         H, L,

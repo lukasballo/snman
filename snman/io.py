@@ -734,23 +734,24 @@ def export_lane_geometries(L, path_edges, path_nodes, scaling=1, include_opposit
                 offset = data['horizontal_position_scaled']
             else:
                 offset = -data['horizontal_position_scaled']
-            try:
-                data['geometry'] = data['geometry'].offset_curve(offset)
+            if -np.inf < offset and offset < np.inf:
+                try:
+                    data['geometry'] = data['geometry'].offset_curve(offset)
 
-                # In older geos versions, the linestring gets reversed when the offset is negative,
-                # see here: https://shapely.readthedocs.io/en/stable/reference/shapely.offset_curve.html
-                # In that case, we have to reverse it back:
-                if offset < 0 and shapely.geos_version < (3,11,0):
-                    data['geometry'] = shapely.reverse(data['geometry'])
+                    # In older geos versions, the linestring gets reversed when the offset is negative,
+                    # see here: https://shapely.readthedocs.io/en/stable/reference/shapely.offset_curve.html
+                    # In that case, we have to reverse it back:
+                    if offset < 0 and shapely.geos_version < (3,11,0):
+                        data['geometry'] = shapely.reverse(data['geometry'])
 
-            except shapely.errors.GEOSException:
-                print(uvk, 'geometry offset failed')
+                except shapely.errors.GEOSException:
+                    print(uvk, 'geometry offset failed')
 
 
     export_lane_graph(M, path_edges, path_nodes, crs=crs)
 
 
-def export_HLA(path, step, H=None, L=None, A=None, B=None, scaling_factor=1):
+def export_HLA(path, step, H=None, L=None, A=None, B=None, C=None, scaling_factor=1):
     if H is not None:
         # Export street graph
         export_street_graph(
@@ -784,6 +785,16 @@ def export_HLA(path, step, H=None, L=None, A=None, B=None, scaling_factor=1):
             B,
             os.path.join(path, f'{step}_B_edges.gpkg'),
             os.path.join(path, f'{step}_B_nodes.gpkg'),
+            reset_index=True,
+            stringify_attributes=['osmid', 'u', 'v', 'has_parking_spots']
+        )
+
+    if C is not None:
+        # Save graph
+        export_graph(
+            C,
+            os.path.join(path, f'{step}_C_edges.gpkg'),
+            os.path.join(path, f'{step}_C_nodes.gpkg'),
             reset_index=True,
             stringify_attributes=['osmid', 'u', 'v', 'has_parking_spots']
         )
