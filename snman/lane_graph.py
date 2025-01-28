@@ -477,6 +477,7 @@ def remove_dangling_lanes_at_node(L, n, lanetype='L', recursive=False):
     # check whether this is a degree=2 node in a street graph
     if len(get_all_neighbors(L, n)) != 2:
         return
+    print(n, len(get_all_neighbors(L, n)))
 
     in_nodes, out_nodes = get_all_neighbors(L, n, lanetype=lanetype, separate_by_direction=True)
     all_nodes = get_all_neighbors(L, n, lanetype=lanetype)
@@ -484,16 +485,33 @@ def remove_dangling_lanes_at_node(L, n, lanetype='L', recursive=False):
     if len(all_nodes_M) < 2:
         return
 
+    print(len(in_nodes), len(out_nodes), len(all_nodes), len(all_nodes_M))
     if len(in_nodes) != len(out_nodes) or len(all_nodes) == 1:
         all_edges = get_all_neighbor_edges(L, n, lanetype=lanetype)
+        in_edges, out_edges = get_all_neighbor_edges(L, n, lanetype=lanetype, separate_by_direction=True)
 
         # do nothing if the road hierarchy changes at this node
         edge_osm_highways = {edge[3].get('osm_highway') for edge in all_edges}
         if len(edge_osm_highways) > 1:
             return
 
-        for e in all_edges:
-            L.remove_edge(*e[0:3])
+        #for e in all_edges:
+        #    print('del', *e[0:3])
+        #    L.remove_edge(*e[0:3])
+
+        for e in in_edges:
+            # for each in_edge, check whether there is an out_node with a different n than the edge's u
+            print('in_node', e[0], out_nodes)
+            if len(out_nodes.difference({e[0]})) == 0:
+                print('del', *e[0:3])
+                L.remove_edge(*e[0:3])
+
+        for e in out_edges:
+            # for each out_edge, check whether there is an in_node with a different n than the edge's v
+            print('out_node', e[1], in_nodes)
+            if len(in_nodes.difference({e[1]})) == 0:
+                print('del', *e[0:3])
+                L.remove_edge(*e[0:3])
 
         if recursive:
             for n in all_nodes:

@@ -27,7 +27,9 @@ def metrics_for_measurement_regions_and_synpop(
     if not utils.is_in_list(None, [L, pois]):
         synpop['mean_cost'] = synpop['node'].apply(
             lambda node: detours.detour_metrics_for_origin(
-                L, node, pois['node'], weight=f'cost_{mode}'
+                L, node, pois['node'], weight=f'cost_{mode}',
+                include_forward_direction=True,
+                include_opposite_direction=True
             )['mean_cost']
         )
 
@@ -47,7 +49,7 @@ def metrics_for_measurement_regions_and_synpop(
         measurement_regions
         .reset_index()
         .sjoin(synpop, predicate='intersects', how='left')
-        .groupby('NAME')
+        .groupby('name')
         .agg(**agg)
     )
 
@@ -67,14 +69,14 @@ def metrics_for_measurement_regions_and_lanes(
     measurement_regions_lanes = (
         measurement_regions
         .reset_index()
-        .sjoin(lanes, predicate='intersects', how='left')
-        .groupby(['NAME', 'lanetype'])
+        .sjoin(lanes, predicate='contains', how='left')
+        .groupby(['name', 'lanetype'])
         .agg(
             lane_area=('lane_area', 'sum')
         )
-        .pivot_table(index='NAME', columns='lanetype', values='lane_area')
+        .pivot_table(index='name', columns='lanetype', values='lane_area')
         .reset_index()
-        .set_index('NAME')
+        .set_index('name')
     )
 
     # add a sum of all lane areas
@@ -92,14 +94,14 @@ def metrics_for_measurement_regions_and_offstreet_parking(
         measurement_regions
         .reset_index()
         .sjoin(offstreet_parking, predicate='intersects', how='left')
-        .groupby(['NAME', 'type'])
+        .groupby(['name', 'type'])
         .agg(
             car_parking=('car_parking', 'sum'),
             bicycle_parking=('bicycle_parking', 'sum')
         )
-        .pivot_table(index='NAME', columns='type', values=['car_parking', 'bicycle_parking'])
+        .pivot_table(index='name', columns='type', values=['car_parking', 'bicycle_parking'])
         .reset_index()
-        .set_index('NAME')
+        .set_index('name')
     )
 
     measurement_regions_parking.columns = [

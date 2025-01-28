@@ -100,7 +100,12 @@ def shortest_paths(L, uv_pairs, weight='cost_private_cars', include_geometry=Tru
         return pd.DataFrame(paths)
 
 
-def detour_metrics_for_origin(L, origin, destinations, weight='cost_private_cars', include_geometry=False, crs=2056):
+def detour_metrics_for_origin(
+        L, origin, destinations, weight='cost_private_cars',
+        include_forward_direction=True,
+        include_opposite_direction=False,
+        include_geometry=False, crs=2056
+):
     """
     Calculates detour metrics for a given origin.
 
@@ -116,12 +121,32 @@ def detour_metrics_for_origin(L, origin, destinations, weight='cost_private_cars
     -------
 
     """
-    combinations = list(it.product(
-        [origin],
-        destinations
-    ))
-    #print(combinations)
-    paths = shortest_paths(L, combinations, weight=weight, include_geometry=include_geometry, crs=crs)
+
+    paths = []
+
+    if include_forward_direction:
+        combinations = list(it.product(
+            [origin],
+            destinations
+        ))
+        paths.append(
+            shortest_paths(
+                L, combinations, weight=weight, include_geometry=include_geometry, crs=crs
+            )
+        )
+
+    if include_opposite_direction:
+        combinations_opposite_dir = list(it.product(
+            destinations,
+            [origin]
+        ))
+        paths.append(
+            shortest_paths(
+                L, combinations_opposite_dir, weight=weight, include_geometry=include_geometry, crs=crs
+            )
+        )
+
+    paths = pd.concat(paths, ignore_index=True)
 
     agg = {
         'mean_cost': ('total_cost', 'mean'),
@@ -129,11 +154,23 @@ def detour_metrics_for_origin(L, origin, destinations, weight='cost_private_cars
     }
 
     if include_geometry:
+        paths = gpd.GeoDataFrame(paths, geometry='geometry', crs=crs)
         agg['geometry'] = ('geometry', list)
 
-    origin_metrics = paths.groupby('u').agg(**agg)
+    origin_metrics = paths.groupby('weight').agg(**agg)
+
+    def flatten_geoms(geometries):
+        flattened = []
+        for geom in geometries:
+            if isinstance(geom, shp.MultiLineString):
+                flattened.extend(geom.geoms)
+            elif isinstance(geom, shp.LineString):
+                flattened.append(geom)
+        return flattened
 
     if include_geometry:
-        origin_metrics['geometry'] = origin_metrics['geometry'].apply(lambda geom: shp.MultiLineString(geom))
+        origin_metrics['geometry'] = origin_metrics['geometry'].apply(
+            lambda geom: shp.MultiLineString(flatten_geoms(geom))
+        )
 
     return origin_metrics.iloc[0]

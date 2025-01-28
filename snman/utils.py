@@ -174,7 +174,11 @@ def get_nth_element_of_list(my_list, n):
         return None
 
 
-def merge_dicts(dicts, ignored_values=(None, '', [], '[]')):
+def isnan(val):
+    return type(val) == float and np.isnan(val)
+
+
+def merge_dicts(dicts, ignored_values=(None, '', [], '[]', np.nan, 'nan')):
     """
     Merges a list of dictionaries using the *update()* method, while ignoring a list of values
 
@@ -192,7 +196,10 @@ def merge_dicts(dicts, ignored_values=(None, '', [], '[]')):
 
     merged_dict = {}
     for d in dicts:
-        d = {k: v for k, v in d.items() if not any(v is val for val in ignored_values)}
+        d = {
+            k: v for k, v in d.items()
+            if not any(v is val or isnan(v) for val in ignored_values)
+        }
         merged_dict.update(d)
     return merged_dict
 

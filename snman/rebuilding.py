@@ -73,9 +73,11 @@ def multi_set_given_lanes(
         lanetypes_to_keep_despite_forced_allocation=None,
         public_transit_mode='mandatory_like_existing',
         parking_mode='mandatory_like_existing',
+        parking_mode_from_edge_attribute='parking_mode',
         bicycle_parking_mode='mandatory_like_existing',
         cycling_infrastructure_mode='optional',
         cycling_lane_width=0.9,
+        cycling_lane_width_from_edge_attribute='cycling_lane_width',
         motorized_traffic_on_all_streets=False,
         motorized_traffic_in_both_directions=False,
         motorized_traffic_road_hierarchies=(hierarchy.LOCAL_ROAD, hierarchy.MAIN_ROAD, hierarchy.HIGHWAY, hierarchy.SERVICE),
@@ -83,6 +85,8 @@ def multi_set_given_lanes(
         hierarchies_with_cycling_lanes=(hierarchy.LOCAL_ROAD, hierarchy.MAIN_ROAD),
         hierarchies_to_fix=(hierarchy.PATHWAY),
         non_traffic_mode='mandatory_like_existing',
+        green_mode='none',
+        replace_removed_car_parking_with=None,
         **other_settings
 ):
 
@@ -123,7 +127,16 @@ def multi_set_given_lanes(
 
     """
 
+    default_cycling_lane_width = cycling_lane_width
+    default_parking_mode = parking_mode
+
     for uvk, data in G.edges.items():
+
+        if cycling_lane_width_from_edge_attribute is not None:
+            cycling_lane_width = data.get(cycling_lane_width_from_edge_attribute, default_cycling_lane_width)
+
+        if parking_mode_from_edge_attribute is not None:
+            parking_mode = data.get(parking_mode_from_edge_attribute, default_parking_mode)
 
         edge_hierarchy = data.get('hierarchy')
         normal_lane_width = normal_lane_width_by_hierarchy.get(
@@ -276,8 +289,15 @@ def multi_set_given_lanes(
 
             # -- Add parking --
             if 1:
-                if parking_mode == 'none':
-                    pass
+                if parking_mode in ['none', 'none_without_replacement']:
+                    existing_parking_lanes = space_allocation.filter_lanes_by_modes(
+                        source_lanes, {MODE_CAR_PARKING}, operator='exact'
+                    )
+                    if parking_mode != 'none_without_replacement':
+                        for lane in existing_parking_lanes:
+                            target_lanes.append(
+                                copy.deepcopy(replace_removed_car_parking_with)
+                            )
                 elif parking_mode in ['mandatory_like_existing', 'optional_like_existing', 'existing_by_need']:
                     if parking_mode == 'mandatory_like_existing':
                         status = STATUS_FIXED
@@ -344,9 +364,10 @@ def multi_set_given_lanes(
                     target_lanes.append(lane)
 
             if data.get('hierarchy') == hierarchy.LOCAL_ROAD:
-                target_lanes.append(
-                    space_allocation.Lane(LANETYPE_GREEN, DIRECTION_FORWARD, status=STATUS_BY_NEED, width=1.5)
-                )
+                if green_mode == 'by_need':
+                    target_lanes.append(
+                        space_allocation.Lane(LANETYPE_GREEN, DIRECTION_FORWARD, status=STATUS_BY_NEED, width=2.0)
+                    )
 
             # reorder the lanes to match a convention
             seed_side = space_allocation.assign_seed_side(data['geometry'])
@@ -591,7 +612,7 @@ def _remove_car_lanes(
             ])
 
             n_nodes = len(M.nodes)
-            k = int(n_nodes / 10) if n_nodes > 300 else n_nodes
+            k = int(n_nodes / 5) if n_nodes > 100 else n_nodes
             bc = nx.edge_betweenness_centrality(M, k, weight='cost_' + MODE_PRIVATE_CARS, seed=9)
             nx.set_edge_attributes(L, bc, 'bc_' + MODE_PRIVATE_CARS)
 
@@ -818,6 +839,7 @@ def _remove_parking(
         lanetype=LANETYPE_PARKING_PARALLEL,
         replace_removed_lane_with=None,
         verbose=False,
+        attraction_width_addition_key=None,
         **other_settings
 ):
     """
@@ -854,7 +876,10 @@ def _remove_parking(
         # sort by excess width
         removal_candidates_parking = sorted(
             removal_candidates_parking,
-            key=lambda x: G.edges[(x[1]['u_G'], x[1]['v_G'], x[1]['k_G'])]['_after_excess_width_m'],
+            key=lambda x: (
+                G.edges[(x[1]['u_G'], x[1]['v_G'], x[1]['k_G'])]['_after_excess_width_m']
+                + G.edges[(x[1]['u_G'], x[1]['v_G'], x[1]['k_G'])].get(attraction_width_addition_key, 0)
+            ),
         )
 
         removal_candidate_parking = removal_candidates_parking[-1]
@@ -963,7 +988,9 @@ def _remove_cycling_lanes(
                 # those on streets with the largest excess width
                 G.edges[(x[1]['u_G'], x[1]['v_G'], x[1]['k_G'])]['_after_excess_width_m'],
                 # within these, those with the lowest importance
-                x[1]['_cost_increase_by_removal'] * -1
+                x[1]['_cost_increase_by_removal'] * -1,
+                # those with the smallest width
+                x[1]['width'] * -1
             )
         )
 
@@ -1307,6 +1334,7 @@ def multi_rebuild_region(
     given_lanes_function(
         H,
         hierarchies_to_fix=hierarchies_to_fix,
+        replace_removed_car_parking_with=replace_removed_car_parking_with,
         **region_settings
     )
 
@@ -1327,7 +1355,11 @@ def multi_rebuild_region(
         merge_edges.merge_consecutive_edges(H, distinction_attributes={given_lanes_attribute}, min_width=True)
     """
 
-    L = lane_graph.create_lane_graph(H, lanes_attribute=given_lanes_attribute)
+    L = lane_graph.create_lane_graph(
+        H,
+        lanes_attribute=given_lanes_attribute,
+        cast_attributes={'remove_all_green' :'remove_all_green'}
+    )
 
     if len(L.edges) == 0:
         print('no edges')
@@ -1413,7 +1445,7 @@ def multi_rebuild_region(
             green_space_needs_clipped['parking_spots_needed'] = green_space_needs_clipped['parking_spots_needed'] * green_space_supply_factor
             C = access_graph.create_access_graph(
                 L, green_space_needs_clipped, radius=green_space_radius,
-                lanetype=LANETYPE_GREEN, vehicle_length=1
+                lanetype=LANETYPE_GREEN, vehicle_length=0.5
             )
             access_graph.gravity_model(C, iterations=gravity_iterations)
         else:
@@ -1425,6 +1457,15 @@ def multi_rebuild_region(
     if save_steps_path:
         io.export_HLA(save_steps_path, '1c', H=H, L=L, A=A, B=B, C=C, scaling_factor=save_steps_scaling_factor)
 
+    """
+    # remove green lanes on streets where all green should be removed
+    for uvk, data in copy.deepcopy(L.edges.items()):
+        if data.get('remove_all_green') is True and data['lane'].lanetype == LANETYPE_GREEN:
+            L.remove_edge(*uvk)
+    """
+
+    #x = copy.deepcopy(L)
+
     if C is not None:
         print('REMOVE GREEN SPACES')
         _remove_parking(
@@ -1433,6 +1474,7 @@ def multi_rebuild_region(
             gravity_iterations=gravity_iterations,
             verbose=verbose,
             replace_removed_lane_with=replace_removed_green_space_with,
+            attraction_width_addition_key='green_attraction_width_addition',
             ** region_settings
         )
     else:
@@ -1453,11 +1495,13 @@ def multi_rebuild_region(
 
     graph.remove_isolated_nodes(M)
 
+    #return (x, L)
+
     for i, data in L.nodes.items():
         data['needs_access_by_private_cars'] = M.has_node(i) or data.get('forced_needs_access_by_private_cars', False)
 
     if save_steps_path:
-        io.export_HLA(save_steps_path, '2', L=L, A=A, B=B, scaling_factor=save_steps_scaling_factor)
+        io.export_HLA(save_steps_path, '2', L=L, A=A, B=B, C=C, scaling_factor=save_steps_scaling_factor)
 
     print('REMOVE CAR LANES')
     _remove_car_lanes(

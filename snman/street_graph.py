@@ -492,7 +492,7 @@ def add_pseudo_cycling_lanes(G, lanes_description=KEY_LANES_DESCRIPTION):
             cycling_cost = calculate_edge_cost(G, *uvk, direction, MODE_CYCLING, lanes_description=lanes_description)
 
             if cycling_cost == np.Inf:
-                lanes.append(space_allocation.Lane(LANETYPE_CYCLING_PSEUDO, DIRECTION_FORWARD))
+                lanes.append(space_allocation.Lane(LANETYPE_CYCLING_PSEUDO, direction))
 
 
 def clone(G, edges=True):
