@@ -206,3 +206,15 @@ def merge_dicts(dicts, ignored_values=(None, '', [], '[]', np.nan, 'nan')):
 
 def is_in_list(obj, lst):
     return any(obj is item for item in lst)
+
+
+class IncrementingVariable:
+    def __init__(self, start=0):
+        self.value = start
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        self.value += 1
+        return self.value - 1  # Return the previous value before incrementing

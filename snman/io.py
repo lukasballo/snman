@@ -751,13 +751,14 @@ def export_lane_geometries(L, path_edges, path_nodes, scaling=1, include_opposit
     export_lane_graph(M, path_edges, path_nodes, crs=crs)
 
 
-def export_HLA(path, step, H=None, L=None, A=None, B=None, C=None, scaling_factor=1):
+def export_HLA(path, step, H=None, L=None, A=None, B=None, C=None, scaling_factor=1, export_crs=4326):
     if H is not None:
         # Export street graph
         export_street_graph(
             H,
             os.path.join(path, f'{step}_H_edges.gpkg'),
-            os.path.join(path, f'{step}_H_nodes.gpkg')
+            os.path.join(path, f'{step}_H_nodes.gpkg'),
+            crs=export_crs
         )
 
     if L is not None:
@@ -766,7 +767,8 @@ def export_HLA(path, step, H=None, L=None, A=None, B=None, C=None, scaling_facto
             L,
             os.path.join(path, f'{step}_L_edges.gpkg'),
             os.path.join(path, f'{step}_L_nodes.gpkg'),
-            scaling=scaling_factor
+            scaling=scaling_factor,
+            crs=export_crs
         )
 
     if A is not None:
@@ -776,7 +778,8 @@ def export_HLA(path, step, H=None, L=None, A=None, B=None, C=None, scaling_facto
             os.path.join(path, f'{step}_A_edges.gpkg'),
             os.path.join(path, f'{step}_A_nodes.gpkg'),
             reset_index=True,
-            stringify_attributes=['osmid', 'u', 'v', 'has_parking_spots']
+            stringify_attributes=['osmid', 'u', 'v', 'has_parking_spots'],
+            crs=export_crs
         )
 
     if B is not None:
@@ -786,7 +789,8 @@ def export_HLA(path, step, H=None, L=None, A=None, B=None, C=None, scaling_facto
             os.path.join(path, f'{step}_B_edges.gpkg'),
             os.path.join(path, f'{step}_B_nodes.gpkg'),
             reset_index=True,
-            stringify_attributes=['osmid', 'u', 'v', 'has_parking_spots']
+            stringify_attributes=['osmid', 'u', 'v', 'has_parking_spots'],
+            crs=export_crs
         )
 
     if C is not None:
@@ -796,7 +800,8 @@ def export_HLA(path, step, H=None, L=None, A=None, B=None, C=None, scaling_facto
             os.path.join(path, f'{step}_C_edges.gpkg'),
             os.path.join(path, f'{step}_C_nodes.gpkg'),
             reset_index=True,
-            stringify_attributes=['osmid', 'u', 'v', 'has_parking_spots']
+            stringify_attributes=['osmid', 'u', 'v', 'has_parking_spots'],
+            crs=export_crs
         )
 
 

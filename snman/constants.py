@@ -245,12 +245,12 @@ OSM_HIGHWAY_VALUES = {
     'secondary_link':   {'level': None},
     'tertiary':         {'level': None},
     'tertiary_link':    {'level': None},
-    'service':          {'level': None},
     'busway':           {'level': None},
     'unclassified':     {'level': None},
     'road':             {'level': None},
     'residential':      {'level': None},
     'living_street':    {'level': None},
+    'service':          {'level': None},
     'track':            {'level': None},
     'path':             {'level': None},
     'cycleway':         {'level': None},
@@ -284,9 +284,11 @@ OSM_TAGS = {
 OSM_FILTER = [
     # regular roads
     (
-        f'["highway"]["area"!~"yes"]["access"!~"private"]'
+        f'["highway"]["area"!~"yes"]'
+        #f'["highway"]["area"!~"yes"]["access"!~"private"]'
         f'["highway"!~"abandoned|bridleway|bus_guideway|corridor|elevator|'
-        f'escalator|planned|platform|proposed|raceway|construction|footway|pedestrian|steps|path|service"]'
+        f'escalator|planned|platform|proposed|raceway|construction|footway|pedestrian|steps|path"]'
+        #f'escalator|planned|platform|proposed|raceway|construction|footway|pedestrian|steps|path|service"]'
         f'["service"!~"alley|driveway|emergency_access|parking|parking_aisle|private"]'
         f'["access"!~"no"]'
     ),

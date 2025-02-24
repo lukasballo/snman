@@ -577,6 +577,7 @@ def _remove_car_lanes(
         mode='lowest_bc',
         stop_at_step=np.inf,
         replace_removed_lane_with=None,
+        incrementing_variable=utils.IncrementingVariable(),
         verbose=False
 ):
     """
@@ -707,6 +708,8 @@ def _remove_car_lanes(
 
             # mark as fixed
             L.edges[remove_edge_uvk]['lane'].status = STATUS_FIXED
+            # keep track of the order of fixation (for debugging and animations)
+            L.edges[remove_edge_uvk]['fixed_at_order'] = next(incrementing_variable)
 
             # if direction tbd
             if L.edges[remove_edge_uvk]['lane'].direction == DIRECTION_TBD:
@@ -840,6 +843,7 @@ def _remove_parking(
         replace_removed_lane_with=None,
         verbose=False,
         attraction_width_addition_key=None,
+        incrementing_variable=utils.IncrementingVariable(),
         **other_settings
 ):
     """
@@ -914,6 +918,7 @@ def _remove_parking(
 
         else:
             L.edges[remove_edge_uvk]['lane'].status = STATUS_FIXED
+            L.edges[remove_edge_uvk]['fixed_at_order'] = next(incrementing_variable)
 
             if verbose:
                 print('fixed', remove_edge_uvk)
@@ -922,6 +927,7 @@ def _remove_parking(
 def _remove_cycling_lanes(
         L, L_existing,
         G, width_attribute,
+        incrementing_variable=utils.IncrementingVariable(),
         verbose=False
 ):
     """
@@ -970,9 +976,9 @@ def _remove_cycling_lanes(
                 # is unfixed
                 edge[1]['lane'].status != STATUS_FIXED
                 # is a cycling lane
-                and edge[1]['lane'].lanetype == LANETYPE_CYCLING_LANE
+                and edge[1]['lane'].lanetype == LANETYPE_CYCLING_LANE,
                 # is part of a street that has excess width
-                and G.edges[(edge[1]['u_G'], edge[1]['v_G'], edge[1]['k_G'])]['_after_excess_width_m'] > 0,
+                #and G.edges[(edge[1]['u_G'], edge[1]['v_G'], edge[1]['k_G'])]['_after_excess_width_m'] > 0,
             L.edges.items()
         ))
 
@@ -1000,15 +1006,21 @@ def _remove_cycling_lanes(
         #print('strongly connected?')
         M = get_effective_subgraph(L, 'cost_cycling', 'needs_access_by_cycling')
         edges_disconnect_graph = check_if_edges_disconnect_graph(M, [remove_edge_uvk])
+        edge_exceeds_width = G.edges[(
+            removal_candidate_cycling[1]['u_G'],
+            removal_candidate_cycling[1]['v_G'],
+            removal_candidate_cycling[1]['k_G']
+        )]['_after_excess_width_m'] > 0
 
         #print('remove')
-        if not edges_disconnect_graph:
+        if (not edges_disconnect_graph) and edge_exceeds_width:
             L.remove_edge(*remove_edge_uvk)
             uv_changed = remove_edge_uvk[0:2]
             if verbose:
                 print('removed', remove_edge_uvk)
         else:
             L.edges[remove_edge_uvk]['lane'].status = STATUS_FIXED
+            L.edges[remove_edge_uvk]['fixed_at_order'] = next(incrementing_variable)
             if verbose:
                 print('fixed', remove_edge_uvk)
 
@@ -1293,6 +1305,8 @@ def multi_rebuild_region(
         verbose=False,
         save_steps_path=None,
         save_steps_scaling_factor=1,
+        incrementing_variable=utils.IncrementingVariable(),
+        export_crs=4326,
         **region_settings
 ):
     """
@@ -1346,7 +1360,7 @@ def multi_rebuild_region(
 
     L = lane_graph.create_lane_graph(H)
     if save_steps_path:
-        io.export_HLA(save_steps_path, '0', L=L, scaling_factor=save_steps_scaling_factor)
+        io.export_HLA(save_steps_path, '0', L=L, scaling_factor=save_steps_scaling_factor, export_crs=export_crs)
 
     """
     if not hierarchy.HIERARCHIES <= hierarchies_to_include:
@@ -1384,7 +1398,7 @@ def multi_rebuild_region(
 
     # Given lanes
     if save_steps_path:
-        io.export_HLA(save_steps_path, '1', H=H, L=L, A=A, scaling_factor=save_steps_scaling_factor)
+        io.export_HLA(save_steps_path, '1', H=H, L=L, A=A, scaling_factor=save_steps_scaling_factor, export_crs=export_crs)
 
     if car_access_needs is not None:
         print('REMOVE CAR PARKING')
@@ -1393,6 +1407,7 @@ def multi_rebuild_region(
             gravity_iterations=gravity_iterations,
             verbose=verbose,
             replace_removed_lane_with=replace_removed_car_parking_with,
+            incrementing_variable=incrementing_variable,
             **region_settings
         )
 
@@ -1419,7 +1434,7 @@ def multi_rebuild_region(
         B = None
 
     if save_steps_path:
-        io.export_HLA(save_steps_path, '1b', H=H, L=L, A=A, B=B, scaling_factor=save_steps_scaling_factor)
+        io.export_HLA(save_steps_path, '1b', H=H, L=L, A=A, B=B, scaling_factor=save_steps_scaling_factor, export_crs=export_crs)
 
     if bicycle_access_needs is not None:
         print('REMOVE BICYCLE PARKING')
@@ -1429,6 +1444,7 @@ def multi_rebuild_region(
             gravity_iterations=gravity_iterations,
             verbose=verbose,
             replace_removed_lane_with=replace_removed_bicycle_parking_with,
+            incrementing_variable=incrementing_variable,
             ** region_settings
         )
 
@@ -1455,7 +1471,7 @@ def multi_rebuild_region(
 
     # Given lanes
     if save_steps_path:
-        io.export_HLA(save_steps_path, '1c', H=H, L=L, A=A, B=B, C=C, scaling_factor=save_steps_scaling_factor)
+        io.export_HLA(save_steps_path, '1c', H=H, L=L, A=A, B=B, C=C, scaling_factor=save_steps_scaling_factor, export_crs=export_crs)
 
     """
     # remove green lanes on streets where all green should be removed
@@ -1475,6 +1491,7 @@ def multi_rebuild_region(
             verbose=verbose,
             replace_removed_lane_with=replace_removed_green_space_with,
             attraction_width_addition_key='green_attraction_width_addition',
+            incrementing_variable=incrementing_variable,
             ** region_settings
         )
     else:
@@ -1501,33 +1518,38 @@ def multi_rebuild_region(
         data['needs_access_by_private_cars'] = M.has_node(i) or data.get('forced_needs_access_by_private_cars', False)
 
     if save_steps_path:
-        io.export_HLA(save_steps_path, '2', L=L, A=A, B=B, C=C, scaling_factor=save_steps_scaling_factor)
+        io.export_HLA(save_steps_path, '2', L=L, A=A, B=B, C=C, scaling_factor=save_steps_scaling_factor, export_crs=export_crs)
 
     print('REMOVE CAR LANES')
     _remove_car_lanes(
         L, None, H, 'width', A, remove_car_lanes_mode,
         replace_removed_lane_with=replace_removed_car_lanes_with,
+        incrementing_variable=incrementing_variable,
         verbose=True
     )
     if save_steps_path:
-        io.export_HLA(save_steps_path, '3', H=H, L=L, A=A, B=B, scaling_factor=save_steps_scaling_factor)
+        io.export_HLA(save_steps_path, '3', H=H, L=L, A=A, B=B, scaling_factor=save_steps_scaling_factor, export_crs=export_crs)
     #if motorized_traffic_lane_mode == 'bidirectional_lanes':
     #    print('NARROW DOWN CAR LANES')
     #    _remove_car_lanes(L, None, H, 'width', A, remove_car_lanes_mode, verbose=True)
     #    if save_steps_path:
-    #        io.export_HLA(save_steps_path, '3a', H=H, L=L, A=A, scaling_factor=save_steps_scaling_factor)
+    #        io.export_HLA(save_steps_path, '3a', H=H, L=L, A=A, scaling_factor=save_steps_scaling_factor, export_crs=export_crs)
 
     print('MERGE TRANSIT AND CAR LANES')
     _merge_transit_with_car_lanes(L, None, H, 'width', verbose=True)
     if save_steps_path:
-        io.export_HLA(save_steps_path, '4', H=H, L=L, A=A, B=B, scaling_factor=save_steps_scaling_factor)
+        io.export_HLA(save_steps_path, '4', H=H, L=L, A=A, B=B, scaling_factor=save_steps_scaling_factor, export_crs=export_crs)
 
     print('REMOVE CYCLING LANES')
-    _remove_cycling_lanes(L, None, H, 'width', verbose=True)
+    _remove_cycling_lanes(
+        L, None, H, 'width',
+        incrementing_variable=incrementing_variable,
+        verbose=True
+    )
     if remove_isolated_cycling_lanes is True:
         lane_graph.remove_dangling_lanes(L, lanetype=LANETYPE_CYCLING_LANE)
     if save_steps_path:
-        io.export_HLA(save_steps_path, '5', H=H, L=L, A=A, B=B, scaling_factor=save_steps_scaling_factor)
+        io.export_HLA(save_steps_path, '5', H=H, L=L, A=A, B=B, scaling_factor=save_steps_scaling_factor, export_crs=export_crs)
 
     print('REMOVE NON-TRAFFIC LANES')
     _remove_non_traffic_lanes(L, None, H, 'width', verbose=True)
@@ -1539,7 +1561,7 @@ def multi_rebuild_region(
             filter=lambda lane: lane['lane'].lanetype == LANETYPE_CYCLING_LANE
         )
     if save_steps_path:
-        io.export_HLA(save_steps_path, '6', L=L, A=A, B=B, scaling_factor=save_steps_scaling_factor)
+        io.export_HLA(save_steps_path, '6', L=L, A=A, B=B, scaling_factor=save_steps_scaling_factor, export_crs=export_crs)
 
     print('ADJUST WIDTH OF LANES')
     # try wo widen cycling lanes
@@ -1569,7 +1591,7 @@ def multi_rebuild_region(
     )
 
     if save_steps_path:
-        io.export_HLA(save_steps_path, '7', H=H, L=L, A=A, B=B, scaling_factor=save_steps_scaling_factor)
+        io.export_HLA(save_steps_path, '7', H=H, L=L, A=A, B=B, scaling_factor=save_steps_scaling_factor, export_crs=export_crs)
 
     """
     if not hierarchy.HIERARCHIES <= hierarchies_to_include:
@@ -1579,7 +1601,7 @@ def multi_rebuild_region(
     """
 
     if save_steps_path:
-        io.export_HLA(save_steps_path, '8', H=H, L=L, A=A, B=B, scaling_factor=save_steps_scaling_factor)
+        io.export_HLA(save_steps_path, '8', H=H, L=L, A=A, B=B, scaling_factor=save_steps_scaling_factor, export_crs=export_crs)
 
     I = copy.deepcopy(H)
 
@@ -1606,6 +1628,7 @@ def multi_rebuild_regions(
         rebuilding_function=multi_rebuild_region,
         source_lanes_attribute=KEY_LANES_DESCRIPTION,
         target_lanes_attribute=KEY_LANES_DESCRIPTION_AFTER,
+        export_crs=4326,
         **kwargs
 ):
     """
@@ -1626,6 +1649,8 @@ def multi_rebuild_regions(
         additional arguments for the rebuilding_function
     """
 
+    incrementing_variable = utils.IncrementingVariable()
+
     # initialize the target lanes attribute as a copy of the given lanes
     nx.set_edge_attributes(
         G,
@@ -1643,6 +1668,8 @@ def multi_rebuild_regions(
         return rebuilding_function(
             G,
             region['geometry'],
+            incrementing_variable=incrementing_variable,
+            export_crs=export_crs,
             **region_settings
         )
 

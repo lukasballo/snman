@@ -61,6 +61,7 @@ def match_linestrings(
         remove_sidetrips=True,
         lanes_key = KEY_LANES_DESCRIPTION,
         modes = None,
+        hierarchies = None,
         verbose = False,
         _save_map = None,
         max_dist=200,
@@ -115,6 +116,12 @@ def match_linestrings(
     H = copy.deepcopy(G)
     if modes:
         street_graph.filter_lanes_by_modes(H, modes, lane_description_key=lanes_key)
+
+    # filter by hierarchy
+    if hierarchies is not None:
+        for uvk, data in copy.deepcopy(H.edges.items()):
+            if data.get('hierarchy') not in hierarchies:
+                H.remove_edge(*uvk)
 
     if _save_map:
         I = copy.deepcopy(H)
