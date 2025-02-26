@@ -1030,7 +1030,7 @@ def _calculate_lane_cost(lane, length, slope, mode, direction=DIRECTION_FORWARD,
         return np.Inf
 
     # apply the cycling cost factor if the mode is cycling
-    elif mode == MODE_CYCLING:
+    elif mode in [MODE_CYCLING, MODE_PEDELEC, MODE_S_PEDELEC]:
         # adjust the slope according to the direction
         if direction in {DIRECTION_FORWARD}:
             pass
@@ -1039,7 +1039,11 @@ def _calculate_lane_cost(lane, length, slope, mode, direction=DIRECTION_FORWARD,
         else:
             # cannot calculate cycling cost if direction is unknown
             slope = math.inf
-        return length * (1 + lane.get_cycling_vod_factor() + CYCLING_SLOPE_VOD(slope))
+        if mode == MODE_CYCLING:
+            slope_cost = CYCLING_SLOPE_VOD(slope)
+        else:
+            slope_cost = EBIKE_SLOPE_VOD(slope)
+        return length * (1 + lane.get_cycling_vod_factor() + slope_cost)
     # otherwise, return just the length
     else:
         return length
