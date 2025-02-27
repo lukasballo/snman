@@ -22,10 +22,7 @@ def calculate_behavioral_cost(
         car_cost_detour_factor=1.5
 ):
     """
-    Calculates individual generalized cost based on the personal properties and mode choice.
-    Based on mode choice model implemented in eqasim.
-
-    Returns a tuple of mode specific choice probabilities (dict) and the resulting behavioral travel time (float)
+    old mode choice model
     """
 
     U = {}
@@ -135,7 +132,9 @@ def calculate_behavioral_cost(
         C = {mode: np.inf for mode, U_mode in U.items()}
         C_weighted = np.inf
 
-    return P, C, C_weighted
+    C_logsum_exponent = np.sum([np.exp(v_ijm) for v_ijm in U.values()])
+
+    return P, C, C_weighted, C_logsum_exponent
 
 
 
@@ -158,7 +157,7 @@ def calculate_behavioral_cost_updated(
 ):
     """
     Calculates individual generalized cost based on the personal properties and mode choice.
-    Based on mode choice model implemented in eqasim.
+    Based on 2024-12 "E-bike City" Mode choice model, Meyer de Freitas et al.
 
     Returns a tuple of mode specific choice probabilities (dict) and the resulting behavioral travel time (float)
     """
@@ -339,7 +338,9 @@ def calculate_behavioral_cost_updated(
         C = {mode: np.inf for mode, U_mode in U.items()}
         C_weighted = np.inf
 
-    return P, C, C_weighted
+    C_logsum_exponent = np.sum([np.exp(v_ijm) for v_ijm in U.values()])
+
+    return P, C, C_weighted, C_logsum_exponent
 
 
 
@@ -718,3 +719,393 @@ def calculate_accessibility_for_statent_cell(
     # --------------------------------------------
 
     return accessibility
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def calculate_accessibility_for_statent_cell_logsum(
+        r5_transit_network,
+        G_modes,
+        L_modes,
+        statpop_with_statent_ids,
+        statent,
+        statent_id,
+        departure_time,
+        distance_limit=10000,
+        destinations_sample=1,
+        population_sample=1,
+        sum_accessibility_contributions=True,
+        cost_function_exponent=-0.7,
+        cycling_speed_kmh=15,
+        pedelec_speed_kmh=20,
+        s_pedelec_speed_kmh=24,
+        walking_speed_kmh=1.34*3.6,
+        access_egress_detour_factor=1.5,
+        min_travel_time=5*60,
+        min_euclidian_distance=100,
+        car_cost_detour_factor=1.5,
+        accessibility_beta=-0.7
+):
+    """
+    Calculates accessibility for every resident associated with a given cell in the statent dataset.
+    Using R5 for transit and networkx for other modes.
+
+    An updated, "proper" logsum definition.
+
+    Parameters
+    ----------
+    r5_transit_network: r5py.TransportNetwork
+        transport network without travel time adjustments
+    G_modes: dict
+        pre-filtered street graphs for cycling, foot, and private cars
+    L_modes: dict
+        pre-calculated street graphs for cycling, foot, and private cars
+    statpop_with_statent_ids: gpd.GeoDataFrame
+        statpop dataset, with the id's of closest statent cells
+    statent: gpd.GeoDataFrame
+        statent dataset
+    statent_id: int
+        which cell should be calculated, we can't calculate all cells at once due to memory constraints and because
+        r5 does not allow a cutoff distance
+    distance_limit: int
+        cutoff crowfly distance
+    min_travel_time: float
+        minimum travel time in seconds to avoid 0 travel times
+    min_euclidian_distance: float
+        minimum Euclidean distance in meters to avoid 0 distances
+
+
+    Returns
+    -------
+    gpd.GeoDataFrame
+    """
+
+    # --------------------------------------------
+
+    # filter statpop for residents within the given origin statent cell
+    statpop_filtered = statpop_with_statent_ids.query(f'statent_id == {statent_id}')
+    statpop_filtered = statpop_filtered.sample(frac=population_sample, random_state=0)
+    statpop_filtered
+
+    # --------------------------------------------
+
+    if len(statpop_filtered) == 0:
+        return
+
+    # --------------------------------------------
+
+    # make a light version of statpop
+    statpop_reduced = statpop_filtered.reset_index()[[
+        'record', 'age', 'sex', 'maritalstatus', 'residencepermit', 'residentpermit', 'statent_id', 'geometry'
+    ]]
+    statpop_reduced.set_index('record', inplace=True)
+    statpop_reduced
+
+    # --------------------------------------------
+
+    # filter statent for cells within a distance limit from the origin
+    origin = statent.set_index('id').geometry[statent_id]
+    origins = gpd.GeoDataFrame(
+        {
+            "id": [statent_id],
+            "geometry": [origin]
+        },
+        crs="EPSG:2056",
+    )
+    statent_filtered = statent[statent['geometry'].within(
+        origin.buffer(distance_limit)
+    )]
+    statent_filtered = gpd.GeoDataFrame(statent_filtered)
+    statent_filtered
+
+    # --------------------------------------------
+
+    # make a sample of statpop cells but include the origin cell in every case
+    statent_filtered = pd.concat([
+        statent_filtered[statent_filtered['id'] == statent_id],
+        statent_filtered[statent_filtered['id'] != statent_id].sample(frac=destinations_sample, random_state=0)
+    ])
+
+    # --------------------------------------------
+
+    # match statent points to lanegraph nodes
+    # TODO: do this only once
+
+    for mode in [MODE_PRIVATE_CARS, MODE_CYCLING, MODE_FOOT, MODE_PEDELEC, MODE_S_PEDELEC]:
+        # match statent points to nearest nodes
+        nodes = oxc.nearest_nodes(
+            L_modes[mode],
+            list(map(lambda geom: geom.x, statent_filtered.geometry)),
+            list(map(lambda geom: geom.y, statent_filtered.geometry)),
+            return_dist=True
+        )
+
+        statent_filtered[[f'closest_node_{mode}', f'egress_{mode}']] = list(zip(*nodes))
+
+    statent_filtered
+
+    # --------------------------------------------
+
+    tt_matrices = {}
+
+    # --------------------------------------------
+
+    # calculate transit travel time matrix using R5
+    tt_computer_transit = r5py.TravelTimeMatrixComputer(
+        r5_transit_network,
+        transport_modes=[r5py.TransportMode.TRANSIT],
+        origins=origins,
+        destinations=statent_filtered,
+        departure=departure_time,
+        snap_to_network=True
+    )
+    tt_matrices[MODE_TRANSIT] = tt_computer_transit.compute_travel_times()
+    tt_matrices[MODE_TRANSIT].rename(columns={
+        'travel_time': 'travel_time_transit',
+        'from_id': 'from_cell',
+        'to_id': 'to_cell'
+    }, inplace=True)
+    # convert from minutes to seconds
+    tt_matrices[MODE_TRANSIT]['travel_time_transit'] *= 60
+    tt_matrices[MODE_TRANSIT]['travel_time_egress_transit'] = 0
+
+    tt_matrices[MODE_TRANSIT]
+
+    # --------------------------------------------
+
+    # calculate shortest paths to all destinations in networkx
+    for mode in [MODE_PRIVATE_CARS, MODE_FOOT, MODE_CYCLING, MODE_PEDELEC, MODE_S_PEDELEC]:
+
+        print(mode)
+
+        origin_cell = statent_filtered[statent_filtered['id'] == statent_id]
+        origin_node = min(origin_cell[f'closest_node_{mode}'])
+        access_cost = min(origin_cell[f'egress_{mode}'])
+        print(origin_node, access_cost)
+
+        if mode == MODE_PRIVATE_CARS:
+            weight = 'matsim_tt_cars'
+        else:
+            weight = f'cost_{mode}'
+
+        # calculate cost to all other nodes
+        dijkstra_path_costs = nx.single_source_dijkstra_path_length(L_modes[mode], origin_node, weight=weight)
+
+        # convert the dijkstra path costs dict to a dataframe like from R5
+        tt_matrices[mode] = pd.DataFrame(list(dijkstra_path_costs.items()), columns=['to_node', f'path_length_{mode}'])
+        tt_matrices[mode]['from_node'] = origin_node
+
+    tt_matrices[MODE_PRIVATE_CARS]
+
+    # --------------------------------------------
+
+    # merge the tt matrix of transit on cell_ids
+    statent_filtered_2 = pd.merge(
+        statent_filtered, tt_matrices[MODE_TRANSIT],
+        left_on='id', right_on='to_cell', how='left'
+    )
+    statent_filtered_2.drop(columns=['from_cell', 'to_cell'], inplace=True)
+    statent_filtered_2[f'travel_time_total_{MODE_TRANSIT}'] = statent_filtered_2[f'travel_time_{MODE_TRANSIT}']
+    statent_filtered_2
+
+    # --------------------------------------------
+
+    # merge the other tt matrices on node ids
+    for mode in [MODE_PRIVATE_CARS, MODE_FOOT, MODE_CYCLING, MODE_PEDELEC, MODE_S_PEDELEC]:
+
+        # merge the travel time matrices with the statent dataset
+        # such that every destination has the cost of reaching it
+        statent_filtered_2 = pd.merge(
+            statent_filtered_2, tt_matrices[mode],
+            left_on=f'closest_node_{mode}', right_on='to_node', how='left'
+        )
+        statent_filtered_2.drop(columns=['from_node', 'to_node'], inplace=True)
+
+        origin_cell = statent_filtered[statent_filtered['id'] == statent_id]
+        access_cost = min(origin_cell[f'egress_{mode}'])
+
+        if mode == MODE_FOOT:
+            speed_factor = walking_speed_kmh / 3.6
+        elif mode == MODE_CYCLING:
+            speed_factor = cycling_speed_kmh / 3.6
+        elif mode == MODE_PEDELEC:
+            speed_factor = pedelec_speed_kmh / 3.6
+        elif mode == MODE_S_PEDELEC:
+            speed_factor = s_pedelec_speed_kmh / 3.6
+        else:
+            speed_factor = 1
+
+        # calculate total travel time by adding access and egress cost and considering speed factors
+        statent_filtered_2[f'travel_time_{mode}'] = (
+            (statent_filtered_2[f'path_length_{mode}'] / speed_factor)
+        )
+
+        statent_filtered_2[f'travel_time_access_egress_{mode}'] = (
+                + ((access_cost * access_egress_detour_factor) / (walking_speed_kmh / 3.6))
+                + ((statent_filtered_2[f'egress_{mode}'] * access_egress_detour_factor) / (walking_speed_kmh / 3.6))
+        )
+
+    statent_filtered_2
+
+    # --------------------------------------------
+
+    statent_filtered_2['from_cell'] = statent_id
+    statent_filtered_2
+
+    # --------------------------------------------
+
+    # add euclidean distance
+
+    origin_cell = statent_filtered[statent_filtered['id'] == statent_id]
+    origin_geometry = min(origin_cell.geometry)
+    statent_filtered_2['euclidean_distance'] = statent_filtered_2.apply(
+        lambda row: shp.distance(origin_geometry, row.geometry),
+        axis=1
+    )
+    statent_filtered_2
+
+    # --------------------------------------------
+
+    destinations_with_cost = pd.merge(
+        statpop_reduced.reset_index(),
+        statent_filtered_2.reset_index()[[
+            'id', 'VOLLZEITAEQ_TOTAL',
+            'euclidean_distance',
+            'travel_time_foot',
+            'travel_time_cycling',
+            'travel_time_pedelec',
+            'travel_time_s_pedelec',
+            'travel_time_transit',
+            'travel_time_private_cars',
+            'travel_time_access_egress_foot',
+            'travel_time_access_egress_cycling',
+            'travel_time_access_egress_pedelec',
+            'travel_time_access_egress_s_pedelec',
+            'travel_time_access_egress_private_cars',
+            'path_length_private_cars',
+            'path_length_cycling',
+            'path_length_pedelec',
+            'path_length_s_pedelec',
+            'path_length_foot',
+            'closest_node_private_cars',
+            'from_cell',
+            'geometry'
+        ]].rename(columns={'geometry': 'destination_geometry'}),
+        how='left', left_on='statent_id', right_on='from_cell')
+    destinations_with_cost
+
+    # --------------------------------------------
+
+    # ensure minimum travel time and euclidian distance
+    for mode in [MODE_CYCLING, MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_FOOT]:
+        destinations_with_cost[f'travel_time_{mode}'] = np.maximum(destinations_with_cost[f'travel_time_{mode}'],
+                                                                   min_travel_time)
+
+    destinations_with_cost['euclidean_distance'] = np.maximum(destinations_with_cost['euclidean_distance'],
+                                                              min_euclidian_distance)
+
+    # --------------------------------------------
+
+    destinations_with_cost[['choice_probabilities', 'cost', 'weighted_cost', 'logsum_exponent']] = destinations_with_cost.apply(
+        lambda row: calculate_behavioral_cost_updated(
+            **row[[
+                'euclidean_distance',
+                'travel_time_private_cars', 'travel_time_access_egress_private_cars', 'path_length_private_cars',
+                'travel_time_transit',
+                'travel_time_cycling', 'travel_time_access_egress_cycling', 'path_length_cycling',
+                'travel_time_pedelec', 'travel_time_access_egress_pedelec', 'path_length_pedelec',
+                'travel_time_s_pedelec', 'travel_time_access_egress_s_pedelec', 'path_length_s_pedelec',
+                'travel_time_foot', 'travel_time_access_egress_foot',
+                'age'
+            ]],
+            car_cost_detour_factor=car_cost_detour_factor
+        ),
+        axis=1,
+        result_type='expand'
+    )
+
+    # Here we get the utilities * -1
+    destinations_with_cost
+
+    # --------------------------------------------
+
+    destinations_with_cost = pd.concat([
+        destinations_with_cost,
+        pd.json_normalize(destinations_with_cost['choice_probabilities']).add_prefix('p_'),
+        pd.json_normalize(destinations_with_cost['cost']).add_prefix('c_'),
+    ],
+        axis=1
+    )
+
+    # calculate total accessibility contribution using cost function and destination utility
+    destinations_with_cost['logsum_exponent'] = (
+            destinations_with_cost['logsum_exponent']
+            * destinations_with_cost['VOLLZEITAEQ_TOTAL']
+    )
+
+    destinations_with_cost
+
+    # --------------------------------------------
+
+    # calculate accessibility contribution for every mode separately
+    for mode in [MODE_CYCLING, MODE_PEDELEC, MODE_S_PEDELEC, MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_FOOT]:
+        destinations_with_cost[f'logsum_exponent_{mode}'] = (
+                np.exp(destinations_with_cost[f'c_{mode}'])
+                * destinations_with_cost['VOLLZEITAEQ_TOTAL']
+        )
+
+    destinations_with_cost
+
+    # --------------------------------------------
+
+    # for each person, sum the accessibility contributions across all destinations
+    accessibility = destinations_with_cost.groupby('record').agg({
+        'age': 'first',
+        'sex': 'first',
+        'maritalstatus': 'first',
+        'residencepermit': 'first',
+        'residentpermit': 'first',
+        'statent_id': 'first',
+        'logsum_exponent': 'sum',
+        'logsum_exponent_cycling': 'sum',
+        'logsum_exponent_pedelec': 'sum',
+        'logsum_exponent_s_pedelec': 'sum',
+        'logsum_exponent_foot': 'sum',
+        'logsum_exponent_private_cars': 'sum',
+        'logsum_exponent_transit': 'sum',
+        'geometry': 'first'
+    })
+
+    accessibility.rename(columns={
+        'logsum_exponent': 'sum_of_logsum_exponents_all',
+        'logsum_exponent_cycling': 'sum_of_logsum_exponents_cycling',
+        'logsum_exponent_pedelec': 'sum_of_logsum_exponents_pedelec',
+        'logsum_exponent_s_pedelec': 'sum_of_logsum_exponents_s_pedelec',
+        'logsum_exponent_foot': 'sum_of_logsum_exponents_foot',
+        'logsum_exponent_private_cars': 'sum_of_logsum_exponents_private_cars',
+        'logsum_exponent_transit': 'sum_of_logsum_exponents_transit'
+    })
+
+    for mode in ['all', MODE_CYCLING, MODE_PEDELEC, MODE_S_PEDELEC, MODE_FOOT, MODE_PRIVATE_CARS, MODE_TRANSIT]:
+        accessibility[f'logsum_{mode}'] = np.log(accessibility[f'sum_of_logsum_exponents_{mode}'])
+
+    accessibility.reset_index(inplace=True)
+    accessibility = gpd.GeoDataFrame(accessibility, crs=2056)
+    accessibility
+
+    # --------------------------------------------
+
+    return accessibility
+
