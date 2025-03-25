@@ -56,10 +56,7 @@ if you work with networks that cover entire cities.
 
 ## Contact
 
-**SNMan** is still under development. We put a great effort into documentation. However, if the examples are not
-clear enough, please reach out to
-[Lukas Ballo](https://www.ivt.ethz.ch/personen/profil.lukas-ballo.html)
-for assistance on setting up your working environment.
+[Lukas Ballo](https://www.ivt.ethz.ch/en/people/profile.lukas-ballo.html)
 
 
 ## License and Citations
@@ -68,5 +65,6 @@ SNMan is released under the MIT license. If you use **SNMan** in your work, plea
 
 Ballo, L., M. Raubal and K.W. Axhausen (2024)
 [Designing an E-Bike City: An automated process for network-wide multimodal road space reallocation](
-https://www.research-collection.ethz.ch/handle/20.500.11850/679713),
-*Arbeitsberichte Verkehrs- und Raumplanung*,  **1881**.
+https://doi.org/10.1016/j.jcmr.2024.100048),
+*Journal of Cycling and Micromobility Research*,  **2**, 100048.
+
