@@ -18,7 +18,6 @@ from . import enrichment
 from . import simplification
 from . import merge_edges
 from . import graph
-from . import distribution
 from . import rebuilding
 from . import space_allocation
 from . import stats
@@ -26,6 +25,7 @@ from . import street_graph_node
 from . import street_graph_edge
 from . import fitting
 from . import accessibility
-
-
-
+from . import utils
+from . import geometry_tools
+from . import detours
+from . import metrics

@@ -1,7 +1,7 @@
 import copy
 
 from . import osmnx_customized as oxc
-from . import space_allocation, geometry_tools, graph, street_graph
+from . import space_allocation, geometry_tools, graph, street_graph, utils
 from .constants import *
 import networkx as nx
 import numpy as np
@@ -10,7 +10,9 @@ import numpy as np
 def create_lane_graph(
         G,
         lanes_attribute=KEY_LANES_DESCRIPTION,
-        cast_attributes={}
+        cast_attributes={},
+        cast_directed_attributes={},
+        cycling_infrastructure_benefits=True
 ):
     """
     Creates a new lane graph, derived from the street graph
@@ -19,6 +21,8 @@ def create_lane_graph(
     G : street_graph.StreetGraph
     lanes_attribute : str
         which attribute should be used for the lane description
+    cycling_infrastructure_benefits : bool
+        if True, the cost values will include the benefits of cycling infrastructure
 
     Returns
     -------
@@ -43,7 +47,7 @@ def create_lane_graph(
             if lane == '':
                 continue
 
-            reverse = lane.direction in {DIRECTION_BACKWARD, DIRECTION_BACKWARD_OPTIONAL}
+            reverse = lane.direction in {DIRECTION_BACKWARD}
 
             if reverse:
                 lane.reverse_direction()
@@ -66,9 +70,20 @@ def create_lane_graph(
             attributes['width'] = lane.width
             attributes['osm_highway'] = data.get('highway')
             attributes['maxspeed'] = data.get('maxspeed')
+            attributes['hierarchy'] = data.get('hierarchy')
+            attributes['reverse'] = reverse
+
+            attributes['grade'] = -data.get('grade') if reverse else data.get('grade')
 
             for key, value in cast_attributes.items():
                 attributes[key] = data.get(value)
+
+            for key, value in cast_directed_attributes.items():
+                if reverse:
+                    direction = DIRECTION_BACKWARD
+                else:
+                    direction = DIRECTION_FORWARD
+                attributes[key] = data.get(f'{value}_{direction}')
 
             #attributes['status'] = lane.status
             #attributes['fixed'] = lane.status == STATUS_FIXED
@@ -77,7 +92,9 @@ def create_lane_graph(
             if not reverse:
                 costs = {}
                 for mode in MODES:
-                    cost = space_allocation._calculate_lane_cost(lane, length, slope, mode)
+                    cost = space_allocation._calculate_lane_cost(
+                        lane, length, slope, mode, cycling_infrastructure_benefits=cycling_infrastructure_benefits
+                    )
                     costs['cost_' + mode] = cost
                 L.add_edge(
                     u, v, lane_id, **{**attributes, **costs}, lane=lane, backward=0, instance=1,
@@ -86,7 +103,9 @@ def create_lane_graph(
             if reverse:
                 costs = {}
                 for mode in MODES:
-                    cost = space_allocation._calculate_lane_cost(lane, length, -slope, mode)
+                    cost = space_allocation._calculate_lane_cost(
+                        lane, length, -slope, mode, cycling_infrastructure_benefits=cycling_infrastructure_benefits
+                    )
                     costs['cost_' + mode] = cost
                 L.add_edge(
                     v, u, lane_id, **{**attributes, **costs}, lane=lane, backward=1, instance=1,
@@ -95,7 +114,9 @@ def create_lane_graph(
             if lane.direction in [DIRECTION_BOTH, DIRECTION_TBD]:
                 costs = {}
                 for mode in MODES:
-                    cost = space_allocation._calculate_lane_cost(lane, length, slope, mode)
+                    cost = space_allocation._calculate_lane_cost(
+                        lane, length, slope, mode, cycling_infrastructure_benefits=cycling_infrastructure_benefits
+                    )
                     costs['cost_' + mode] = cost
                 L.add_edge(
                     u, v, lane_id, **{**attributes, **costs},
@@ -104,7 +125,9 @@ def create_lane_graph(
                 )
                 costs = {}
                 for mode in MODES:
-                    cost = space_allocation._calculate_lane_cost(lane, length, -slope, mode)
+                    cost = space_allocation._calculate_lane_cost(
+                        lane, length, -slope, mode, cycling_infrastructure_benefits=cycling_infrastructure_benefits
+                    )
                     costs['cost_' + mode] = cost
                 opposite_lane = copy.copy(lane)
                 L.add_edge(
@@ -158,9 +181,12 @@ def calculate_stats(L, mode):
 
     L = copy.deepcopy(L)
 
+    if len(L.edges) == 0:
+        return {}
+
     # calculate the approximate area as a convex hull of all nodes
     points_gpd = oxc.graph_to_gdfs(L, edges=False)
-    area_km2 = points_gpd.geometry.unary_union.convex_hull.area / pow(1000, 2)
+    area_m2 = points_gpd.geometry.unary_union.convex_hull.area
 
     # set betweenness centrality
     nx.set_edge_attributes(L, nx.edge_betweenness_centrality(L, normalized=True, weight='cost_'+mode), 'bc')
@@ -170,108 +196,74 @@ def calculate_stats(L, mode):
         '_mode': mode,
         'usable_N_nodes': len(L.nodes),
         'usable_N_edges':
-            round(
-                sum(
-                    [
-                        1
-                        for uvk, e
-                        in L.edges.items()
-                        if e['instance'] == 1
-                    ]
-                ),
-                3
+            sum(
+                [
+                    1
+                    for uvk, e
+                    in L.edges.items()
+                    if e['instance'] == 1
+                ]
             ),
-        'convex_hull_km2': area_km2,
-        'usable_lane_km':
-            round(
-                sum(
-                    [
-                        e['length']
-                        for uvk, e
-                        in L.edges.items()
-                        if e['lane'].width > 0 and e['instance'] == 1
-                    ]
-                ) / 1000,
-                3
+        'convex_hull_m2': area_m2,
+        'usable_lane_m':
+            sum(
+                [
+                    e['length']
+                    for uvk, e
+                    in L.edges.items()
+                    if e['lane'].width > 0 #and e['instance'] == 1
+                ]
             ),
-        'usable_lane_surface_km2':
-            round(
-                sum(
-                    [
-                        e['length'] * e['lane'].width
-                        for uvk, e
-                        in L.edges.items()
-                        if e['instance'] == 1
-                    ]
-                ) / pow(1000, 2),
-                3
+        'usable_lane_surface_m2':
+            sum(
+                [
+                    e['length'] * e['lane'].width
+                    for uvk, e
+                    in L.edges.items()
+                    if e['instance'] == 1
+                ]
             ),
-        'as_primary_mode_lane_km':
-            round(
-                sum(
-                    [
-                        e['length'] * (e['primary_mode'] == mode)
-                        for uvk, e
-                        in L.edges.items()
-                        if e['lane'].width > 0 and e['instance'] == 1
-                    ]
-                ) / 1000,
-                3
+        'as_primary_mode_lane_m':
+            sum(
+                [
+                    e['length'] * (e['primary_mode'] == mode)
+                    for uvk, e
+                    in L.edges.items()
+                    if e['lane'].width > 0 #and e['instance'] == 1
+                ]
             ),
-        'as_primary_mode_lane_surface_km2':
-            round(
-                sum(
-                    [
-                        e['length'] * e['lane'].width * (e['primary_mode'] == mode)
-                        for uvk, e
-                        in L.edges.items()
-                        if e['instance'] == 1
-                    ]
-                ) / pow(1000, 2),
-                3
-            ),
-        'as_primary_mode_lane_surface_km2':
-            round(
-                sum(
-                    [
-                        e['length'] * e['lane'].width * (e['primary_mode'] == mode)
-                        for uvk, e
-                        in L.edges.items()
-                        if e['instance'] == 1
-                    ]
-                ) / pow(1000, 2),
-                3
+        'as_primary_mode_lane_surface_m2':
+            sum(
+                [
+                    e['length'] * e['lane'].width * (e['primary_mode'] == mode)
+                    for uvk, e
+                    in L.edges.items()
+                    if e['instance'] == 1
+                ]
             ),
         'avg_betweenness_centrality_norm':
-            round(
+            utils.safe_division(
                 sum(
                     [
                         e['bc']
                         for uvk, e
                         in L.edges.items()
-                        if e['instance'] == 1
+                        #if e['instance'] == 1
                     ]
-                ) /
+                ),
                 sum(
                     [
                         1
                         for uvk, e
                         in L.edges.items()
-                        if e['instance'] == 1
+                        #if e['instance'] == 1
                     ]
-                ),
-                5
+                )
             ),
-        'avg_shortest_path_vod_km':
-            round(
-                nx.average_shortest_path_length(L, 'cost_' + mode) / 1000,
-                3
-            ),
-        'avg_shortest_path_km':
-            round(
-                nx.average_shortest_path_length(L, 'length') / 1000,
-                3
-            ),
+        'avg_shortest_path_vod_m':
+            nx.average_shortest_path_length(L, 'cost_' + mode),
+        'avg_shortest_path_m':
+            nx.average_shortest_path_length(L, 'length')
     }
 
 
@@ -466,3 +458,92 @@ class LaneGraph(graph.SNManMultiDiGraph):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+
+def get_all_neighbor_edges(L, n, lanetype=None, separate_by_direction=False):
+
+    in_edges = list(L.in_edges(n, data=True, keys=True))
+    out_edges = list(L.out_edges(n, data=True, keys=True))
+
+    if lanetype is not None:
+        in_edges = list(filter(lambda e: e[3]['lane'].lanetype == lanetype, in_edges))
+        out_edges = list(filter(lambda e: e[3]['lane'].lanetype == lanetype, out_edges))
+
+    if separate_by_direction:
+        return [in_edges, out_edges]
+    else:
+        return in_edges + out_edges
+
+
+def get_all_neighbors(L, n, lanetype=None, separate_by_direction=False):
+
+    all_edges = get_all_neighbor_edges(L, n, lanetype=lanetype, separate_by_direction=separate_by_direction)
+
+    if separate_by_direction:
+        nodes = [[],[]]
+        for i in [0,1]:
+            for edge in all_edges[i]:
+                nodes[i].extend(edge[0:2])
+            nodes[i] = set(nodes[i]).difference({n})
+        return nodes
+
+    else:
+        nodes = []
+        for edge in all_edges:
+            nodes.extend(edge[0:2])
+
+        # remove this node
+        return set(nodes).difference({n})
+
+
+def remove_dangling_lanes_at_node(L, n, lanetype='L', recursive=False):
+
+    # check whether this is a degree=2 node in a street graph
+    if len(get_all_neighbors(L, n)) != 2:
+        return
+    print(n, len(get_all_neighbors(L, n)))
+
+    in_nodes, out_nodes = get_all_neighbors(L, n, lanetype=lanetype, separate_by_direction=True)
+    all_nodes = get_all_neighbors(L, n, lanetype=lanetype)
+    all_nodes_M = get_all_neighbors(L, n, lanetype=LANETYPE_MOTORIZED)
+    if len(all_nodes_M) < 2:
+        return
+
+    print(len(in_nodes), len(out_nodes), len(all_nodes), len(all_nodes_M))
+    if len(in_nodes) != len(out_nodes) or len(all_nodes) == 1:
+        all_edges = get_all_neighbor_edges(L, n, lanetype=lanetype)
+        in_edges, out_edges = get_all_neighbor_edges(L, n, lanetype=lanetype, separate_by_direction=True)
+
+        # do nothing if the road hierarchy changes at this node
+        edge_osm_highways = {edge[3].get('osm_highway') for edge in all_edges}
+        if len(edge_osm_highways) > 1:
+            return
+
+        #for e in all_edges:
+        #    print('del', *e[0:3])
+        #    L.remove_edge(*e[0:3])
+
+        for e in in_edges:
+            # for each in_edge, check whether there is an out_node with a different n than the edge's u
+            print('in_node', e[0], out_nodes)
+            if len(out_nodes.difference({e[0]})) == 0:
+                print('del', *e[0:3])
+                L.remove_edge(*e[0:3])
+
+        for e in out_edges:
+            # for each out_edge, check whether there is an in_node with a different n than the edge's v
+            print('out_node', e[1], in_nodes)
+            if len(in_nodes.difference({e[1]})) == 0:
+                print('del', *e[0:3])
+                L.remove_edge(*e[0:3])
+
+        if recursive:
+            for n in all_nodes:
+                remove_dangling_lanes_at_node(L, n, lanetype=lanetype, recursive=True)
+        else:
+            return all_nodes
+
+
+def remove_dangling_lanes(L, lanetype='L'):
+
+    for n, data in L.nodes.items():
+        res = remove_dangling_lanes_at_node(L, n, lanetype=lanetype, recursive=True)

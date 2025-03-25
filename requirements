@@ -12,3 +12,5 @@ gdal
 fiona
 pyogrio
 r5py
+openpyxl
+pyarrow

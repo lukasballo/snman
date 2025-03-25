@@ -303,7 +303,7 @@ def split_edge(G, u, v, key, split_points):
     for i, node in enumerate(nodes):
         # add node into the graph
         if i != 0 and i != len(node_points)-1:
-            G.add_node(node[0], x=node[1].x, y=node[1].y, _split_node=True)
+            G.add_node(node[0], x=node[1].x, y=node[1].y, _split_node=True, layers={edge_data['layer']})
         # add edge into the graph
         if i != 0:
             previous_node = nodes[i-1]
@@ -316,6 +316,7 @@ def split_edge(G, u, v, key, split_points):
                 list(edge_linestrings[i-1].coords) +
                 [node[1]]
             )
+            new_edge_data['length'] = new_edge_data['geometry'].length
             new_key = G.add_edge(new_u, new_v, **new_edge_data)
             new_edges.append((new_u, new_v, new_key, new_edge_data))
 
@@ -365,12 +366,24 @@ def reverse_edge(
         if allocation is not None:
             allocation.reverse_allocation()
 
-    # TODO: auto identify attributes to be reversed based on parts of their name, e.g, '>'/'<', or 'forward'/'backward'
-    # reverse sensors
+
+    # swap backward and forward attributes
+    data_original = copy.deepcopy(data)
+    for k, val in data_original.items():
+        if k.endswith('_forward'):
+            key_without_direction = k[:-8]
+            data[f'{key_without_direction}_backward'] = val
+        if k.endswith('_backward'):
+            key_without_direction = k[:-9]
+            data[f'{key_without_direction}_forward'] = val
+            
+
+    """
     sensors_forward = data.get('sensors_forward', [])
     sensors_backward = data.get('sensors_backward', [])
     data['sensors_forward'] = sensors_backward
     data['sensors_backward'] = sensors_forward
+    """
 
     # reverse geometry
     if data.get('geometry') and data.get('geometry') != shapely.ops.LineString():
@@ -479,7 +492,7 @@ def add_pseudo_cycling_lanes(G, lanes_description=KEY_LANES_DESCRIPTION):
             cycling_cost = calculate_edge_cost(G, *uvk, direction, MODE_CYCLING, lanes_description=lanes_description)
 
             if cycling_cost == np.Inf:
-                lanes.append(LANETYPE_CYCLING_PSEUDO + direction)
+                lanes.append(space_allocation.Lane(LANETYPE_CYCLING_PSEUDO, direction))
 
 
 def clone(G, edges=True):

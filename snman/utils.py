@@ -61,7 +61,7 @@ def safe_int(s, fallback_value=None):
 def safe_float(s, fallback_value=None):
     try:
         return float(s)
-    except ValueError:
+    except ValueError or TypeError:
         return fallback_value
 
 
@@ -172,3 +172,49 @@ def get_nth_element_of_list(my_list, n):
         return my_list[n]
     else:
         return None
+
+
+def isnan(val):
+    return type(val) == float and np.isnan(val)
+
+
+def merge_dicts(dicts, ignored_values=(None, '', [], '[]', np.nan, 'nan')):
+    """
+    Merges a list of dictionaries using the *update()* method, while ignoring a list of values
+
+    Parameters
+    ----------
+    dicts: list
+        the list of dictionaries
+    ignored_values: list
+        which values should be ignored
+
+    Returns
+    -------
+    dict
+    """
+
+    merged_dict = {}
+    for d in dicts:
+        d = {
+            k: v for k, v in d.items()
+            if not any(v is val or isnan(v) for val in ignored_values)
+        }
+        merged_dict.update(d)
+    return merged_dict
+
+
+def is_in_list(obj, lst):
+    return any(obj is item for item in lst)
+
+
+class IncrementingVariable:
+    def __init__(self, start=0):
+        self.value = start
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        self.value += 1
+        return self.value - 1  # Return the previous value before incrementing

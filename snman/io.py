@@ -216,7 +216,8 @@ def import_geofile_to_gdf(file_path, crs=DEFAULT_CRS, index=None, filter_index=N
         gdf = gdf.filter(items=filter_index, axis=0)
 
     if perimeter is not None:
-        gdf = gdf.overlay(perimeter, how='intersection')
+        gdf.geometry = gdf.geometry.apply(lambda route: shapely.intersection(route, perimeter))
+        gdf = gdf[~shapely.is_empty(gdf.geometry)]
 
     return gdf
 
@@ -346,20 +347,29 @@ def load_rebuilding_regions(path, crs=DEFAULT_CRS, projects=None, only_active=Fa
         rebuilding_regions = rebuilding_regions.loc[filter_ids]
 
     # convert strings into lists
-    rebuilding_regions['hierarchies_to_include'] = \
-        rebuilding_regions['hierarchies_to_include'].apply(
-            lambda x: set(x.split(',')) if isinstance(x, str) and len(x) > 0 else set()
-        )
-    rebuilding_regions['hierarchies_to_fix'] = \
-        rebuilding_regions['hierarchies_to_fix'].apply(
-            lambda x: set(x.split(',')) if isinstance(x, str) and len(x) > 0 else set()
-        )
+    if 'hierarchies_to_include' in rebuilding_regions.columns:
+        rebuilding_regions['hierarchies_to_include'] = \
+            rebuilding_regions['hierarchies_to_include'].apply(
+                lambda x: set(x.split(',')) if isinstance(x, str) and len(x) > 0 else set()
+            )
+    if 'hierarchies_to_fix' in rebuilding_regions.columns:
+        rebuilding_regions['hierarchies_to_fix'] = \
+            rebuilding_regions['hierarchies_to_fix'].apply(
+                lambda x: set(x.split(',')) if isinstance(x, str) and len(x) > 0 else set()
+            )
+    if 'hierarchies_with_cycling_lanes' in rebuilding_regions.columns:
+        rebuilding_regions['hierarchies_with_cycling_lanes'] = \
+            rebuilding_regions['hierarchies_with_cycling_lanes'].apply(
+                lambda x: set(x.split(',')) if isinstance(x, str) and len(x) > 0 else set()
+            )
     rebuilding_regions = rebuilding_regions.sort_values(['order'])
     return rebuilding_regions
 
 
-def load_measurement_regions(path, crs=DEFAULT_CRS, only_active=True, filter_names=None, set_filter=None):
-    measurement_regions = import_geofile_to_gdf(path, crs=crs, index='name')
+def load_measurement_regions(
+        path, crs=DEFAULT_CRS, only_active=True, filter_names=None, set_filter=None, name_column='name'
+):
+    measurement_regions = import_geofile_to_gdf(path, crs=crs, index=name_column)
     if filter_names:
         measurement_regions = measurement_regions.loc[filter_names]
     if only_active:
@@ -727,48 +737,74 @@ def export_lane_geometries(L, path_edges, path_nodes, scaling=1, include_opposit
                 offset = data['horizontal_position_scaled']
             else:
                 offset = -data['horizontal_position_scaled']
-            try:
-                data['geometry'] = data['geometry'].offset_curve(offset)
+            if -np.inf < offset and offset < np.inf:
+                try:
+                    data['geometry'] = data['geometry'].offset_curve(offset)
 
-                # In older geos versions, the linestring gets reversed when the offset is negative,
-                # see here: https://shapely.readthedocs.io/en/stable/reference/shapely.offset_curve.html
-                # In that case, we have to reverse it back:
-                if offset < 0 and shapely.geos_version < (3,11,0):
-                    data['geometry'] = shapely.reverse(data['geometry'])
+                    # In older geos versions, the linestring gets reversed when the offset is negative,
+                    # see here: https://shapely.readthedocs.io/en/stable/reference/shapely.offset_curve.html
+                    # In that case, we have to reverse it back:
+                    if offset < 0 and shapely.geos_version < (3,11,0):
+                        data['geometry'] = shapely.reverse(data['geometry'])
 
-            except shapely.errors.GEOSException:
-                print(uvk, 'geometry offset failed')
+                except shapely.errors.GEOSException:
+                    print(uvk, 'geometry offset failed')
 
 
     export_lane_graph(M, path_edges, path_nodes, crs=crs)
 
 
-def export_HLA(path, step, H=None, L=None, A=None, scaling_factor=1):
-    if H:
+def export_HLA(path, step, H=None, L=None, A=None, B=None, C=None, scaling_factor=1, export_crs=4326):
+    if H is not None:
         # Export street graph
         export_street_graph(
             H,
             os.path.join(path, f'{step}_H_edges.gpkg'),
-            os.path.join(path, f'{step}_H_nodes.gpkg')
+            os.path.join(path, f'{step}_H_nodes.gpkg'),
+            crs=export_crs
         )
 
-    if L:
+    if L is not None:
         # Export lane geometries
         export_lane_geometries(
             L,
             os.path.join(path, f'{step}_L_edges.gpkg'),
             os.path.join(path, f'{step}_L_nodes.gpkg'),
-            scaling=scaling_factor
+            scaling=scaling_factor,
+            crs=export_crs
         )
 
-    if A:
+    if A is not None:
         # Save graph
         export_graph(
             A,
             os.path.join(path, f'{step}_A_edges.gpkg'),
             os.path.join(path, f'{step}_A_nodes.gpkg'),
             reset_index=True,
-            stringify_attributes=['osmid', 'u', 'v', 'has_parking_spots']
+            stringify_attributes=['osmid', 'u', 'v', 'has_parking_spots'],
+            crs=export_crs
+        )
+
+    if B is not None:
+        # Save graph
+        export_graph(
+            B,
+            os.path.join(path, f'{step}_B_edges.gpkg'),
+            os.path.join(path, f'{step}_B_nodes.gpkg'),
+            reset_index=True,
+            stringify_attributes=['osmid', 'u', 'v', 'has_parking_spots'],
+            crs=export_crs
+        )
+
+    if C is not None:
+        # Save graph
+        export_graph(
+            C,
+            os.path.join(path, f'{step}_C_edges.gpkg'),
+            os.path.join(path, f'{step}_C_nodes.gpkg'),
+            reset_index=True,
+            stringify_attributes=['osmid', 'u', 'v', 'has_parking_spots'],
+            crs=export_crs
         )
 
 

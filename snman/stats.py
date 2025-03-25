@@ -98,7 +98,7 @@ def network_metrics(G, plot_scc=False):
             'label': 'TRANSIT AFTER',
             'lanes': KEY_LANES_DESCRIPTION_AFTER,
             'mode': MODE_TRANSIT
-        },
+        }
     ]
 
     df = pd.DataFrame(

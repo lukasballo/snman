@@ -1,7 +1,7 @@
-import osmnx as ox
+from . import osmnx_customized as oxc
 from . import hierarchy
 
-ox.config(log_console=False, use_cache=True)
+oxc.config(log_console=False, use_cache=True)
 
 DEFAULT_INTERSECTION_TOLERANCE = 10
 DEFAULT_SIMPLIFICATION_RADIUS = 35
@@ -10,35 +10,33 @@ DIRECTION_FORWARD = '>'
 DIRECTION_BACKWARD = '<'
 DIRECTION_BOTH = '-'
 DIRECTION_TBD = '?'
-DIRECTION_FORWARD_OPTIONAL = ')'
-DIRECTION_BACKWARD_OPTIONAL = '('
-DIRECTION_BOTH_OPTIONAL = '/'
-DIRECTION_TBD_OPTIONAL = '*'
 DIRECTIONS = {
     DIRECTION_FORWARD, DIRECTION_BACKWARD, DIRECTION_BOTH, DIRECTION_TBD,
-    DIRECTION_FORWARD_OPTIONAL, DIRECTION_BACKWARD_OPTIONAL, DIRECTION_BOTH_OPTIONAL, DIRECTION_TBD_OPTIONAL
-}
-TENTATIVE_DIRECTIONS = {
-    DIRECTION_TBD, DIRECTION_TBD_OPTIONAL, DIRECTION_BOTH_OPTIONAL,
-    DIRECTION_FORWARD_OPTIONAL, DIRECTION_BACKWARD_OPTIONAL
 }
 
 ALTERNATIVE_DIRECTIONS = {
     DIRECTION_FORWARD: {
-        DIRECTION_BOTH, DIRECTION_TBD, DIRECTION_BOTH_OPTIONAL, DIRECTION_FORWARD_OPTIONAL, DIRECTION_TBD_OPTIONAL
+        DIRECTION_BOTH, DIRECTION_TBD
     },
     DIRECTION_BACKWARD: {
-        DIRECTION_BOTH, DIRECTION_TBD, DIRECTION_BOTH_OPTIONAL, DIRECTION_BACKWARD_OPTIONAL, DIRECTION_TBD_OPTIONAL
+        DIRECTION_BOTH, DIRECTION_TBD
     }
 }
 
 MODE_FOOT = 'foot'
 MODE_CYCLING = 'cycling'
+MODE_PEDELEC = 'pedelec'
+MODE_S_PEDELEC = 's_pedelec'
 MODE_PRIVATE_CARS = 'private_cars'
 MODE_TRANSIT = 'transit'
 MODE_CAR_PARKING = 'car_parking'
+MODE_BICYCLE_PARKING = 'bicycle_parking'
 MODE_NON_TRAFFIC = 'non_traffic'
-MODES = {MODE_FOOT, MODE_CYCLING, MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_CAR_PARKING, MODE_NON_TRAFFIC}
+MODES = {
+    MODE_FOOT, MODE_CYCLING, MODE_PRIVATE_CARS, MODE_TRANSIT,
+    MODE_CAR_PARKING, MODE_BICYCLE_PARKING, MODE_NON_TRAFFIC,
+    MODE_PEDELEC, MODE_S_PEDELEC
+}
 ACTIVE_MODES = {MODE_FOOT, MODE_CYCLING}
 MOTORIZED_MODES = {MODE_PRIVATE_CARS, MODE_TRANSIT}
 
@@ -53,9 +51,13 @@ LANETYPE_FOOT = 'F'                 # Pedestrians only
 LANETYPE_PARKING_PARALLEL = 'R'     # On-street parking
 LANETYPE_PARKING_PERPENDICULAR = 'N'    # On-street parking
 LANETYPE_PARKING_DIAGONAL = 'D'     # On-street parking
-LANETYPE_NON_TRAFFIC = 'Z'          # No traffic, e.g., greenery or community spaces
+LANETYPE_BICYCLE_PARKING = 'B'      # Bicycle parking
+LANETYPE_OTHER = 'O'                # Other
+LANETYPE_NON_TRAFFIC = 'Z'          # No traffic
+LANETYPE_GREEN = 'E'                # Greenery
 
-PARALLEL_PARKING_CAR_LENGTH = 5
+PARALLEL_PARKING_CAR_LENGTH = 6
+BICYCLE_WIDTH_IN_RACK = 0.7
 
 STATUS_FIXED = '*'
 STATUS_ONE_DIRECTION_MANDATORY = '%'
@@ -103,75 +105,54 @@ LANE_TYPES = {
 
     LANETYPE_MOTORIZED + DIRECTION_FORWARD:
         {'width': 3.0, 'order': 1, 'cycling_vod': 0,
-         'modes': [MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_CYCLING, MODE_FOOT]},
+         'modes': [MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_CYCLING, MODE_PEDELEC, MODE_S_PEDELEC, MODE_FOOT]},
     LANETYPE_MOTORIZED + DIRECTION_BACKWARD:
         {'width': 3.0, 'order': 1, 'cycling_vod': 0,
-         'modes': [MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_CYCLING, MODE_FOOT]},
+         'modes': [MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_CYCLING, MODE_PEDELEC, MODE_S_PEDELEC, MODE_FOOT]},
     LANETYPE_MOTORIZED + DIRECTION_BOTH:
         {'width': 4.5, 'order': 1, 'cycling_vod': 0,
-         'modes': [MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_CYCLING, MODE_FOOT]},
+         'modes': [MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_CYCLING, MODE_PEDELEC, MODE_S_PEDELEC, MODE_FOOT]},
 
     # lane to be kept but with direction to be decided yet
     LANETYPE_MOTORIZED + DIRECTION_TBD:
         {'width': 3.0, 'order': 1, 'cycling_vod': 0,
-         'modes': [MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_CYCLING, MODE_FOOT]},
+         'modes': [MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_CYCLING, MODE_PEDELEC, MODE_S_PEDELEC, MODE_FOOT]},
 
-    LANETYPE_MOTORIZED + DIRECTION_FORWARD_OPTIONAL:
-        {'width': 3.0, 'order': 1, 'cycling_vod': 0,
-         'modes': [MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_CYCLING, MODE_FOOT]},
-    LANETYPE_MOTORIZED + DIRECTION_BACKWARD_OPTIONAL:
-        {'width': 3.0, 'order': 1, 'cycling_vod': 0,
-         'modes': [MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_CYCLING, MODE_FOOT]},
-    LANETYPE_MOTORIZED + DIRECTION_BOTH_OPTIONAL:
-        {'width': 4.5, 'order': 1, 'cycling_vod': 0,
-         'modes': [MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_CYCLING, MODE_FOOT]},
-    # optional lane with undecided direction
-    LANETYPE_MOTORIZED + DIRECTION_TBD_OPTIONAL:
-        {'width': 3.0, 'order': 1, 'cycling_vod': 0,
-         'modes': [MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_CYCLING, MODE_FOOT]},
 
     LANETYPE_DEDICATED_PT + DIRECTION_FORWARD:
-        {'width': 3.0, 'order': 2, 'cycling_vod': 0, 'modes': [MODE_TRANSIT, MODE_CYCLING, MODE_FOOT]},
+        {'width': 3.0, 'order': 2, 'cycling_vod': 0, 'modes': [MODE_TRANSIT, MODE_CYCLING, MODE_PEDELEC, MODE_S_PEDELEC, MODE_FOOT]},
     LANETYPE_DEDICATED_PT + DIRECTION_BACKWARD:
-        {'width': 3.0, 'order': 2, 'cycling_vod': 0, 'modes': [MODE_TRANSIT, MODE_CYCLING, MODE_FOOT]},
+        {'width': 3.0, 'order': 2, 'cycling_vod': 0, 'modes': [MODE_TRANSIT, MODE_CYCLING, MODE_PEDELEC, MODE_S_PEDELEC, MODE_FOOT]},
     LANETYPE_DEDICATED_PT + DIRECTION_BOTH:
-        {'width': 4.5, 'order': 2, 'cycling_vod': 0, 'modes': [MODE_TRANSIT, MODE_CYCLING, MODE_FOOT]},
-    LANETYPE_DEDICATED_PT + DIRECTION_FORWARD_OPTIONAL:
-        {'width': 3.0, 'order': 2, 'cycling_vod': 0, 'modes': [MODE_TRANSIT, MODE_CYCLING, MODE_FOOT]},
-    LANETYPE_DEDICATED_PT + DIRECTION_BACKWARD_OPTIONAL:
-        {'width': 3.0, 'order': 2, 'cycling_vod': 0, 'modes': [MODE_TRANSIT, MODE_CYCLING, MODE_FOOT]},
+        {'width': 4.5, 'order': 2, 'cycling_vod': 0, 'modes': [MODE_TRANSIT, MODE_CYCLING, MODE_PEDELEC, MODE_S_PEDELEC, MODE_FOOT]},
 
     LANETYPE_CYCLING_LANE + DIRECTION_FORWARD:
-        {'width': 1.5, 'order': 3, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING, MODE_FOOT]},
+        {'width': 1.5, 'order': 3, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING, MODE_PEDELEC, MODE_S_PEDELEC, MODE_FOOT]},
     LANETYPE_CYCLING_LANE + DIRECTION_BACKWARD:
-        {'width': 1.5, 'order': 3, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING, MODE_FOOT]},
-    LANETYPE_CYCLING_LANE + DIRECTION_FORWARD_OPTIONAL:
-        {'width': 1.5, 'order': 3, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING, MODE_FOOT]},
-    LANETYPE_CYCLING_LANE + DIRECTION_BACKWARD_OPTIONAL:
-        {'width': 1.5, 'order': 3, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING, MODE_FOOT]},
+        {'width': 1.5, 'order': 3, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING, MODE_PEDELEC, MODE_S_PEDELEC, MODE_FOOT]},
     LANETYPE_CYCLING_LANE + DIRECTION_BOTH:
-        {'width': 2.0, 'order': 3, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING, MODE_FOOT]},
+        {'width': 2.0, 'order': 3, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING, MODE_PEDELEC, MODE_S_PEDELEC, MODE_FOOT]},
 
     LANETYPE_CYCLING_TRACK + DIRECTION_FORWARD:
-        {'width': 1.5, 'order': 4, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING, MODE_FOOT]},
+        {'width': 1.5, 'order': 4, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING, MODE_PEDELEC, MODE_S_PEDELEC, MODE_FOOT]},
     LANETYPE_CYCLING_TRACK + DIRECTION_BACKWARD:
-        {'width': 1.5, 'order': 4, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING, MODE_FOOT]},
+        {'width': 1.5, 'order': 4, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING, MODE_PEDELEC, MODE_S_PEDELEC, MODE_FOOT]},
     LANETYPE_CYCLING_TRACK + DIRECTION_BOTH:
-        {'width': 2.5, 'order': 4, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING, MODE_FOOT]},
+        {'width': 2.5, 'order': 4, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING, MODE_PEDELEC, MODE_S_PEDELEC, MODE_FOOT]},
 
     LANETYPE_CYCLING_PSEUDO + DIRECTION_FORWARD:
-        {'width': 0.0, 'order': 5, 'cycling_vod': 0, 'modes': [MODE_CYCLING, MODE_FOOT]},
+        {'width': 0.0, 'order': 5, 'cycling_vod': 0, 'modes': [MODE_CYCLING, MODE_PEDELEC, MODE_S_PEDELEC, MODE_FOOT]},
     LANETYPE_CYCLING_PSEUDO + DIRECTION_BACKWARD:
-        {'width': 0.0, 'order': 5, 'cycling_vod': 0, 'modes': [MODE_CYCLING, MODE_FOOT]},
+        {'width': 0.0, 'order': 5, 'cycling_vod': 0, 'modes': [MODE_CYCLING, MODE_PEDELEC, MODE_S_PEDELEC, MODE_FOOT]},
     LANETYPE_CYCLING_PSEUDO + DIRECTION_BOTH:
-        {'width': 0.0, 'order': 5, 'cycling_vod': 0, 'modes': [MODE_CYCLING, MODE_FOOT]},
+        {'width': 0.0, 'order': 5, 'cycling_vod': 0, 'modes': [MODE_CYCLING, MODE_PEDELEC, MODE_S_PEDELEC, MODE_FOOT]},
 
     LANETYPE_FOOT_CYCLING_MIXED + DIRECTION_FORWARD:
-        {'width': 2.5, 'order': 6, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING, MODE_FOOT]},
+        {'width': 2.5, 'order': 6, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING, MODE_PEDELEC, MODE_S_PEDELEC, MODE_FOOT]},
     LANETYPE_FOOT_CYCLING_MIXED + DIRECTION_BACKWARD:
-        {'width': 2.5, 'order': 6, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING, MODE_FOOT]},
+        {'width': 2.5, 'order': 6, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING, MODE_PEDELEC, MODE_S_PEDELEC, MODE_FOOT]},
     LANETYPE_FOOT_CYCLING_MIXED + DIRECTION_BOTH:
-        {'width': 2.5, 'order': 6, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING, MODE_FOOT]},
+        {'width': 2.5, 'order': 6, 'cycling_vod': -0.51, 'modes': [MODE_CYCLING, MODE_PEDELEC, MODE_S_PEDELEC, MODE_FOOT]},
 
     LANETYPE_FOOT + DIRECTION_FORWARD:
         {'width': 1.8, 'order': 7, 'cycling_vod': 0, 'modes': [MODE_FOOT]},
@@ -182,8 +163,6 @@ LANE_TYPES = {
 
     LANETYPE_PARKING_PARALLEL + DIRECTION_BOTH:
         {'width': 2, 'order': 8, 'cycling_vod': 0, 'modes': [MODE_CAR_PARKING]},
-    LANETYPE_PARKING_PARALLEL + DIRECTION_BOTH_OPTIONAL:
-        {'width': 2, 'order': 8, 'cycling_vod': 0, 'modes': [MODE_CAR_PARKING]},
     LANETYPE_PARKING_DIAGONAL + DIRECTION_BOTH:
         {'width': 4.5, 'order': 8, 'cycling_vod': 0, 'modes': [MODE_CAR_PARKING]},
     LANETYPE_PARKING_PERPENDICULAR + DIRECTION_BOTH:
@@ -193,10 +172,26 @@ LANE_TYPES = {
     LANETYPE_PARKING_PARALLEL + DIRECTION_BACKWARD:
         {'width': 2, 'order': 8, 'cycling_vod': 0, 'modes': [MODE_CAR_PARKING]},
 
+
+    LANETYPE_BICYCLE_PARKING + DIRECTION_FORWARD:
+        {'width': 2, 'order': 8, 'cycling_vod': 0, 'modes': [MODE_BICYCLE_PARKING]},
+    LANETYPE_BICYCLE_PARKING + DIRECTION_BACKWARD:
+        {'width': 2, 'order': 8, 'cycling_vod': 0, 'modes': [MODE_BICYCLE_PARKING]},
+
     LANETYPE_NON_TRAFFIC + DIRECTION_FORWARD:
-        {'width': 0.0, 'order': 9, 'cycling_vod': 0, 'modes': [MODE_NON_TRAFFIC]},
+        {'width': 1, 'order': 9, 'cycling_vod': 0, 'modes': [MODE_NON_TRAFFIC]},
     LANETYPE_NON_TRAFFIC + DIRECTION_BACKWARD:
-        {'width': 0.0, 'order': 9, 'cycling_vod': 0, 'modes': [MODE_NON_TRAFFIC]},
+        {'width': 1, 'order': 9, 'cycling_vod': 0, 'modes': [MODE_NON_TRAFFIC]},
+
+    LANETYPE_GREEN + DIRECTION_FORWARD:
+        {'width': 1, 'order': 10, 'cycling_vod': 0, 'modes': [MODE_NON_TRAFFIC]},
+    LANETYPE_GREEN + DIRECTION_BACKWARD:
+        {'width': 1, 'order': 10, 'cycling_vod': 0, 'modes': [MODE_NON_TRAFFIC]},
+
+    LANETYPE_OTHER + DIRECTION_FORWARD:
+        {'width': 3, 'order': 10, 'cycling_vod': 0, 'modes': [MODE_NON_TRAFFIC]},
+    LANETYPE_OTHER + DIRECTION_BACKWARD:
+        {'width': 3, 'order': 10, 'cycling_vod': 0, 'modes': [MODE_NON_TRAFFIC]},
 
 }
 
@@ -226,7 +221,7 @@ def CYCLING_SLOPE_VOD(slope):
 
     """
     slope = float(slope)
-    if slope < 0.03:
+    if slope < 0.02:
         return 0
     if 0.02 <= slope < 0.06:
         return +0.55
@@ -234,6 +229,18 @@ def CYCLING_SLOPE_VOD(slope):
         return +3.11
     elif 0.10 <= slope:
         return +4.33
+
+
+def EBIKE_SLOPE_VOD(slope):
+    slope = float(slope)
+    if slope < 0.02:
+        return 0
+    if 0.02 <= slope < 0.06:
+        return +0.09
+    elif 0.06 <= slope < 0.10:
+        return +1.01
+    elif 0.10 <= slope:
+        return +2.78
 
 
 # Which highway=* values represent different infrastructures (primarily) for pedestrians and cyclists
@@ -253,12 +260,12 @@ OSM_HIGHWAY_VALUES = {
     'secondary_link':   {'level': None},
     'tertiary':         {'level': None},
     'tertiary_link':    {'level': None},
-    'service':          {'level': None},
     'busway':           {'level': None},
     'unclassified':     {'level': None},
     'road':             {'level': None},
     'residential':      {'level': None},
     'living_street':    {'level': None},
+    'service':          {'level': None},
     'track':            {'level': None},
     'path':             {'level': None},
     'cycleway':         {'level': None},
@@ -292,9 +299,11 @@ OSM_TAGS = {
 OSM_FILTER = [
     # regular roads
     (
-        f'["highway"]["area"!~"yes"]["access"!~"private"]'
+        f'["highway"]["area"!~"yes"]'
+        #f'["highway"]["area"!~"yes"]["access"!~"private"]'
         f'["highway"!~"abandoned|bridleway|bus_guideway|corridor|elevator|'
-        f'escalator|planned|platform|proposed|raceway|construction|footway|pedestrian|steps|path|service"]'
+        f'escalator|planned|platform|proposed|raceway|construction|footway|pedestrian|steps|path"]'
+        #f'escalator|planned|platform|proposed|raceway|construction|footway|pedestrian|steps|path|service"]'
         f'["service"!~"alley|driveway|emergency_access|parking|parking_aisle|private"]'
         f'["access"!~"no"]'
     ),

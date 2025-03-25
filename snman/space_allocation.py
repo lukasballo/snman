@@ -1,7 +1,7 @@
 from .constants import *
 import math
 import networkx as nx
-from . import utils, hierarchy
+from . import utils, hierarchy, geometry_tools
 import numpy as np
 import copy
 import itertools as it
@@ -798,6 +798,8 @@ def is_backward_by_top_order_lanes(lanes):
 
 def add_pseudo_contraflow_cycling(G, lane_attribute=KEY_LANES_DESCRIPTION):
 
+    #TODO: Remove
+
     for uvk, data in G.edges.items():
 
         lanes = data[lane_attribute]
@@ -815,6 +817,9 @@ def add_pseudo_contraflow_cycling(G, lane_attribute=KEY_LANES_DESCRIPTION):
                 has_m_lanes = True
 
 
+def assign_seed_side(geometry):
+    edge_angle = geometry_tools.linestring_angle(geometry)
+    return 'right' if 135 <= edge_angle < 315 else 'left'
 
 
 def reorder_lanes(G, lanes_attribute=KEY_LANES_DESCRIPTION, **kwargs):
@@ -826,23 +831,24 @@ def reorder_lanes(G, lanes_attribute=KEY_LANES_DESCRIPTION, **kwargs):
     ----------
     G
     lanes_attribute
-
-    Returns
-    -------
-
     """
 
     for uvk, data in G.edges.items():
-        data[lanes_attribute] = _reorder_lanes_on_edge(data[lanes_attribute], **kwargs)
+        seed_side = assign_seed_side(data['geometry'])
+        data[lanes_attribute] = _reorder_lanes_on_edge(data[lanes_attribute], seed_side=seed_side, **kwargs)
 
 
-def _reorder_lanes_on_edge(lanes, how='standard'):
+def _reorder_lanes_on_edge(lanes, how='standard', seed_side='left'):
     """
     Reorder the lane list and consolidate cycling infrastructure of an edge
 
     Parameters
     ----------
-    lanes : SpaceAllocation
+    lanes: SpaceAllocation
+    how: str
+        what principle should be used
+    seed_side: str
+        which side of the street should be used for lanes where an arbitrary side needs to be selected
 
     Returns
     -------
@@ -871,6 +877,8 @@ def _reorder_lanes_on_edge(lanes, how='standard'):
     n_mixed_total = len([l for l in cycling_lanes if l.lanetype == LANETYPE_FOOT_CYCLING_MIXED])
     n_cars = len(list(utils.flatten_list(sorted_lanes[MODE_PRIVATE_CARS])))
 
+    #TODO: Consider also the lane status when concolidating, this section must remain disabled until it's fixed
+    """
     # consolidate parking lanes, merge all parking lanes into a single with adjusted width
     parking_lanes =(
             sorted_lanes[MODE_CAR_PARKING][DIRECTION_FORWARD]
@@ -881,15 +889,23 @@ def _reorder_lanes_on_edge(lanes, how='standard'):
         consolidated_parking = Lane(LANETYPE_PARKING_PARALLEL, DIRECTION_FORWARD)
         consolidated_parking.width = width
         sorted_lanes[MODE_CAR_PARKING][DIRECTION_FORWARD] = [consolidated_parking]
+    """
 
-    new_allocation = copy.copy(lanes)
+    new_allocation = copy.deepcopy(lanes)
     new_allocation[:] = []
+
+    if seed_side == 'left':
+        left_start = 0
+        right_start = 1
+    else:
+        left_start = 1
+        right_start = 0
 
     if how == 'bidirectional_cycling':
 
         ordered_lanes = [
 
-            sorted_lanes[MODE_FOOT][DIRECTION_BOTH][0::2],
+            sorted_lanes[MODE_FOOT][DIRECTION_BOTH][left_start::2],
 
             sorted_lanes[MODE_NON_TRAFFIC][DIRECTION_BACKWARD],
             sorted_lanes[MODE_NON_TRAFFIC][DIRECTION_FORWARD],
@@ -906,7 +922,7 @@ def _reorder_lanes_on_edge(lanes, how='standard'):
             sorted_lanes[MODE_CYCLING][DIRECTION_BACKWARD],
             sorted_lanes[MODE_CYCLING][DIRECTION_FORWARD],
             sorted_lanes[MODE_CYCLING][DIRECTION_BOTH],
-            sorted_lanes[MODE_FOOT][DIRECTION_BOTH][1::2]
+            sorted_lanes[MODE_FOOT][DIRECTION_BOTH][right_start::2]
 
         ]
 
@@ -914,25 +930,40 @@ def _reorder_lanes_on_edge(lanes, how='standard'):
 
         ordered_lanes = [
 
-            sorted_lanes[MODE_FOOT][DIRECTION_BOTH][0::2],
-            sorted_lanes[MODE_CYCLING][DIRECTION_BOTH][0::2],
+            sorted_lanes[MODE_FOOT][DIRECTION_BOTH][left_start::2],
 
+            sorted_lanes[MODE_CYCLING][DIRECTION_BOTH][left_start::2],
             sorted_lanes[MODE_CYCLING][DIRECTION_BACKWARD],
-            sorted_lanes[MODE_NON_TRAFFIC][DIRECTION_BACKWARD],
-            sorted_lanes[MODE_NON_TRAFFIC][DIRECTION_FORWARD],
+            sorted_lanes[MODE_BICYCLE_PARKING][DIRECTION_BACKWARD][right_start::2],
+            sorted_lanes[MODE_BICYCLE_PARKING][DIRECTION_FORWARD][left_start::2],
+
+            sorted_lanes[MODE_NON_TRAFFIC][DIRECTION_BACKWARD][left_start::2],
+            sorted_lanes[MODE_NON_TRAFFIC][DIRECTION_FORWARD][right_start::2],
+
+            sorted_lanes[MODE_CAR_PARKING][DIRECTION_BACKWARD][left_start::2],
+            sorted_lanes[MODE_CAR_PARKING][DIRECTION_FORWARD][right_start::2],
             sorted_lanes[MODE_PRIVATE_CARS][DIRECTION_BACKWARD],
             sorted_lanes[MODE_TRANSIT][DIRECTION_BACKWARD],
 
             sorted_lanes[MODE_TRANSIT][DIRECTION_BOTH],
             sorted_lanes[MODE_PRIVATE_CARS][DIRECTION_BOTH],
 
+            sorted_lanes[MODE_PRIVATE_CARS][DIRECTION_TBD],
+
             sorted_lanes[MODE_TRANSIT][DIRECTION_FORWARD],
             sorted_lanes[MODE_PRIVATE_CARS][DIRECTION_FORWARD],
-            sorted_lanes[MODE_CAR_PARKING][DIRECTION_FORWARD],
-            sorted_lanes[MODE_CYCLING][DIRECTION_FORWARD],
+            sorted_lanes[MODE_CAR_PARKING][DIRECTION_FORWARD][left_start::2],
+            sorted_lanes[MODE_CAR_PARKING][DIRECTION_BACKWARD][right_start::2],
 
-            sorted_lanes[MODE_CYCLING][DIRECTION_BOTH][1::2],
-            sorted_lanes[MODE_FOOT][DIRECTION_BOTH][1::2]
+            sorted_lanes[MODE_NON_TRAFFIC][DIRECTION_BACKWARD][right_start::2],
+            sorted_lanes[MODE_NON_TRAFFIC][DIRECTION_FORWARD][left_start::2],
+
+            sorted_lanes[MODE_BICYCLE_PARKING][DIRECTION_BACKWARD][left_start::2],
+            sorted_lanes[MODE_BICYCLE_PARKING][DIRECTION_FORWARD][right_start::2],
+            sorted_lanes[MODE_CYCLING][DIRECTION_FORWARD],
+            sorted_lanes[MODE_CYCLING][DIRECTION_BOTH][right_start::2],
+
+            sorted_lanes[MODE_FOOT][DIRECTION_BOTH][right_start::2],
 
         ]
 
@@ -963,7 +994,11 @@ def normalize_cycling_lanes(G, lanes_key=KEY_LANES_DESCRIPTION):
                 lanes[i] = lane
 
 
-def _calculate_lane_cost(lane, length, slope, mode, direction=DIRECTION_FORWARD, include_tentative=False):
+def _calculate_lane_cost(
+        lane, length, slope, mode, direction=DIRECTION_FORWARD,
+        include_tentative=False,
+        cycling_infrastructure_benefits=True
+):
     """
     Returns the cost of traversing this lane using the specified mode.
     The resulting cost is relative to other lanes with the same mode but is not comparable across modes.
@@ -980,14 +1015,14 @@ def _calculate_lane_cost(lane, length, slope, mode, direction=DIRECTION_FORWARD,
         mode from constants.MODES
     direction: str
     include_tentative: bool
-        if true, also lanes with tentative direction will be included
+        if True, also lanes with tentative direction will be included
+    cycling_infrastructure_benefits: bool
+        if True, the cost will be adjusted to reflect the comfort of infrastructure
 
     Returns
     -------
     float
     """
-
-    lane
 
     if include_tentative and lane.status != STATUS_FIXED:
         return np.Inf
@@ -1001,16 +1036,26 @@ def _calculate_lane_cost(lane, length, slope, mode, direction=DIRECTION_FORWARD,
         return np.Inf
 
     # apply the cycling cost factor if the mode is cycling
-    elif mode == MODE_CYCLING:
+    elif mode in [MODE_CYCLING, MODE_PEDELEC, MODE_S_PEDELEC]:
         # adjust the slope according to the direction
-        if direction in {DIRECTION_FORWARD, DIRECTION_FORWARD_OPTIONAL}:
+        if direction in {DIRECTION_FORWARD}:
             pass
-        elif direction in {DIRECTION_BACKWARD, DIRECTION_BACKWARD_OPTIONAL}:
+        elif direction in {DIRECTION_BACKWARD}:
             slope = -slope
         else:
             # cannot calculate cycling cost if direction is unknown
             slope = math.inf
-        return length * (1 + lane.get_cycling_vod_factor() + CYCLING_SLOPE_VOD(slope))
+        if mode == MODE_CYCLING:
+            slope_cost = CYCLING_SLOPE_VOD(slope)
+        else:
+            slope_cost = EBIKE_SLOPE_VOD(slope)
+
+        # decide whether cycling infrastructure benefits should be included
+        if cycling_infrastructure_benefits:
+            return length * (1 + lane.get_cycling_vod_factor() + slope_cost)
+        elif not cycling_infrastructure_benefits:
+            return length * (1 + slope_cost)
+
     # otherwise, return just the length
     else:
         return length
@@ -1031,11 +1076,10 @@ def filter_lanes_by_modes(lanes, modes, operator='or'):
 
     Returns
     -------
-    list
-
+    SpaceAllocation
     """
 
-    lanes_result = copy.copy(lanes)
+    lanes_result = copy.deepcopy(lanes)
     lanes_result[:] = []
 
     if operator == 'exact':
@@ -1048,9 +1092,31 @@ def filter_lanes_by_modes(lanes, modes, operator='or'):
     return lanes_result
 
 
+def filter_lanes_by_lanetypes(lanes, lanetypes):
+    """
+    Returns a subset of lanes that are of one of the provided lanetypes
+
+    Parameters
+    ----------
+    lanes : SpaceAllocation
+    lanetypes : set
+
+    Returns
+    -------
+    SpaceAllocation
+    """
+
+    lanes_result = copy.deepcopy(lanes)
+    lanes_result[:] = []
+
+    lanes_result += [lane for lane in lanes if lane.lanetype in lanetypes]
+
+    return lanes_result
+
+
 def filter_lanes_by_function(lanes, filter_function):
 
-    lanes_result = copy.copy(lanes)
+    lanes_result = copy.deepcopy(lanes)
     lanes_result[:] = []
 
     lanes_result += [lane for lane in lanes if filter_function(lane) is True]
@@ -1071,7 +1137,7 @@ def space_allocation_from_string(sa_string):
     SpaceAllocation
     """
 
-    if sa_string in [None, '', 'nan']:
+    if sa_string in [None, '', 'nan', 'None', '[None]']:
         return
 
     lane_strings = sa_string.split(' | ')
@@ -1086,6 +1152,37 @@ def space_allocation_from_string(sa_string):
 
 def lane_from_string(s):
     return Lane(s[0], s[1], status=s[2], width=utils.safe_float(s[3:]))
+
+
+def adjust_lane_widths_to_street(
+        G, *uvk,
+        lanes_key=KEY_LANES_DESCRIPTION,
+        street_width_attribute='width',
+        filter_lanetypes=None,
+        fill_out_with_non_traffic=False
+):
+
+    data = G.edges[uvk]
+    lanes = data[lanes_key]
+
+    street_width = data[street_width_attribute]
+    total_lane_width = sum([lane.width for lane in lanes])
+    excess_width = total_lane_width - street_width
+
+    if excess_width > 0 and fill_out_with_non_traffic:
+
+        filter_lanetypes = {LANETYPE_NON_TRAFFIC}
+        lanes += Lane(LANETYPE_NON_TRAFFIC, DIRECTION_FORWARD, width=0)
+
+    if excess_width != 0:
+
+        # include only some lane types in the adjusting process, i.e., leave all other lanes unchanged
+        if filter_lanetypes:
+            lanes = [lane for lane in lanes if lane.lanetype in filter_lanetypes]
+        total_selected_lane_width = sum([lane.width for lane in lanes])
+
+        for lane in lanes:
+            lane.width = lane.width - excess_width * lane.width / total_selected_lane_width
 
 
 class Lane:
@@ -1110,7 +1207,7 @@ class Lane:
         self.lanetype = lanetype
         self.direction = direction
         self.status = status
-        if width:
+        if width is not None:
             self.width = width
         else:
             self.set_default_width()
@@ -1196,3 +1293,6 @@ class SpaceAllocation(list):
         """
         self.reverse()
         [lane.reverse_direction() for lane in self]
+
+    def get_total_width(self):
+        return sum([lane.width for lane in self])
