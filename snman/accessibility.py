@@ -16,10 +16,12 @@ def calculate_behavioral_cost(
         euclidean_distance,
         travel_time_private_cars=np.inf, travel_time_access_egress_private_cars=np.inf, path_length_private_cars=np.inf,
         travel_time_transit=np.inf,
-        travel_time_cycling=np.inf, travel_time_access_egress_cycling=np.inf,
+        travel_time_cycling=np.inf, travel_time_access_egress_cycling=np.inf, path_length_cycling=np.inf,
+        travel_time_pedelec=np.inf, travel_time_access_egress_pedelec=np.inf, path_length_pedelec=np.inf,
+        travel_time_s_pedelec=np.inf, travel_time_access_egress_s_pedelec=np.inf, path_length_s_pedelec=np.inf,
         travel_time_foot=np.inf, travel_time_access_egress_foot=np.inf,
+        sex=None,
         age=None,
-        car_cost_detour_factor=1.5
 ):
     """
     old mode choice model
@@ -40,7 +42,7 @@ def calculate_behavioral_cost(
 
     X_IVT_car = travel_time_private_cars / 60
     X_AET_car = travel_time_access_egress_private_cars / 60
-    X_cost_car = 0.26 * euclidean_distance / 1000 * car_cost_detour_factor  # surrogate
+    X_cost_car = 0.26 * euclidean_distance / 1000 * 1.2  # surrogate
     Alpha_car = -0.8
     Beta_TT_car = -0.0192
     Beta_TT_walk = -0.0457
@@ -99,6 +101,9 @@ def calculate_behavioral_cost(
             + Beta_age_60_plus_bike * (X_age >= 60)
     )
 
+    U[MODE_PEDELEC] = -np.inf
+    U[MODE_S_PEDELEC] = -np.inf
+
     X_walkTT = travel_time_foot / 60 + travel_time_access_egress_foot / 60
     Alpha_walk = 0.5903
     Beta_TT_walk = -0.0457
@@ -151,9 +156,9 @@ def calculate_behavioral_cost_updated(
         travel_time_cycling=np.inf, travel_time_access_egress_cycling=np.inf, path_length_cycling=np.inf,
         travel_time_pedelec=np.inf, travel_time_access_egress_pedelec=np.inf, path_length_pedelec=np.inf,
         travel_time_s_pedelec=np.inf, travel_time_access_egress_s_pedelec=np.inf, path_length_s_pedelec=np.inf,
-        travel_time_foot=np.inf, travel_time_access_egress_foot=np.inf,
+        travel_time_foot=np.inf, travel_time_access_egress_foot=np.inf, path_length_foot=np.inf,
+        sex=None,
         age=None,
-        car_cost_detour_factor=1.5
 ):
     """
     Calculates individual generalized cost based on the personal properties and mode choice.
@@ -170,10 +175,10 @@ def calculate_behavioral_cost_updated(
     Beta_cost = -0.06934
     Beta_externalities_car = 0.644314
     Gamma_externalitiesByKm_car = 0.1601
-    X_in_vehicle_distance_car = path_length_private_cars / 1000
-    X_cost_car = 0.188 * path_length_private_cars / 1000
-    X_TT_car = travel_time_private_cars / 3600
-    X_parking_cost = 6
+    X_in_vehicle_distance_car = euclidean_distance * 1.2 / 1000  # surrogate, we don't know the real distance
+    X_cost_car = 0.188 * euclidean_distance * 1.2 / 1000
+    X_TT_car = travel_time_private_cars / 3600 + travel_time_access_egress_private_cars / 3600
+    X_parking_cost = 4  # surrogate
 
     U[MODE_PRIVATE_CARS] = (
             Alpha_car
@@ -195,7 +200,7 @@ def calculate_behavioral_cost_updated(
     Beta_cost = -0.06934
     Beta_externalities_PT = 1.44709
     Gamma_externalitiesByKm_PT = 0.08
-    X_sex_female = 0.5                  # surrogate, 50%
+    X_sex_female = sex==2
     X_age = age
     X_degurba_medium = 0.33             # surrogate, 1/3
     X_degurba_low = 0.33                # surrogate, 1/3
@@ -316,6 +321,22 @@ def calculate_behavioral_cost_updated(
             #+ Beta_externalities_walk * Gamma_externalitiesByKm_walk * X_distance_walk      # no externalities
     )
 
+    # cut off cycling length at 40 km
+    if path_length_cycling > 40 * 1000:
+        U[MODE_CYCLING] = -np.inf
+
+    # cut off cycling length at 40 km
+    if path_length_pedelec > 40 * 1000:
+        U[MODE_PEDELEC] = -np.inf
+
+    # cut off cycling length at 40 km
+    if path_length_s_pedelec > 40 * 1000:
+        U[MODE_S_PEDELEC] = -np.inf
+
+    # cut off walking length at 5 km
+    if path_length_foot > 5 * 1000:
+        U[MODE_FOOT] = -np.inf
+
     # replace nan with -inf for non-existent options (=infinite cost)
     U = {mode: -np.inf if np.isnan(U_mode) else U_mode for mode, U_mode in U.items()}
 
@@ -370,10 +391,11 @@ def calculate_accessibility_for_statent_cell(
         s_pedelec_speed_kmh=24,
         walking_speed_kmh=1.34*3.6,
         access_egress_detour_factor=1.5,
-        min_travel_time=5*60,
+        min_travel_time=1*60,
         min_euclidian_distance=100,
         car_cost_detour_factor=1.5,
-        accessibility_beta=-0.7
+        accessibility_beta=-0.7,
+        mode_choice_model='ebc'
 ):
     """
     Calculates accessibility for every resident associated with a given cell in the statent dataset.
@@ -450,7 +472,11 @@ def calculate_accessibility_for_statent_cell(
     # make a sample of statpop cells but include the origin cell in every case
     statent_filtered = pd.concat([
         statent_filtered[statent_filtered['id'] == statent_id],
-        statent_filtered[statent_filtered['id'] != statent_id].sample(frac=destinations_sample, random_state=0)
+        statent_filtered[statent_filtered['id'] != statent_id].sample(
+            frac=destinations_sample,
+            weights='VOLLZEITAEQ_TOTAL',            # ensure a representative sample
+            random_state=0
+        )
     ])
 
     # --------------------------------------------
@@ -624,7 +650,7 @@ def calculate_accessibility_for_statent_cell(
     # --------------------------------------------
 
     # ensure minimum travel time and euclidian distance
-    for mode in [MODE_CYCLING, MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_FOOT]:
+    for mode in [MODE_PRIVATE_CARS, MODE_CYCLING, MODE_FOOT, MODE_PEDELEC, MODE_S_PEDELEC]:
         destinations_with_cost[f'travel_time_{mode}'] = np.maximum(destinations_with_cost[f'travel_time_{mode}'],
                                                                    min_travel_time)
 
@@ -633,23 +659,43 @@ def calculate_accessibility_for_statent_cell(
 
     # --------------------------------------------
 
-    destinations_with_cost[['choice_probabilities', 'cost', 'weighted_cost']] = destinations_with_cost.apply(
-        lambda row: calculate_behavioral_cost_updated(
-            **row[[
-                'euclidean_distance',
-                'travel_time_private_cars', 'travel_time_access_egress_private_cars', 'path_length_private_cars',
-                'travel_time_transit',
-                'travel_time_cycling', 'travel_time_access_egress_cycling', 'path_length_cycling',
-                'travel_time_pedelec', 'travel_time_access_egress_pedelec', 'path_length_pedelec',
-                'travel_time_s_pedelec', 'travel_time_access_egress_s_pedelec', 'path_length_s_pedelec',
-                'travel_time_foot', 'travel_time_access_egress_foot',
-                'age'
-            ]],
-            car_cost_detour_factor=car_cost_detour_factor
-        ),
-        axis=1,
-        result_type='expand'
-    )
+    if mode_choice_model == 'ebc':
+
+        destinations_with_cost[['choice_probabilities', 'cost', 'weighted_cost']] = destinations_with_cost.apply(
+            lambda row: calculate_behavioral_cost_updated(
+                **row[[
+                    'euclidean_distance',
+                    'travel_time_private_cars', 'travel_time_access_egress_private_cars', 'path_length_private_cars',
+                    'travel_time_transit',
+                    'travel_time_cycling', 'travel_time_access_egress_cycling', 'path_length_cycling',
+                    'travel_time_pedelec', 'travel_time_access_egress_pedelec', 'path_length_pedelec',
+                    'travel_time_s_pedelec', 'travel_time_access_egress_s_pedelec', 'path_length_s_pedelec',
+                    'travel_time_foot', 'travel_time_access_egress_foot',
+                    'age'
+                ]],
+                car_cost_detour_factor=car_cost_detour_factor
+            ),
+            axis=1,
+            result_type='expand'
+        )
+
+    elif mode_choice_model == 'astra':
+
+        destinations_with_cost[['choice_probabilities', 'cost', 'weighted_cost']] = destinations_with_cost.apply(
+            lambda row: calculate_behavioral_cost(
+                **row[[
+                    'euclidean_distance',
+                    'travel_time_private_cars', 'travel_time_access_egress_private_cars', 'path_length_private_cars',
+                    'travel_time_transit',
+                    'travel_time_cycling', 'travel_time_access_egress_cycling', 'path_length_cycling',
+                    'travel_time_foot', 'travel_time_access_egress_foot',
+                    'age'
+                ]],
+                car_cost_detour_factor=car_cost_detour_factor
+            ),
+            axis=1,
+            result_type='expand'
+        )
 
     destinations_with_cost
 
@@ -684,33 +730,61 @@ def calculate_accessibility_for_statent_cell(
 
     # --------------------------------------------
 
-    # for each person, sum the accessibility contributions across all destinations
-    accessibility = destinations_with_cost.groupby('record').agg({
-        'age': 'first',
-        'sex': 'first',
-        'maritalstatus': 'first',
-        'residencepermit': 'first',
-        'residentpermit': 'first',
-        'statent_id': 'first',
-        'accessibility_contribution': 'sum',
-        'accessibility_contribution_cycling': 'sum',
-        'accessibility_contribution_pedelec': 'sum',
-        'accessibility_contribution_s_pedelec': 'sum',
-        'accessibility_contribution_foot': 'sum',
-        'accessibility_contribution_private_cars': 'sum',
-        'accessibility_contribution_transit': 'sum',
-        'geometry': 'first'
-    })
+    if mode_choice_model == 'ebc':
 
-    accessibility.rename(columns={
-        'accessibility_contribution': 'accessibility',
-        'accessibility_contribution_cycling': 'accessibility_cycling',
-        'accessibility_contribution_pedelec': 'accessibility_pedelec',
-        'accessibility_contribution_s_pedelec': 'accessibility_s_pedelec',
-        'accessibility_contribution_foot': 'accessibility_foot',
-        'accessibility_contribution_private_cars': 'accessibility_private_cars',
-        'accessibility_contribution_transit': 'accessibility_transit',
-    }, inplace=True)
+        # for each person, sum the accessibility contributions across all destinations
+        accessibility = destinations_with_cost.groupby('record').agg({
+            'age': 'first',
+            'sex': 'first',
+            'maritalstatus': 'first',
+            'residencepermit': 'first',
+            'residentpermit': 'first',
+            'statent_id': 'first',
+            'accessibility_contribution': 'sum',
+            'accessibility_contribution_cycling': 'sum',
+            'accessibility_contribution_pedelec': 'sum',
+            'accessibility_contribution_s_pedelec': 'sum',
+            'accessibility_contribution_foot': 'sum',
+            'accessibility_contribution_private_cars': 'sum',
+            'accessibility_contribution_transit': 'sum',
+            'geometry': 'first'
+        })
+
+        accessibility.rename(columns={
+            'accessibility_contribution': 'accessibility',
+            'accessibility_contribution_cycling': 'accessibility_cycling',
+            'accessibility_contribution_pedelec': 'accessibility_pedelec',
+            'accessibility_contribution_s_pedelec': 'accessibility_s_pedelec',
+            'accessibility_contribution_foot': 'accessibility_foot',
+            'accessibility_contribution_private_cars': 'accessibility_private_cars',
+            'accessibility_contribution_transit': 'accessibility_transit',
+        }, inplace=True)
+
+    elif mode_choice_model == 'astra':
+
+        # for each person, sum the accessibility contributions across all destinations
+        accessibility = destinations_with_cost.groupby('record').agg({
+            'age': 'first',
+            'sex': 'first',
+            'maritalstatus': 'first',
+            'residencepermit': 'first',
+            'residentpermit': 'first',
+            'statent_id': 'first',
+            'accessibility_contribution': 'sum',
+            'accessibility_contribution_cycling': 'sum',
+            'accessibility_contribution_foot': 'sum',
+            'accessibility_contribution_private_cars': 'sum',
+            'accessibility_contribution_transit': 'sum',
+            'geometry': 'first'
+        })
+
+        accessibility.rename(columns={
+            'accessibility_contribution': 'accessibility',
+            'accessibility_contribution_cycling': 'accessibility_cycling',
+            'accessibility_contribution_foot': 'accessibility_foot',
+            'accessibility_contribution_private_cars': 'accessibility_private_cars',
+            'accessibility_contribution_transit': 'accessibility_transit',
+        }, inplace=True)
 
     accessibility.reset_index(inplace=True)
     accessibility = gpd.GeoDataFrame(accessibility, crs=2056)
@@ -753,10 +827,18 @@ def calculate_accessibility_for_statent_cell_logsum(
         s_pedelec_speed_kmh=24,
         walking_speed_kmh=1.34*3.6,
         access_egress_detour_factor=1.5,
-        min_travel_time=5*60,
+        min_travel_time=1*60,
         min_euclidian_distance=100,
-        car_cost_detour_factor=1.5,
-        accessibility_beta=-0.7
+        accessibility_beta = {
+            MODE_PRIVATE_CARS: 1,
+            MODE_TRANSIT: 1.4,
+            MODE_CYCLING: 1.6,
+            MODE_PEDELEC: 1.6,
+            MODE_S_PEDELEC: 1.6,
+            MODE_FOOT: 2
+        },
+        return_destinations_with_cost=False,
+        mode_choice_model='ebc'
 ):
     """
     Calculates accessibility for every resident associated with a given cell in the statent dataset.
@@ -832,10 +914,14 @@ def calculate_accessibility_for_statent_cell_logsum(
 
     # --------------------------------------------
 
-    # make a sample of statpop cells but include the origin cell in every case
+    # make a sample of statent cells but include the origin cell in every case
     statent_filtered = pd.concat([
         statent_filtered[statent_filtered['id'] == statent_id],
-        statent_filtered[statent_filtered['id'] != statent_id].sample(frac=destinations_sample, random_state=0)
+        statent_filtered[statent_filtered['id'] != statent_id].sample(
+            frac=destinations_sample,
+            weights='VOLLZEITAEQ_TOTAL',
+            random_state=0
+        )
     ])
 
     # --------------------------------------------
@@ -1009,7 +1095,7 @@ def calculate_accessibility_for_statent_cell_logsum(
     # --------------------------------------------
 
     # ensure minimum travel time and euclidian distance
-    for mode in [MODE_CYCLING, MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_FOOT]:
+    for mode in [MODE_PRIVATE_CARS, MODE_CYCLING, MODE_FOOT, MODE_PEDELEC, MODE_S_PEDELEC]:
         destinations_with_cost[f'travel_time_{mode}'] = np.maximum(destinations_with_cost[f'travel_time_{mode}'],
                                                                    min_travel_time)
 
@@ -1018,23 +1104,45 @@ def calculate_accessibility_for_statent_cell_logsum(
 
     # --------------------------------------------
 
-    destinations_with_cost[['choice_probabilities', 'cost', 'weighted_cost', 'logsum_exponent']] = destinations_with_cost.apply(
-        lambda row: calculate_behavioral_cost_updated(
-            **row[[
-                'euclidean_distance',
-                'travel_time_private_cars', 'travel_time_access_egress_private_cars', 'path_length_private_cars',
-                'travel_time_transit',
-                'travel_time_cycling', 'travel_time_access_egress_cycling', 'path_length_cycling',
-                'travel_time_pedelec', 'travel_time_access_egress_pedelec', 'path_length_pedelec',
-                'travel_time_s_pedelec', 'travel_time_access_egress_s_pedelec', 'path_length_s_pedelec',
-                'travel_time_foot', 'travel_time_access_egress_foot',
-                'age'
-            ]],
-            car_cost_detour_factor=car_cost_detour_factor
-        ),
-        axis=1,
-        result_type='expand'
-    )
+    if mode_choice_model == 'ebc':
+
+        destinations_with_cost[['choice_probabilities', 'cost', 'weighted_cost', 'logsum_exponent']] = destinations_with_cost.apply(
+            lambda row: calculate_behavioral_cost_updated(
+                **row[[
+                    'euclidean_distance',
+                    'travel_time_private_cars', 'travel_time_access_egress_private_cars', 'path_length_private_cars',
+                    'travel_time_transit',
+                    'travel_time_cycling', 'travel_time_access_egress_cycling', 'path_length_cycling',
+                    'travel_time_pedelec', 'travel_time_access_egress_pedelec', 'path_length_pedelec',
+                    'travel_time_s_pedelec', 'travel_time_access_egress_s_pedelec', 'path_length_s_pedelec',
+                    'travel_time_foot', 'travel_time_access_egress_foot', 'path_length_foot',
+                    'sex',
+                    'age'
+                ]],
+            ),
+            axis=1,
+            result_type='expand'
+        )
+
+    else:
+
+        destinations_with_cost[['choice_probabilities', 'cost', 'weighted_cost', 'logsum_exponent']] = destinations_with_cost.apply(
+            lambda row: calculate_behavioral_cost(
+                **row[[
+                    'euclidean_distance',
+                    'travel_time_private_cars', 'travel_time_access_egress_private_cars', 'path_length_private_cars',
+                    'travel_time_transit',
+                    'travel_time_cycling', 'travel_time_access_egress_cycling', 'path_length_cycling',
+                    'travel_time_pedelec', 'travel_time_access_egress_pedelec', 'path_length_pedelec',
+                    'travel_time_s_pedelec', 'travel_time_access_egress_s_pedelec', 'path_length_s_pedelec',
+                    'travel_time_foot', 'travel_time_access_egress_foot', 'path_length_foot',
+                    'sex',
+                    'age'
+                ]],
+            ),
+            axis=1,
+            result_type='expand'
+        )
 
     # Here we get the utilities * -1
     destinations_with_cost
@@ -1050,6 +1158,26 @@ def calculate_accessibility_for_statent_cell_logsum(
     )
 
     # calculate total accessibility contribution using cost function and destination utility
+    #destinations_with_cost['accessibility_contribution'] = (
+    #        (destinations_with_cost['weighted_cost'] ** accessibility_beta)
+    #        * destinations_with_cost['VOLLZEITAEQ_TOTAL']
+    #)
+
+    destinations_with_cost
+
+    # --------------------------------------------
+
+    # calculate accessibility contribution for every mode separately
+    for mode in [MODE_CYCLING, MODE_PEDELEC, MODE_S_PEDELEC, MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_FOOT]:
+        destinations_with_cost[f'accessibility_contribution_{mode}'] = (
+                (destinations_with_cost[f'c_{mode}'] ** -accessibility_beta[mode])
+                * destinations_with_cost['VOLLZEITAEQ_TOTAL']
+        )
+
+    destinations_with_cost
+
+
+    # scale the logsum exponent with destination opportunities
     destinations_with_cost['logsum_exponent'] = (
             destinations_with_cost['logsum_exponent']
             * destinations_with_cost['VOLLZEITAEQ_TOTAL']
@@ -1059,10 +1187,10 @@ def calculate_accessibility_for_statent_cell_logsum(
 
     # --------------------------------------------
 
-    # calculate accessibility contribution for every mode separately
+    # scale the logsum exponent with destination opportunities for every mode separately
     for mode in [MODE_CYCLING, MODE_PEDELEC, MODE_S_PEDELEC, MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_FOOT]:
         destinations_with_cost[f'logsum_exponent_{mode}'] = (
-                np.exp(destinations_with_cost[f'c_{mode}'])
+                np.exp(-destinations_with_cost[f'c_{mode}'])
                 * destinations_with_cost['VOLLZEITAEQ_TOTAL']
         )
 
@@ -1085,6 +1213,13 @@ def calculate_accessibility_for_statent_cell_logsum(
         'logsum_exponent_foot': 'sum',
         'logsum_exponent_private_cars': 'sum',
         'logsum_exponent_transit': 'sum',
+        #'accessibility_contribution': 'sum',
+        'accessibility_contribution_cycling': 'sum',
+        'accessibility_contribution_pedelec': 'sum',
+        'accessibility_contribution_s_pedelec': 'sum',
+        'accessibility_contribution_foot': 'sum',
+        'accessibility_contribution_private_cars': 'sum',
+        'accessibility_contribution_transit': 'sum',
         'geometry': 'first'
     })
 
@@ -1095,8 +1230,24 @@ def calculate_accessibility_for_statent_cell_logsum(
         'logsum_exponent_s_pedelec': 'sum_of_logsum_exponents_s_pedelec',
         'logsum_exponent_foot': 'sum_of_logsum_exponents_foot',
         'logsum_exponent_private_cars': 'sum_of_logsum_exponents_private_cars',
-        'logsum_exponent_transit': 'sum_of_logsum_exponents_transit'
-    })
+        'logsum_exponent_transit': 'sum_of_logsum_exponents_transit',
+        #'accessibility_contribution': 'accessibility',
+        'accessibility_contribution_cycling': 'hansen_accessibility_cycling',
+        'accessibility_contribution_pedelec': 'hansen_accessibility_pedelec',
+        'accessibility_contribution_s_pedelec': 'hansen_accessibility_s_pedelec',
+        'accessibility_contribution_foot': 'hansen_accessibility_foot',
+        'accessibility_contribution_private_cars': 'hansen_accessibility_private_cars',
+        'accessibility_contribution_transit': 'hansen_accessibility_transit',
+    }, inplace=True)
+
+    accessibility['hansen_accessibility'] = (
+        accessibility['hansen_accessibility_cycling']
+        + accessibility['hansen_accessibility_pedelec']
+        + accessibility['hansen_accessibility_s_pedelec']
+        + accessibility['hansen_accessibility_foot']
+        + accessibility['hansen_accessibility_private_cars']
+        + accessibility['hansen_accessibility_transit']
+    )
 
     for mode in ['all', MODE_CYCLING, MODE_PEDELEC, MODE_S_PEDELEC, MODE_FOOT, MODE_PRIVATE_CARS, MODE_TRANSIT]:
         accessibility[f'logsum_{mode}'] = np.log(accessibility[f'sum_of_logsum_exponents_{mode}'])
@@ -1107,5 +1258,7 @@ def calculate_accessibility_for_statent_cell_logsum(
 
     # --------------------------------------------
 
-    return accessibility
-
+    if return_destinations_with_cost is True:
+        return destinations_with_cost
+    else:
+        return accessibility

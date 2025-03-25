@@ -10,7 +10,9 @@ import numpy as np
 def create_lane_graph(
         G,
         lanes_attribute=KEY_LANES_DESCRIPTION,
-        cast_attributes={}
+        cast_attributes={},
+        cast_directed_attributes={},
+        cycling_infrastructure_benefits=True
 ):
     """
     Creates a new lane graph, derived from the street graph
@@ -19,6 +21,8 @@ def create_lane_graph(
     G : street_graph.StreetGraph
     lanes_attribute : str
         which attribute should be used for the lane description
+    cycling_infrastructure_benefits : bool
+        if True, the cost values will include the benefits of cycling infrastructure
 
     Returns
     -------
@@ -66,9 +70,19 @@ def create_lane_graph(
             attributes['width'] = lane.width
             attributes['osm_highway'] = data.get('highway')
             attributes['maxspeed'] = data.get('maxspeed')
+            attributes['reverse'] = reverse
+
+            attributes['grade'] = -data.get('grade') if reverse else data.get('grade')
 
             for key, value in cast_attributes.items():
                 attributes[key] = data.get(value)
+
+            for key, value in cast_directed_attributes.items():
+                if reverse:
+                    direction = DIRECTION_BACKWARD
+                else:
+                    direction = DIRECTION_FORWARD
+                attributes[key] = data.get(f'{value}_{direction}')
 
             #attributes['status'] = lane.status
             #attributes['fixed'] = lane.status == STATUS_FIXED
@@ -77,7 +91,9 @@ def create_lane_graph(
             if not reverse:
                 costs = {}
                 for mode in MODES:
-                    cost = space_allocation._calculate_lane_cost(lane, length, slope, mode)
+                    cost = space_allocation._calculate_lane_cost(
+                        lane, length, slope, mode, cycling_infrastructure_benefits=cycling_infrastructure_benefits
+                    )
                     costs['cost_' + mode] = cost
                 L.add_edge(
                     u, v, lane_id, **{**attributes, **costs}, lane=lane, backward=0, instance=1,
@@ -86,7 +102,9 @@ def create_lane_graph(
             if reverse:
                 costs = {}
                 for mode in MODES:
-                    cost = space_allocation._calculate_lane_cost(lane, length, -slope, mode)
+                    cost = space_allocation._calculate_lane_cost(
+                        lane, length, -slope, mode, cycling_infrastructure_benefits=cycling_infrastructure_benefits
+                    )
                     costs['cost_' + mode] = cost
                 L.add_edge(
                     v, u, lane_id, **{**attributes, **costs}, lane=lane, backward=1, instance=1,
@@ -95,7 +113,9 @@ def create_lane_graph(
             if lane.direction in [DIRECTION_BOTH, DIRECTION_TBD]:
                 costs = {}
                 for mode in MODES:
-                    cost = space_allocation._calculate_lane_cost(lane, length, slope, mode)
+                    cost = space_allocation._calculate_lane_cost(
+                        lane, length, slope, mode, cycling_infrastructure_benefits=cycling_infrastructure_benefits
+                    )
                     costs['cost_' + mode] = cost
                 L.add_edge(
                     u, v, lane_id, **{**attributes, **costs},
@@ -104,7 +124,9 @@ def create_lane_graph(
                 )
                 costs = {}
                 for mode in MODES:
-                    cost = space_allocation._calculate_lane_cost(lane, length, -slope, mode)
+                    cost = space_allocation._calculate_lane_cost(
+                        lane, length, -slope, mode, cycling_infrastructure_benefits=cycling_infrastructure_benefits
+                    )
                     costs['cost_' + mode] = cost
                 opposite_lane = copy.copy(lane)
                 L.add_edge(

@@ -221,7 +221,7 @@ def CYCLING_SLOPE_VOD(slope):
 
     """
     slope = float(slope)
-    if slope < 0.03:
+    if slope < 0.02:
         return 0
     if 0.02 <= slope < 0.06:
         return +0.55
@@ -233,7 +233,7 @@ def CYCLING_SLOPE_VOD(slope):
 
 def EBIKE_SLOPE_VOD(slope):
     slope = float(slope)
-    if slope < 0.03:
+    if slope < 0.02:
         return 0
     if 0.02 <= slope < 0.06:
         return +0.09

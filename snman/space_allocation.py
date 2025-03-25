@@ -994,7 +994,11 @@ def normalize_cycling_lanes(G, lanes_key=KEY_LANES_DESCRIPTION):
                 lanes[i] = lane
 
 
-def _calculate_lane_cost(lane, length, slope, mode, direction=DIRECTION_FORWARD, include_tentative=False):
+def _calculate_lane_cost(
+        lane, length, slope, mode, direction=DIRECTION_FORWARD,
+        include_tentative=False,
+        cycling_infrastructure_benefits=True
+):
     """
     Returns the cost of traversing this lane using the specified mode.
     The resulting cost is relative to other lanes with the same mode but is not comparable across modes.
@@ -1011,7 +1015,9 @@ def _calculate_lane_cost(lane, length, slope, mode, direction=DIRECTION_FORWARD,
         mode from constants.MODES
     direction: str
     include_tentative: bool
-        if true, also lanes with tentative direction will be included
+        if True, also lanes with tentative direction will be included
+    cycling_infrastructure_benefits: bool
+        if True, the cost will be adjusted to reflect the comfort of infrastructure
 
     Returns
     -------
@@ -1043,7 +1049,13 @@ def _calculate_lane_cost(lane, length, slope, mode, direction=DIRECTION_FORWARD,
             slope_cost = CYCLING_SLOPE_VOD(slope)
         else:
             slope_cost = EBIKE_SLOPE_VOD(slope)
-        return length * (1 + lane.get_cycling_vod_factor() + slope_cost)
+
+        # decide whether cycling infrastructure benefits should be included
+        if cycling_infrastructure_benefits:
+            return length * (1 + lane.get_cycling_vod_factor() + slope_cost)
+        elif not cycling_infrastructure_benefits:
+            return length * (1 + slope_cost)
+
     # otherwise, return just the length
     else:
         return length
