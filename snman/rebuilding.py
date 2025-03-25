@@ -293,7 +293,7 @@ def multi_set_given_lanes(
                     existing_parking_lanes = space_allocation.filter_lanes_by_modes(
                         source_lanes, {MODE_CAR_PARKING}, operator='exact'
                     )
-                    if parking_mode != 'none_without_replacement':
+                    if parking_mode != 'none_without_replacement' and replace_removed_car_parking_with is not None:
                         for lane in existing_parking_lanes:
                             target_lanes.append(
                                 copy.deepcopy(replace_removed_car_parking_with)
@@ -371,6 +371,7 @@ def multi_set_given_lanes(
 
             # reorder the lanes to match a convention
             seed_side = space_allocation.assign_seed_side(data['geometry'])
+            #print(uvk, str(target_lanes))
             target_lanes = space_allocation._reorder_lanes_on_edge(target_lanes, seed_side=seed_side)
 
         data[given_lanes_attribute] = target_lanes
@@ -727,7 +728,7 @@ def _remove_car_lanes(
                     remove_edge_uvk[2] = remove_edge_uvk[2] + 'a'
                     # to change the key, we need to create a new edge and delete the old one
                     L.add_edge(*remove_edge_uvk, **L.edges[remove_edge_uvk_old])
-                    print(remove_edge_uvk)
+                    #print(remove_edge_uvk)
                     L.remove_edge(*remove_edge_uvk_old)
 
             # write the check results into the edge attributes for debugging
@@ -779,7 +780,7 @@ def _remove_car_lanes(
                     L.edges[remove_edge_uvk]['cost_cycling']
                     * (1 + LANE_TYPES[LANETYPE_CYCLING_LANE + DIRECTION_FORWARD]['cycling_vod'])
                 )
-                print('converted', remove_edge_uvk)
+                #print('converted', remove_edge_uvk)
 
 
             uv_changed = remove_edge_uvk[0:2]
@@ -908,7 +909,7 @@ def _remove_parking(
                 L.edges[remove_edge_uvk]['lane'] = replace_removed_lane_with
                 L.edges[remove_edge_uvk]['lanetype'] = replace_removed_lane_with.lanetype
                 L.edges[remove_edge_uvk]['width'] = replace_removed_lane_with.width
-                print('converted', remove_edge_uvk)
+                #print('converted', remove_edge_uvk)
 
             A.remove_node(remove_edge_uvk)
             access_graph.gravity_model(A, iterations=gravity_iterations)
@@ -1218,7 +1219,7 @@ def _adjust_width_of_lanes(
                 lane_data['lane'].width = -excess_width / len(lanes)
             else:
                 lane_data['lane'].width = lane_data['lane'].width - excess_width * lane_data['lane'].width / total_width
-            print('width adjustment', lanetypes, lane_data['lane'].width, max_lane_width)
+            #print('width adjustment', lanetypes, lane_data['lane'].width, max_lane_width)
             lane_data['lane'].width = min([lane_data['lane'].width, max_lane_width])
             lane_data['width'] = lane_data['lane'].width
             lane_data['lane'].status = STATUS_FIXED
@@ -1335,6 +1336,9 @@ def multi_rebuild_region(
     save_steps_scaling_factor
     **region_settings
     """
+
+    if hierarchies_to_include == set():
+        hierarchies_to_include = hierarchy.HIERARCHIES
 
     print('truncating street graph')
     H = oxc.truncate.truncate_graph_polygon(G, polygon, quadrat_width=100, retain_all=True)
@@ -1525,7 +1529,7 @@ def multi_rebuild_region(
         L, None, H, 'width', A, remove_car_lanes_mode,
         replace_removed_lane_with=replace_removed_car_lanes_with,
         incrementing_variable=incrementing_variable,
-        verbose=True
+        verbose=verbose
     )
     if save_steps_path:
         io.export_HLA(save_steps_path, '3', H=H, L=L, A=A, B=B, scaling_factor=save_steps_scaling_factor, export_crs=export_crs)
@@ -1536,7 +1540,7 @@ def multi_rebuild_region(
     #        io.export_HLA(save_steps_path, '3a', H=H, L=L, A=A, scaling_factor=save_steps_scaling_factor, export_crs=export_crs)
 
     print('MERGE TRANSIT AND CAR LANES')
-    _merge_transit_with_car_lanes(L, None, H, 'width', verbose=True)
+    _merge_transit_with_car_lanes(L, None, H, 'width', verbose=verbose)
     if save_steps_path:
         io.export_HLA(save_steps_path, '4', H=H, L=L, A=A, B=B, scaling_factor=save_steps_scaling_factor, export_crs=export_crs)
 
@@ -1544,7 +1548,7 @@ def multi_rebuild_region(
     _remove_cycling_lanes(
         L, None, H, 'width',
         incrementing_variable=incrementing_variable,
-        verbose=True
+        verbose=verbose
     )
     if remove_isolated_cycling_lanes is True:
         lane_graph.remove_dangling_lanes(L, lanetype=LANETYPE_CYCLING_LANE)
@@ -1552,7 +1556,7 @@ def multi_rebuild_region(
         io.export_HLA(save_steps_path, '5', H=H, L=L, A=A, B=B, scaling_factor=save_steps_scaling_factor, export_crs=export_crs)
 
     print('REMOVE NON-TRAFFIC LANES')
-    _remove_non_traffic_lanes(L, None, H, 'width', verbose=True)
+    _remove_non_traffic_lanes(L, None, H, 'width', verbose=verbose)
 
     print('CONSOLIDATE LANES')
     for uvk, data in H.edges.items():
@@ -1569,17 +1573,17 @@ def multi_rebuild_region(
         L, None, H, 'width', lanetypes={LANETYPE_CYCLING_LANE},
         directions={DIRECTION_FORWARD}, #TODO: Using direction as a workaround to exclude the cycling streets from width adjustments
         max_lane_width=max_cycling_lane_width,
-        only_too_narrow=True, verbose=True
+        only_too_narrow=True, verbose=verbose
     )
     # try to fill out with non-traffic
     if fill_out_with_non_traffic:
         _adjust_width_of_lanes(
             L, None, H, 'width', lanetypes={LANETYPE_NON_TRAFFIC},
             only_too_narrow=True,
-            verbose=True
+            verbose=verbose
         )
     # if not possible, adjust all other lanes proportionally, except parking
-    _adjust_width_of_lanes(L, None, H, 'width', verbose=True, lanetypes={
+    _adjust_width_of_lanes(L, None, H, 'width', verbose=verbose, lanetypes={
         LANETYPE_DEDICATED_PT, LANETYPE_MOTORIZED,
         LANETYPE_CYCLING_TRACK, LANETYPE_CYCLING_LANE, LANETYPE_FOOT_CYCLING_MIXED,
         LANETYPE_NON_TRAFFIC

@@ -70,6 +70,7 @@ def create_lane_graph(
             attributes['width'] = lane.width
             attributes['osm_highway'] = data.get('highway')
             attributes['maxspeed'] = data.get('maxspeed')
+            attributes['hierarchy'] = data.get('hierarchy')
             attributes['reverse'] = reverse
 
             attributes['grade'] = -data.get('grade') if reverse else data.get('grade')

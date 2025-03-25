@@ -347,18 +347,21 @@ def load_rebuilding_regions(path, crs=DEFAULT_CRS, projects=None, only_active=Fa
         rebuilding_regions = rebuilding_regions.loc[filter_ids]
 
     # convert strings into lists
-    rebuilding_regions['hierarchies_to_include'] = \
-        rebuilding_regions['hierarchies_to_include'].apply(
-            lambda x: set(x.split(',')) if isinstance(x, str) and len(x) > 0 else set()
-        )
-    rebuilding_regions['hierarchies_to_fix'] = \
-        rebuilding_regions['hierarchies_to_fix'].apply(
-            lambda x: set(x.split(',')) if isinstance(x, str) and len(x) > 0 else set()
-        )
-    rebuilding_regions['hierarchies_with_cycling_lanes'] = \
-        rebuilding_regions['hierarchies_with_cycling_lanes'].apply(
-            lambda x: set(x.split(',')) if isinstance(x, str) and len(x) > 0 else set()
-        )
+    if 'hierarchies_to_include' in rebuilding_regions.columns:
+        rebuilding_regions['hierarchies_to_include'] = \
+            rebuilding_regions['hierarchies_to_include'].apply(
+                lambda x: set(x.split(',')) if isinstance(x, str) and len(x) > 0 else set()
+            )
+    if 'hierarchies_to_fix' in rebuilding_regions.columns:
+        rebuilding_regions['hierarchies_to_fix'] = \
+            rebuilding_regions['hierarchies_to_fix'].apply(
+                lambda x: set(x.split(',')) if isinstance(x, str) and len(x) > 0 else set()
+            )
+    if 'hierarchies_with_cycling_lanes' in rebuilding_regions.columns:
+        rebuilding_regions['hierarchies_with_cycling_lanes'] = \
+            rebuilding_regions['hierarchies_with_cycling_lanes'].apply(
+                lambda x: set(x.split(',')) if isinstance(x, str) and len(x) > 0 else set()
+            )
     rebuilding_regions = rebuilding_regions.sort_values(['order'])
     return rebuilding_regions
 
