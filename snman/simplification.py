@@ -517,6 +517,7 @@ def simplify_street_graph(
         exclude_edge_hierarchies_from_simplification=[],
         edge_geometries_simplification_radius=None,
         iterations=4,
+        intersection_tolerance=10,
         verbose=False
 ):
 
@@ -551,6 +552,7 @@ def simplify_street_graph(
         add_layers_to_nodes(G)
         intersections_gdf = create_intersection_geometries(
             G,
+            tolerance=intersection_tolerance,
             given_intersections_gdf=given_intersections_gdf
         )
 
@@ -561,6 +563,7 @@ def simplify_street_graph(
         add_layers_to_nodes(G)
         intersections_gdf = create_intersection_geometries(
             G,
+            tolerance=intersection_tolerance,
             given_intersections_gdf=given_intersections_gdf
         )
 

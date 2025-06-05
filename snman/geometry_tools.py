@@ -131,6 +131,9 @@ def ensure_multilinestring(geometry):
 
 
 def reverse_linestring(geometry):
+    if type(geometry) is shp.geometry.MultiLineString:
+        print(geometry)
+        geometry = geometry.geoms[0]
     return shp.ops.substring(geometry, 1, 0, normalized=True)
 
 

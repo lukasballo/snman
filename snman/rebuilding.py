@@ -1303,6 +1303,7 @@ def multi_rebuild_region(
         needed_node_access_function=multi_set_needed_node_access,
         given_lanes_attribute=KEY_GIVEN_LANES_DESCRIPTION,
         target_lanes_attribute=KEY_LANES_DESCRIPTION_AFTER,
+        merge_consecutive_edges_during_rebuilding=False,
         verbose=False,
         save_steps_path=None,
         save_steps_scaling_factor=1,
@@ -1366,12 +1367,10 @@ def multi_rebuild_region(
     if save_steps_path:
         io.export_HLA(save_steps_path, '0', L=L, scaling_factor=save_steps_scaling_factor, export_crs=export_crs)
 
-    """
-    if not hierarchy.HIERARCHIES <= hierarchies_to_include:
+    if merge_consecutive_edges_during_rebuilding and not hierarchy.HIERARCHIES <= hierarchies_to_include:
         # simplify the graph by removing intermediate nodes
         merge_edges.reset_intermediate_nodes(H)
         merge_edges.merge_consecutive_edges(H, distinction_attributes={given_lanes_attribute}, min_width=True)
-    """
 
     L = lane_graph.create_lane_graph(
         H,
@@ -1597,12 +1596,10 @@ def multi_rebuild_region(
     if save_steps_path:
         io.export_HLA(save_steps_path, '7', H=H, L=L, A=A, B=B, scaling_factor=save_steps_scaling_factor, export_crs=export_crs)
 
-    """
-    if not hierarchy.HIERARCHIES <= hierarchies_to_include:
+    if merge_consecutive_edges_during_rebuilding and not hierarchy.HIERARCHIES <= hierarchies_to_include:
         # reconstruct the original street graph with intermediary nodes
         merge_edges.reconstruct_consecutive_edges(H)
         street_graph.organize_edge_directions(H, key_lanes_description=KEY_LANES_DESCRIPTION_AFTER)
-    """
 
     if save_steps_path:
         io.export_HLA(save_steps_path, '8', H=H, L=L, A=A, B=B, scaling_factor=save_steps_scaling_factor, export_crs=export_crs)

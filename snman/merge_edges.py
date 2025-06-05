@@ -154,9 +154,11 @@ def merge_consecutive_edges(G, distinction_attributes=set(), min_width=False):
     degrees = dict(H.degree)
     for n, data in G.nodes.items():
         if degrees[n] == 2 and data.get('_include_in_simplification', True) and len(data.get('layers', [])) == 1:
+            #print(f'node {n} ok')
             pass
         else:
             H.remove_node(n)
+            #print(f'node {n} deleted')
 
     # identify weakly connected components as clusters to be merged
     wccs = list(nx.weakly_connected_components(H))
@@ -175,8 +177,11 @@ def merge_consecutive_edges(G, distinction_attributes=set(), min_width=False):
         for edge in edges:
             nx.set_edge_attributes(G, {edge: {'_cc_id': cc_id}})
 
+    #print('clusters')
+
     # bring the edges in each cluster into a consistent direction
     for i, edges in clusters.items():
+        #print(f'Cluster {i}, {len(edges)} edges')
         # make a small graph for each cluster, it must be undirected so that there is a shortest path
         H = nx.MultiGraph(edges)
         outer_nodes = [node for node, degree in H.degree() if degree == 1]

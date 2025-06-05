@@ -128,7 +128,7 @@ def load_street_graph(
         if key in nodes_gdf:
             nodes_gdf[key] = nodes_gdf[key].apply(fn)
 
-    G = street_graph.street_graph_from_gdf(nodes_gdf, edges_gdf)
+    G = street_graph.street_graph_from_gdf(nodes_gdf, edges_gdf, crs=crs)
 
     return G
 
@@ -403,7 +403,7 @@ def infer_parking_orientation(parking_spots):
     return res
 
 
-def load_parking_spots(path, crs=DEFAULT_CRS):
+def load_parking_spots(path, crs=DEFAULT_CRS, perimeter=None):
     """
     Load a geofile with parking spaces. Each parking spot needs to be represented as a point.
     For Zurich, see this dataset:
@@ -413,13 +413,15 @@ def load_parking_spots(path, crs=DEFAULT_CRS):
     ----------
     path : str
     crs : int
+    perimeter : shp.Polygon
+        crop geometries to a perimeter polygon
 
     Returns
     -------
     gpd.GeoDataFrame
     """
 
-    parking_spots = import_geofile_to_gdf(path, crs=crs)
+    parking_spots = import_geofile_to_gdf(path, crs=crs, perimeter=perimeter)
     parking_spots = infer_parking_orientation(parking_spots)
     return parking_spots
 
@@ -748,6 +750,8 @@ def export_lane_geometries(L, path_edges, path_nodes, scaling=1, include_opposit
                         data['geometry'] = shapely.reverse(data['geometry'])
 
                 except shapely.errors.GEOSException:
+                    print(uvk, 'geometry offset failed')
+                except AttributeError:
                     print(uvk, 'geometry offset failed')
 
 

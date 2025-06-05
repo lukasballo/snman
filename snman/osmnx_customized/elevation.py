@@ -57,7 +57,7 @@ def add_node_elevations_raster(G, filepath, band=1, cpus=None, graph_crs=2056, r
 
     See also the `add_edge_grades` function.
 
-    snman.oxc: added custom raster_crs
+    snevo.oxc: added custom raster_crs
 
     Parameters
     ----------

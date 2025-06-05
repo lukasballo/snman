@@ -304,7 +304,7 @@ OSM_FILTER = [
         f'["highway"!~"abandoned|bridleway|bus_guideway|corridor|elevator|'
         f'escalator|planned|platform|proposed|raceway|construction|footway|pedestrian|steps|path"]'
         #f'escalator|planned|platform|proposed|raceway|construction|footway|pedestrian|steps|path|service"]'
-        f'["service"!~"alley|driveway|emergency_access|parking|parking_aisle|private"]'
+        f'["service"!~"driveway|emergency_access|parking|parking_aisle|private"]'
         f'["access"!~"no"]'
     ),
     # bus roads marked as bus=yes
