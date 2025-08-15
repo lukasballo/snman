@@ -21,7 +21,7 @@ def calculate_behavioral_cost(
         travel_time_s_pedelec=np.inf, travel_time_access_egress_s_pedelec=np.inf, path_length_s_pedelec=np.inf,
         travel_time_foot=np.inf, travel_time_access_egress_foot=np.inf,
         sex=None,
-        age=None,
+        age=None
 ):
     """
     old mode choice model
@@ -838,7 +838,8 @@ def calculate_accessibility_for_statent_cell_logsum(
             MODE_FOOT: 2
         },
         return_destinations_with_cost=False,
-        mode_choice_model='ebc'
+        mode_choice_model='ebc',
+        cumulative_accessibility_cutoff_cost = 30 * 3600
 ):
     """
     Calculates accessibility for every resident associated with a given cell in the statent dataset.
@@ -1174,6 +1175,13 @@ def calculate_accessibility_for_statent_cell_logsum(
                 * destinations_with_cost['VOLLZEITAEQ_TOTAL']
         )
 
+    # calculate cumulative accessibility contribution for every mode separately
+    for mode in [MODE_CYCLING, MODE_PEDELEC, MODE_S_PEDELEC, MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_FOOT]:
+        if destinations_with_cost[f'c_{mode}'] <= cumulative_accessibility_cutoff_cost:
+            destinations_with_cost[f'cumulative_accessibility_contribution_{mode}'] = destinations_with_cost['VOLLZEITAEQ_TOTAL']
+        else:
+            destinations_with_cost[f'cumulative_accessibility_contribution_{mode}'] = 0
+
     destinations_with_cost
 
 
@@ -1220,6 +1228,12 @@ def calculate_accessibility_for_statent_cell_logsum(
         'accessibility_contribution_foot': 'sum',
         'accessibility_contribution_private_cars': 'sum',
         'accessibility_contribution_transit': 'sum',
+        'cumulative_accessibility_contribution_cycling': 'sum',
+        'cumulative_accessibility_contribution_pedelec': 'sum',
+        'cumulative_accessibility_contribution_s_pedelec': 'sum',
+        'cumulative_accessibility_contribution_foot': 'sum',
+        'cumulative_accessibility_contribution_private_cars': 'sum',
+        'cumulative_accessibility_contribution_transit': 'sum',
         'geometry': 'first'
     })
 
@@ -1238,6 +1252,12 @@ def calculate_accessibility_for_statent_cell_logsum(
         'accessibility_contribution_foot': 'hansen_accessibility_foot',
         'accessibility_contribution_private_cars': 'hansen_accessibility_private_cars',
         'accessibility_contribution_transit': 'hansen_accessibility_transit',
+        'cumulative_accessibility_contribution_cycling': 'cumulative_accessibility_cycling',
+        'cumulative_accessibility_contribution_pedelec': 'cumulative_accessibility_pedelec',
+        'cumulative_accessibility_contribution_s_pedelec': 'cumulative_accessibility_s_pedelec',
+        'cumulative_accessibility_contribution_foot': 'cumulative_accessibility_foot',
+        'cumulative_accessibility_contribution_private_cars': 'cumulative_accessibility_private_cars',
+        'cumulative_accessibility_contribution_transit': 'cumulative_accessibility_transit'
     }, inplace=True)
 
     accessibility['hansen_accessibility'] = (
