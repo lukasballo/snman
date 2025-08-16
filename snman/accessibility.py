@@ -839,7 +839,7 @@ def calculate_accessibility_for_statent_cell_logsum(
         },
         return_destinations_with_cost=False,
         mode_choice_model='ebc',
-        cumulative_accessibility_cutoff_cost = 30 * 3600
+        cumulative_accessibility_cutoff_cost = 30 * 60
 ):
     """
     Calculates accessibility for every resident associated with a given cell in the statent dataset.
@@ -1172,15 +1172,21 @@ def calculate_accessibility_for_statent_cell_logsum(
     for mode in [MODE_CYCLING, MODE_PEDELEC, MODE_S_PEDELEC, MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_FOOT]:
         destinations_with_cost[f'accessibility_contribution_{mode}'] = (
                 (destinations_with_cost[f'c_{mode}'] ** -accessibility_beta[mode])
-                * destinations_with_cost['VOLLZEITAEQ_TOTAL']
+                * (destinations_with_cost['VOLLZEITAEQ_TOTAL'] / destinations_sample)
         )
 
     # calculate cumulative accessibility contribution for every mode separately
     for mode in [MODE_CYCLING, MODE_PEDELEC, MODE_S_PEDELEC, MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_FOOT]:
-        if destinations_with_cost[f'c_{mode}'] <= cumulative_accessibility_cutoff_cost:
-            destinations_with_cost[f'cumulative_accessibility_contribution_{mode}'] = destinations_with_cost['VOLLZEITAEQ_TOTAL']
-        else:
-            destinations_with_cost[f'cumulative_accessibility_contribution_{mode}'] = 0
+        cost_col = f'c_{mode}'
+        out_col = f'cumulative_accessibility_contribution_{mode}'
+
+        mask = destinations_with_cost[cost_col] <= cumulative_accessibility_cutoff_cost
+        destinations_with_cost[out_col] = 0
+
+        # Only where the cost is below cutoff (i.e. within 30 minutes), use the number of jobs
+        # as accessibility contribution. Everywhere else it will remain 0.
+        destinations_with_cost.loc[mask, out_col] = destinations_with_cost.loc[mask, 'VOLLZEITAEQ_TOTAL']
+        destinations_with_cost[out_col] = destinations_with_cost[out_col] / destinations_sample
 
     destinations_with_cost
 
@@ -1188,7 +1194,7 @@ def calculate_accessibility_for_statent_cell_logsum(
     # scale the logsum exponent with destination opportunities
     destinations_with_cost['logsum_exponent'] = (
             destinations_with_cost['logsum_exponent']
-            * destinations_with_cost['VOLLZEITAEQ_TOTAL']
+            * (destinations_with_cost['VOLLZEITAEQ_TOTAL'] / destinations_sample)
     )
 
     destinations_with_cost
@@ -1199,7 +1205,7 @@ def calculate_accessibility_for_statent_cell_logsum(
     for mode in [MODE_CYCLING, MODE_PEDELEC, MODE_S_PEDELEC, MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_FOOT]:
         destinations_with_cost[f'logsum_exponent_{mode}'] = (
                 np.exp(-destinations_with_cost[f'c_{mode}'])
-                * destinations_with_cost['VOLLZEITAEQ_TOTAL']
+                * (destinations_with_cost['VOLLZEITAEQ_TOTAL'] / destinations_sample)
         )
 
     destinations_with_cost
