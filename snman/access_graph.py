@@ -83,7 +83,7 @@ def create_access_graph(
     needs_parking_spots['need_id'] = needs_parking_spots.index
     needs_parking_spots['parking_spots_needed'] = needs_parking_spots['parking_spots']
 
-    joined = gpd.sjoin(needs_parking_spots.reset_index(), has_parking_spots.reset_index(), how='inner', op='intersects')
+    joined = gpd.sjoin(needs_parking_spots.reset_index(), has_parking_spots.reset_index(), how='inner', predicate='intersects')
     #joined['uvk'] = joined.apply(
     #    lambda x: tuple(x[['u', 'v', 'key']]),
     #    axis=1
