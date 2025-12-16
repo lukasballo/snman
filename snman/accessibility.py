@@ -749,9 +749,10 @@ def calculate_accessibility_for_statent_cell_logsum(
 
     # calculate cumulative accessibility contribution for every mode separately
     for mode in [MODE_CYCLING, MODE_PEDELEC, MODE_S_PEDELEC, MODE_PRIVATE_CARS, MODE_TRANSIT, MODE_FOOT]:
+        cost_col = f'c_{mode}'
         out_col = f'cumulative_accessibility_contribution_{mode}'
 
-        mask = destinations_with_cost[f'travel_time_{mode}'] + destinations_with_cost[f'travel_time_access_egress_{mode}'] <= cumulative_accessibility_cutoff_cost
+        mask = destinations_with_cost[cost_col] <= cumulative_accessibility_cutoff_cost
         destinations_with_cost[out_col] = 0
 
         # Only where the cost is below cutoff (i.e. within 30 minutes), use the number of jobs
