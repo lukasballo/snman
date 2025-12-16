@@ -1,6 +1,6 @@
 import networkx as nx
 from . import graph, geometry_tools, utils, street_graph, space_allocation
-from. constants import *
+from .constants import *
 from shapely import geometry, ops
 import shapely
 import numpy as np
@@ -145,7 +145,22 @@ def _merge_given_parallel_edges(G, u, v, l, edges, max_hausdorff_distance):
 
 
 def merge_consecutive_edges(G, distinction_attributes=set(), min_width=False):
+    """
+    Merge consecutive edges in the street graph.
 
+    Parameters
+    ----------
+    G : nx.MultiDiGraph
+        Street graph
+    distinction_attributes : set, optional
+        Attributes that prevent merging if they differ (default: empty set)
+    min_width : bool, optional
+        If True, use minimum width when merging (default: False)
+
+    Returns
+    -------
+    None
+    """
     # create a subgraph that only contains nodes that are all of these
     # - degree=2
     # - included in the simplification
@@ -363,5 +378,17 @@ def reconstruct_consecutive_edges(G):
 
 
 def reset_intermediate_nodes(G):
+    """
+    Reset intermediary nodes for all edges.
+
+    Parameters
+    ----------
+    G : nx.MultiDiGraph
+        Street graph
+
+    Returns
+    -------
+    None
+    """
     for uvk, data in G.edges.items():
         data['_intermediary_nodes'] = []

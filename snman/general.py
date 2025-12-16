@@ -17,33 +17,41 @@ def get_street_graph(
         simplification_iterations=3,
         osm_filter=OSM_FILTER,
         perimeter_crs=None,
-        elevation_file=None,
+    elevation_file=None,
         export_raw_streetgraph=None,
-):
+    ):
     """
-    Create a snman street graph from OpenStreetMap
+    Create a snman street graph from OpenStreetMap.
 
     Parameters
     ----------
     perimeter : shapely.Polygon
-        which area should be used
+        Area to extract street network from
     crs : int
-        select a geometric projection that provides acceptable accuracy in the chosen perimeter
+        Geometric projection CRS code that provides acceptable accuracy in the chosen perimeter
     given_intersections_gdf : gpd.GeoDataFrame
-        manually defined intersections for cases where the automatic detection fails
-    sensors_df : pd.DataFrame
-        a list of traffic sensors to be matched onto the raw street graph before simplification
-    simplification_radius_for_edge_geometries : int
-    intersection_tolerance : int
-    simplification_iterations : int
-    osm_filter : list
-    perimeter_crs : int
-        crs of the provided perimeter, if None, than the main crs will be used
+        Manually defined intersections for cases where the automatic detection fails
+    sensors_df : pd.DataFrame, optional
+        List of traffic sensors to be matched onto the raw street graph before simplification
+    simplification_radius_for_edge_geometries : int, optional
+        Radius for edge geometry simplification (default: 35)
+    intersection_tolerance : int, optional
+        Tolerance for intersection detection in meters (default: 10)
+    simplification_iterations : int, optional
+        Number of simplification iterations to perform (default: 3)
+    osm_filter : list, optional
+        OSM filter to use for data extraction (default: OSM_FILTER)
+    perimeter_crs : int, optional
+        CRS of the provided perimeter. If None, the main crs will be used
+    elevation_file : str, optional
+        Path to elevation raster file
+    export_raw_streetgraph : str, optional
+        Path prefix for exporting raw street graph (edges and nodes)
 
     Returns
     -------
     G : nx.MultiDiGraph
-
+        Processed street graph
     """
 
     # transform perimeter to 4326 if necessary
@@ -171,6 +179,23 @@ def get_street_graph(
 
 
 def add_elevation(G, raster, cpus=1):
+    """
+    Add elevation data to nodes and calculate edge grades.
+
+    Parameters
+    ----------
+    G : nx.MultiDiGraph
+        Street graph
+    raster : str
+        Path to elevation raster file
+    cpus : int, optional
+        Number of CPUs to use for processing (default: 1)
+
+    Returns
+    -------
+    nx.MultiDiGraph
+        Street graph with elevation attributes added
+    """
     print('Add elevation')
     G = oxc.elevation.add_node_elevations_raster(G, raster, cpus=1)
     G = oxc.elevation.add_edge_grades(G, add_absolute=False)
@@ -178,15 +203,48 @@ def add_elevation(G, raster, cpus=1):
 
 
 def add_public_transport(G, pt_network):
+    """
+    Add public transport network data to the street graph.
+
+    Parameters
+    ----------
+    G : nx.MultiDiGraph
+        Street graph
+    pt_network : Any
+        Public transport network data
+    """
     enrichment.match_pt(G, pt_network)
 
 
 def save_street_graph(G, path):
+    """
+    Export street graph to GeoPackage files.
+
+    Parameters
+    ----------
+    G : nx.MultiDiGraph
+        Street graph to export
+    path : str
+        Base path for output files (will append '_edges.gpkg' and '_nodes.gpkg')
+    """
     io.export_street_graph(G, path + '_edges.gpkg', path + '_nodes.gpkg')
 
 
 def save_street_graph_as_osm(G, path, key_lanes='before', osm_tags=EXPORT_OSM_TAGS):
+    """
+    Export street graph to OSM XML format.
 
+    Parameters
+    ----------
+    G : nx.MultiDiGraph
+        Street graph to export
+    path : str
+        Base path for output file (will append '.osm')
+    key_lanes : str, optional
+        Which lane configuration to export: 'before' or 'after' (default: 'before')
+    osm_tags : set, optional
+        Set of OSM tags to include in export (default: EXPORT_OSM_TAGS)
+    """
     if key_lanes == 'before':
         key_lanes = KEY_LANES_DESCRIPTION
     elif key_lanes == 'after':
@@ -196,7 +254,20 @@ def save_street_graph_as_osm(G, path, key_lanes='before', osm_tags=EXPORT_OSM_TA
 
 
 def save_lane_geometries(G, path, scaling=1, key_lanes='before'):
+    """
+    Export lane geometries to shapefile.
 
+    Parameters
+    ----------
+    G : nx.MultiDiGraph
+        Street graph to export
+    path : str
+        Base path for output file (will append '.shp')
+    scaling : float, optional
+        Scaling factor for lane geometries (default: 1)
+    key_lanes : str, optional
+        Which lane configuration to export: 'before' or 'after' (default: 'before')
+    """
     if key_lanes == 'before':
         key_lanes = KEY_LANES_DESCRIPTION
     elif key_lanes == 'after':

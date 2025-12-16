@@ -119,7 +119,8 @@ def detour_metrics_for_origin(
 
     Returns
     -------
-
+    pd.Series
+        Series with detour metrics (mean_cost, median_cost, and optionally geometry)
     """
 
     paths = []

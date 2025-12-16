@@ -30,6 +30,7 @@ def fit_edge(
 
     Returns
     -------
+    None
     """
 
     G.edges[(u, v, k)]['width'] = G.edges[(u, v, k)][default_width_key]
@@ -82,7 +83,7 @@ def fit_edge(
         def total_length(multiline):
             if type(multiline) == shp.MultiLineString:
                 return sum([a.length for a in multiline.geoms])
-            elif type(multiline == shp.LineString):
+            elif type(multiline) == shp.LineString:
                 return multiline.length
             else:
                 return 0
@@ -102,7 +103,7 @@ def fit_edge(
         G.edges[(u, v, k)]['widths_along'] = str(widths)
         G.edges[(u, v, k)]['_fitting_status'] = 'successful'
 
-    except:
+    except Exception:
         #print('Fitting error', u, v, k)
         pass
 
@@ -118,6 +119,7 @@ def fit_edges(G, street_polygons_gdf, verbose=False, **kwargs):
 
     Returns
     -------
+    None
     """
 
     for uvk, data in G.edges.items():

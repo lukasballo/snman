@@ -69,11 +69,16 @@ def _add_edge_hierarchy(edge):
 
 def _identify_dead_ends(G, iterations):
     """
+    Identify dead-end edges in the street graph.
+
+    Note: This function is currently not implemented (returns immediately).
+
     Parameters
     ----------
     G : nx.MultiGraph
-        street graph
+        Street graph
     iterations : int
+        Number of iterations for dead-end detection
 
     Returns
     -------

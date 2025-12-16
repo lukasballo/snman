@@ -12,6 +12,25 @@ import time
 
 
 def disp(poly, *args, ax=None, **kwargs):
+    """
+    Display a polygon geometry.
+
+    Parameters
+    ----------
+    poly : shapely.Polygon
+        Polygon to display
+    *args : Any
+        Additional arguments passed to plot
+    ax : matplotlib.axes.Axes, optional
+        Axes to plot on (default: None)
+    **kwargs : Any
+        Additional keyword arguments passed to plot
+
+    Returns
+    -------
+    matplotlib.axes.Axes
+        Axes object
+    """
     res = gpd.GeoDataFrame(geometry=[poly]).plot(ax=ax, *args, **kwargs)
     if ax is None:
         return res
@@ -20,6 +39,21 @@ def disp(poly, *args, ax=None, **kwargs):
 
 
 def cut(line, distance):
+    """
+    Cut a line into two parts at a specified distance from its starting point.
+
+    Parameters
+    ----------
+    line : shapely.LineString
+        Line to cut
+    distance : float
+        Distance from start point to cut
+
+    Returns
+    -------
+    list
+        List of two LineString geometries
+    """
     # Cuts a line in two at a distance from its starting point
     if distance <= 0.0 or distance >= line.length:
         return [LineString(line)]

@@ -16,9 +16,9 @@ By defining smaller rebuilding zones, you can work with street networks of any s
 The updated networks can be exported into standard Geofiles, as well as the OSM format that can be used in
 transport modelling tools like MATSim or SUMO.
 
-For details on the underlying methodologies, please refer to the working paper at the bottom of this page.
+For details on the underlying methodologies, please refer to the paper at the bottom of this page.
 
-**SNMnan** is being developed as part of the [E-Bike City](https://ebikecity.baug.ethz.ch/en/) project of
+**SNMan** was developed as part of the [E-Bike City](https://ebikecity.baug.ethz.ch/en/) project of
 ETH Zurich, Department of Civil and Environmental Engineering.
 
 
@@ -33,16 +33,19 @@ ETH Zurich, Department of Civil and Environmental Engineering.
 
 ## Getting Started
 
+For detailed setup instructions, please refer to `documentation/environment_setup.md`. This includes:
+  * Installing Python 3.11.13 and setting up the conda environment
+  * Installing Cursor IDE and configuring the Python interpreter
+  * Installing dependencies (including GDAL via conda)
+  * Setting up the `.env` file with your `DATA_DIRECTORY` path
+  * Downloading the data starter pack
 
-  * Install Python 3.9 and QGIS, we recommend using miniconda
-  * Make sure you have installed the dependencies in the **requirements** file.
-  * Use the Jupyter notebooks under **examples**, see the next section
-  * Install any further missing dependencies
+Once set up, use the Jupyter notebooks under **examples**, see the next section.
 
 
 ## Usage
 
-For a basic setup of your programming environment (Pycharm, Git, Miniconda, etc.), please refer to the file
+For a basic setup of your programming environment (Cursor IDE, Git, Miniconda, etc.), please refer to the file
 `documentation/environment_setup.md`.
 
 The following Jupyter notebook files are available for a quick start:
@@ -61,7 +64,7 @@ if you work with networks that cover entire cities.
 
 ## License and Citations
 
-SNMan is released under the MIT license. If you use **SNMan** in your work, please cite this working paper:
+SNMan is released under the MIT license. If you use **SNMan** in your work, please cite this paper:
 
 Ballo, L., M. Raubal and K.W. Axhausen (2024)
 [Designing an E-Bike City: An automated process for network-wide multimodal road space reallocation](

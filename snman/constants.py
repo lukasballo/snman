@@ -232,6 +232,19 @@ def CYCLING_SLOPE_VOD(slope):
 
 
 def EBIKE_SLOPE_VOD(slope):
+    """
+    Returns the VoD parameter for e-bikes for a given slope.
+
+    Parameters
+    ----------
+    slope : float
+        Slope value (as decimal, e.g., 0.05 for 5%)
+
+    Returns
+    -------
+    float
+        VoD parameter value
+    """
     slope = float(slope)
     if slope < 0.02:
         return 0

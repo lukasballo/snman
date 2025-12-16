@@ -438,7 +438,21 @@ def is_strongly_connected_plus(L, weight, node_inclusion, exclude_edges=()):
 
 
 def get_number_of_scc_with_inclusion_attribute(L, inclusion_attribute):
+    """
+    Get number of strongly connected components containing nodes with inclusion attribute.
 
+    Parameters
+    ----------
+    L : nx.MultiDiGraph
+        Lane graph
+    inclusion_attribute : str
+        Node attribute name to check for inclusion
+
+    Returns
+    -------
+    int
+        Number of strongly connected components with included nodes
+    """
     L = copy.deepcopy(L)
 
     scc = list(nx.strongly_connected_components(L))

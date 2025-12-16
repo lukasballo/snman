@@ -10,6 +10,19 @@ import numpy as np
 
 
 def get_subgraph_with_invalid_geometries(G):
+    """
+    Get subgraph containing edges with invalid geometries.
+
+    Parameters
+    ----------
+    G : nx.MultiDiGraph
+        Street graph
+
+    Returns
+    -------
+    nx.Graph
+        Subgraph with invalid geometries
+    """
     filtered_edges = filter(
         lambda e: e[3].get('geometry') is not None and e[3].get('geometry').is_valid > 2,
         G.edges(keys=True, data=True)
@@ -18,6 +31,19 @@ def get_subgraph_with_invalid_geometries(G):
 
 
 def get_subgraph_with_empty_geometries(G):
+    """
+    Get subgraph containing edges with empty or missing geometries.
+
+    Parameters
+    ----------
+    G : nx.MultiDiGraph
+        Street graph
+
+    Returns
+    -------
+    nx.Graph
+        Subgraph with empty geometries
+    """
     filtered_edges = filter(
         lambda e: e[3].get('geometry') is None or e[3].get('geometry').is_empty > 2,
         G.edges(keys=True, data=True)
@@ -65,6 +91,18 @@ def organize_edge_directions(G, method='lower_to_higher_node_id', key_lanes_desc
 
 
 def surrogate_missing_edge_geometries(G):
+    """
+    Create surrogate geometries for edges missing geometry data.
+
+    Parameters
+    ----------
+    G : nx.MultiDiGraph
+        Street graph
+
+    Returns
+    -------
+    None
+    """
     for uvk, data in G.edges.items():
         if 'geometry' not in data:
             data['geometry'] = shapely.LineString([
@@ -74,6 +112,21 @@ def surrogate_missing_edge_geometries(G):
 
 
 def get_node_point(G, node):
+    """
+    Get point geometry for a node.
+
+    Parameters
+    ----------
+    G : nx.MultiDiGraph
+        Street graph
+    node : Any
+        Node identifier
+
+    Returns
+    -------
+    shapely.Point
+        Point geometry for the node
+    """
     data = G.nodes[node]
     return shapely.Point(data['x'], data['y'])
 
@@ -491,7 +544,7 @@ def add_pseudo_cycling_lanes(G, lanes_description=KEY_LANES_DESCRIPTION):
         for direction in [DIRECTION_FORWARD, DIRECTION_BACKWARD]:
             cycling_cost = calculate_edge_cost(G, *uvk, direction, MODE_CYCLING, lanes_description=lanes_description)
 
-            if cycling_cost == np.Inf:
+            if cycling_cost == np.inf:
                 lanes.append(space_allocation.Lane(LANETYPE_CYCLING_PSEUDO, direction))
 
 

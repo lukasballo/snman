@@ -15,6 +15,31 @@ def metrics_for_measurement_regions_and_synpop(
         synpop_sample=1,
         mode=MODE_PRIVATE_CARS
 ):
+    """
+    Calculate metrics for measurement regions based on synthetic population data.
+
+    Parameters
+    ----------
+    measurement_regions : gpd.GeoDataFrame
+        GeoDataFrame with measurement region polygons
+    synpop : gpd.GeoDataFrame
+        GeoDataFrame with synthetic population data
+    include_basic_synpop_metrics : bool, optional
+        Whether to include basic synpop metrics (default: True)
+    L : lane_graph.LaneGraph, optional
+        Lane graph for calculating costs
+    pois : gpd.GeoDataFrame, optional
+        Points of interest
+    synpop_sample : float, optional
+        Sampling rate for synpop (default: 1, meaning no sampling)
+    mode : str, optional
+        Transportation mode for cost calculation (default: MODE_PRIVATE_CARS)
+
+    Returns
+    -------
+    pd.DataFrame
+        Aggregated metrics by measurement region
+    """
 
     if synpop_sample < 1:
         synpop['sample_weights'] = synpop['residents'] + synpop['jobs']
@@ -60,6 +85,21 @@ def metrics_for_measurement_regions_and_lanes(
         L,
         measurement_regions
 ):
+    """
+    Calculate lane area metrics for measurement regions.
+
+    Parameters
+    ----------
+    L : lane_graph.LaneGraph
+        Lane graph
+    measurement_regions : gpd.GeoDataFrame
+        GeoDataFrame with measurement region polygons
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with lane area metrics by lanetype for each measurement region
+    """
 
     # Convert the lane graph to GeoDataFrame and aggregate
     lanes = oxc.graph_to_gdfs(L, nodes=False)
@@ -89,6 +129,21 @@ def metrics_for_measurement_regions_and_offstreet_parking(
         measurement_regions,
         offstreet_parking
 ):
+    """
+    Calculate offstreet parking metrics for measurement regions.
+
+    Parameters
+    ----------
+    measurement_regions : gpd.GeoDataFrame
+        GeoDataFrame with measurement region polygons
+    offstreet_parking : gpd.GeoDataFrame
+        GeoDataFrame with offstreet parking data
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with parking metrics (car_parking, bicycle_parking) by type for each measurement region
+    """
 
     measurement_regions_parking = (
         measurement_regions
@@ -128,6 +183,43 @@ def metrics_for_lane_graph(
         export_buffered_geometry=False,
         crs=2056
 ):
+    """
+    Calculate comprehensive metrics for measurement regions including lane, synpop, and parking data.
+
+    Parameters
+    ----------
+    measurement_regions : gpd.GeoDataFrame
+        GeoDataFrame with measurement region polygons
+    L : lane_graph.LaneGraph, optional
+        Lane graph
+    include_measurement_region_metrics : bool, optional
+        Whether to include basic measurement region metrics (default: True)
+    synpop : gpd.GeoDataFrame, optional
+        Synthetic population data
+    synpop_sample : float, optional
+        Sampling rate for synpop (default: 1)
+    pois : gpd.GeoDataFrame, optional
+        Points of interest
+    include_basic_synpop_metrics : bool, optional
+        Whether to include basic synpop metrics (default: True)
+    include_lane_metrics : bool, optional
+        Whether to include lane metrics (default: True)
+    offstreet_parking : gpd.GeoDataFrame, optional
+        Offstreet parking data
+    mode : str, optional
+        Transportation mode for cost calculation (default: MODE_PRIVATE_CARS)
+    buffer : float, optional
+        Buffer distance for measurement regions in meters (default: 20)
+    export_buffered_geometry : bool, optional
+        Whether to export buffered geometries (default: False)
+    crs : int, optional
+        Coordinate reference system (default: 2056)
+
+    Returns
+    -------
+    gpd.GeoDataFrame
+        GeoDataFrame with all calculated metrics
+    """
 
     measurement_regions_buffered = copy.deepcopy(measurement_regions)
     measurement_regions_buffered.geometry = measurement_regions.buffer(buffer)

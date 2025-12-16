@@ -9,12 +9,44 @@ from . import osmnx_customized as oxc
 
 
 def get_edges_by_node(G, i):
+    """
+    Get all edges connected to a node.
+
+    Parameters
+    ----------
+    G : nx.Graph
+        Graph
+    i : Any
+        Node identifier
+
+    Returns
+    -------
+    dict
+        Dictionary mapping edge identifiers to edge data
+    """
     uvks = G.edges(i)
     edges = {uvk: G.edges[uvk] for uvk in uvks}
     return edges
 
 
 def get_present_parking_spots(L, uvk, vehicle_length):
+    """
+    Calculate number of parking spots that can fit along an edge.
+
+    Parameters
+    ----------
+    L : nx.MultiDiGraph
+        Lane graph
+    uvk : tuple
+        Edge identifier (u, v, key)
+    vehicle_length : float
+        Length of a single vehicle
+
+    Returns
+    -------
+    float
+        Number of parking spots
+    """
     data = L.edges[uvk]
     length = data['length']
     return length / vehicle_length
@@ -25,6 +57,29 @@ def create_access_graph(
         radius=100,
         lanetype=LANETYPE_PARKING_PARALLEL, vehicle_length=PARALLEL_PARKING_CAR_LENGTH
 ):
+    """
+    Create an access graph for parking spot assignment.
+
+    Parameters
+    ----------
+    L : nx.MultiDiGraph
+        Lane graph
+    access_needs : gpd.GeoDataFrame
+        GeoDataFrame with locations needing parking spots
+    offstreet_parking : gpd.GeoDataFrame, optional
+        GeoDataFrame with offstreet parking locations
+    radius : float, optional
+        Search radius for matching parking spots (default: 100)
+    lanetype : str, optional
+        Type of parking lane (default: LANETYPE_PARKING_PARALLEL)
+    vehicle_length : float, optional
+        Length of a single vehicle (default: PARALLEL_PARKING_CAR_LENGTH)
+
+    Returns
+    -------
+    AccessGraph
+        Access graph for parking assignment
+    """
     #access_needs_buffered = copy.deepcopy(access_needs)
     #access_needs_buffered.geometry = access_needs.buffer(radius)
     #access_needs_buffered['need_id'] = access_needs_buffered.index
@@ -108,6 +163,20 @@ def create_access_graph(
 
 
 def gravity_model(A, iterations=15):
+    """
+    Apply gravity model to assign parking spots.
+
+    Parameters
+    ----------
+    A : AccessGraph
+        Access graph
+    iterations : int, optional
+        Number of iterations for the gravity model (default: 15)
+
+    Returns
+    -------
+    None
+    """
     # apply cost function on edges
     for uv, data in A.edges.items():
         data['f_cost'] = math.exp(-0.1 * data['distance'])
@@ -162,6 +231,23 @@ def gravity_model(A, iterations=15):
 
 
 def effect_of_parking_removal_on_underassignment(A, ii, iterations=15):
+    """
+    Calculate the effect of removing parking spots on underassignment.
+
+    Parameters
+    ----------
+    A : AccessGraph
+        Access graph
+    ii : list
+        List of node identifiers to remove
+    iterations : int, optional
+        Number of iterations for gravity model (default: 15)
+
+    Returns
+    -------
+    float
+        Effect on underassignment (0 if effect is minimal)
+    """
     B = copy.deepcopy(
         A.subgraph(set(A.nodes).difference(set(ii)))
     )
@@ -186,19 +272,58 @@ class AccessGraph(nx.Graph, graph.SNManGenericGraph):
         self.vehicle_length = vehicle_length
 
     def update_lane(self, L, uvk):
+        """
+        Update parking spots for a lane.
+
+        Parameters
+        ----------
+        L : nx.MultiDiGraph
+            Lane graph
+        uvk : tuple
+            Edge identifier
+        """
         data = self.nodes[uvk]
         data['parking_spots'] = get_present_parking_spots(L, uvk, self.vehicle_length)
 
     def get_assigned_parking_spots(self, i):
+        """
+        Get total assigned parking spots for a node.
+
+        Parameters
+        ----------
+        i : Any
+            Node identifier
+
+        Returns
+        -------
+        float
+            Total assigned parking spots
+        """
         pairs = get_edges_by_node(self, i)
         return sum([pair['parking_spots_assigned'] for pair in pairs.values()])
 
     def get_total_parking_spots(self):
+        """
+        Get total available parking spots in the graph.
+
+        Returns
+        -------
+        float
+            Total parking spots
+        """
         return sum(
             [data['parking_spots'] for uv, data in self.nodes.items() if data['type'] == 'has_parking_spots']
         )
 
     def get_total_needed_parking_spots(self):
+        """
+        Get total needed parking spots in the graph.
+
+        Returns
+        -------
+        float
+            Total needed parking spots
+        """
         return sum(
             [data['parking_spots'] for uv, data in self.nodes.items() if data['type'] == 'needs_parking_spots']
         )

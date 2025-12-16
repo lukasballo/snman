@@ -5,6 +5,21 @@ from . import utils
 
 
 def match_points_to_nodes(points_gdf, G):
+    """
+    Match points in a GeoDataFrame to nearest nodes in the graph.
+
+    Parameters
+    ----------
+    points_gdf : gpd.GeoDataFrame
+        GeoDataFrame with point geometries
+    G : nx.MultiDiGraph
+        Street graph
+
+    Returns
+    -------
+    gpd.GeoDataFrame
+        GeoDataFrame with added 'node' and 'point_to_node_dist' columns
+    """
     nodes = oxc.nearest_nodes(
         G,
         list(map(lambda geom: geom.x, points_gdf.geometry)),
@@ -17,6 +32,21 @@ def match_points_to_nodes(points_gdf, G):
 
 
 def match_point_to_node(point, G):
+    """
+    Match a single point to the nearest node in the graph.
+
+    Parameters
+    ----------
+    point : shapely.Point
+        Point geometry
+    G : nx.MultiDiGraph
+        Street graph
+
+    Returns
+    -------
+    int
+        Nearest node ID
+    """
     nodes = oxc.nearest_nodes(
         G,
         [point.x],
@@ -60,7 +90,8 @@ def cost_increase_by_edge_removal(G, u, v, k, weight):
 
     Returns
     -------
-
+    float
+        Cost increase (or np.nan if edge doesn't exist, or np.inf if path becomes disconnected)
     """
 
     H = G.edge_subgraph(
@@ -172,6 +203,18 @@ def safe_remove_edge(G, u, v, k, remove_dangling_nodes=True):
 
 
 def plot_scc(G):
+    """
+    Plot the graph with nodes colored by strongly connected component.
+
+    Parameters
+    ----------
+    G : nx.MultiDiGraph
+        Street graph
+
+    Returns
+    -------
+    None
+    """
     # Calculate strongly connected components
     components = list(nx.strongly_connected_components(G))
 
@@ -241,7 +284,16 @@ class SNManGenericGraph:
 
     def apply_to_edges(self, fn):
         """
-        apply a function fn(u, v, k, data) to all edges
+        Apply a function to all edges.
+
+        Parameters
+        ----------
+        fn : function
+            Function with signature fn(u, v, k, data) to apply to each edge
+
+        Returns
+        -------
+        None
         """
         pass
 

@@ -7,7 +7,23 @@ import pandas as pd
 
 
 def street_sections(G, key_lanes_description=KEY_LANES_DESCRIPTION, weight='length'):
+    """
+    Calculate street sections grouped by lane configuration.
 
+    Parameters
+    ----------
+    G : nx.MultiDiGraph
+        Street graph
+    key_lanes_description : str, optional
+        Key for lane description attribute (default: KEY_LANES_DESCRIPTION)
+    weight : str, optional
+        Attribute to use for weighting (default: 'length')
+
+    Returns
+    -------
+    pd.Series
+        Series with aggregated weights by lane configuration
+    """
     G = copy.deepcopy(G)
 
     space_allocation.reorder_lanes(G, lanes_attribute=KEY_LANES_DESCRIPTION_AFTER)
@@ -31,12 +47,46 @@ def street_sections_change(
         key_lanes_description_after=KEY_LANES_DESCRIPTION_AFTER,
         weight='length'
 ):
+    """
+    Calculate changes in street sections between before and after lane configurations.
 
+    Parameters
+    ----------
+    G : nx.MultiDiGraph
+        Street graph
+    key_lanes_description : str, optional
+        Key for before lane description (default: KEY_LANES_DESCRIPTION)
+    key_lanes_description_after : str, optional
+        Key for after lane description (default: KEY_LANES_DESCRIPTION_AFTER)
+    weight : str, optional
+        Attribute to use for weighting (default: 'length')
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame showing changes in street sections
+    """
     G = copy.deepcopy(G)
 
 
 def network_metrics_for_all_measurement_regions(G, measurement_regions_gdf, plot_scc=False):
+    """
+    Calculate network metrics for all measurement regions.
 
+    Parameters
+    ----------
+    G : nx.MultiDiGraph
+        Street graph
+    measurement_regions_gdf : gpd.GeoDataFrame
+        GeoDataFrame with measurement region polygons
+    plot_scc : bool, optional
+        Whether to plot strongly connected components (default: False)
+
+    Returns
+    -------
+    dict
+        Dictionary mapping region names to their network metrics
+    """
     metrics = measurement_regions_gdf.apply(
         lambda row: (
             row.name,
@@ -57,12 +107,15 @@ def network_metrics(G, plot_scc=False):
 
     Parameters
     ----------
-    G
-    plot_scc
+    G : nx.MultiDiGraph
+        Street graph
+    plot_scc : bool, optional
+        Whether to plot strongly connected components (default: False)
 
     Returns
     -------
-
+    pd.DataFrame
+        DataFrame with network metrics for different configurations
     """
 
     if len(G.edges) == 0:
@@ -120,15 +173,21 @@ def _generate_metrics_for_one_config(G, label, lanes_key, mode, plot_scc):
 
     Parameters
     ----------
-    G
-    label
-    lanes_key
-    mode
-    plot_scc
+    G : nx.MultiDiGraph
+        Street graph
+    label : str
+        Label for the configuration
+    lanes_key : str
+        Key for lane description attribute
+    mode : str
+        Transportation mode
+    plot_scc : bool
+        Whether to plot strongly connected components
 
     Returns
     -------
-
+    dict
+        Dictionary with metrics for the configuration
     """
     L = lane_graph.create_lane_graph(
         street_graph.filter_lanes_by_modes(G.copy(), {mode}, lane_description_key=lanes_key),

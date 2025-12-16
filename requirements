@@ -1,16 +1,16 @@
-jupyter
-notebook
-pyproj
-rasterio
-networkx
-geopandas
-leuvenmapmatching
-osmnx
-smopy
-rtree
-gdal
-fiona
-pyogrio
-r5py
-openpyxl
-pyarrow
+# Python version: 3.11.13
+jupyter_client==8.6.3
+jupyter_core==5.8.1
+pyproj==3.7.2
+rasterio==1.4.3
+networkx==3.5
+geopandas==1.1.1
+leuvenmapmatching==1.1.4
+osmnx==2.0.6
+smopy==0.0.8
+rtree==1.4.1
+fiona==1.10.1
+pyogrio==0.11.1
+openpyxl==3.1.5
+python-dotenv==1.0.1
+# Note: gdal should be installed via conda: conda install -c conda-forge gdal

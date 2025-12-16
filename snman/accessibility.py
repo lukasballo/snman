@@ -1,10 +1,49 @@
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from subprocess import CalledProcessError
+import sys
+import os
+import contextlib
 import numpy as np
 import pandas as pd
 import geopandas as gpd
 from .constants import *
 import datetime
-import r5py
+
+# Optional import of r5py - handles the case where Java is not available
+# r5py installs a meta path finder that intercepts ALL imports and tries to start the JVM
+# We need to check for Java availability BEFORE importing r5py to prevent this
+r5py = None
+_java_available = False
+
+# Check if Java is available before attempting to import r5py
+# This prevents r5py from installing its meta path finder if Java isn't available
+try:
+    import subprocess
+    # Try to find Java - this will fail if Java is not installed
+    result = subprocess.run(
+        ['/usr/libexec/java_home'],
+        capture_output=True,
+        timeout=1,
+        check=False
+    )
+    _java_available = (result.returncode == 0)
+except (FileNotFoundError, subprocess.TimeoutExpired, Exception):
+    _java_available = False
+
+# Only attempt to import r5py if Java is available
+if _java_available:
+    try:
+        # Suppress both stdout and stderr to minimize Java error messages during import attempt
+        with open(os.devnull, 'w') as devnull:
+            with contextlib.redirect_stderr(devnull), contextlib.redirect_stdout(devnull):
+                import r5py
+    except Exception:
+        # If import still fails, set to None
+        r5py = None
+else:
+    # Java is not available, so r5py cannot be used
+    r5py = None
+
 import shapely as shp
 import math
 from snman import osmnx_customized as oxc
@@ -519,6 +558,11 @@ def calculate_accessibility_for_statent_cell_logsum(
     # --------------------------------------------
 
     # calculate transit travel time matrix using R5
+    if r5py is None:
+        raise ImportError(
+            "r5py is not available. This function requires r5py and Java to be installed. "
+            "Please install Java and ensure r5py is properly configured."
+        )
     tt_computer_transit = r5py.TravelTimeMatrixComputer(
         r5_transit_network,
         transport_modes=[r5py.TransportMode.TRANSIT],

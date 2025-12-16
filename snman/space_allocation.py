@@ -57,8 +57,6 @@ def _generate_lanes_for_edge(edge):
         normal_lane_width_by_hierarchy[hierarchy.LOCAL_ROAD]
     )
 
-    print(edge['hierarchy'], normal_lane_width)
-
     # left/right lanes: cycling lanes that are not included in the osm lanes tag
     left_lanes_list = []
     forward_lanes_list = []
@@ -797,7 +795,22 @@ def is_backward_by_top_order_lanes(lanes):
 
 
 def add_pseudo_contraflow_cycling(G, lane_attribute=KEY_LANES_DESCRIPTION):
+    """
+    Add pseudo contraflow cycling lanes to one-way streets.
 
+    TODO: Remove this function.
+
+    Parameters
+    ----------
+    G : nx.MultiDiGraph
+        Street graph
+    lane_attribute : str, optional
+        Key for lane description attribute (default: KEY_LANES_DESCRIPTION)
+
+    Returns
+    -------
+    None
+    """
     #TODO: Remove
 
     for uvk, data in G.edges.items():
@@ -818,6 +831,19 @@ def add_pseudo_contraflow_cycling(G, lane_attribute=KEY_LANES_DESCRIPTION):
 
 
 def assign_seed_side(geometry):
+    """
+    Assign seed side for lane ordering based on edge angle.
+
+    Parameters
+    ----------
+    geometry : shapely.LineString
+        Edge geometry
+
+    Returns
+    -------
+    str
+        'right' or 'left' depending on edge angle
+    """
     edge_angle = geometry_tools.linestring_angle(geometry)
     return 'right' if 135 <= edge_angle < 315 else 'left'
 
@@ -1025,15 +1051,15 @@ def _calculate_lane_cost(
     """
 
     if include_tentative and lane.status != STATUS_FIXED:
-        return np.Inf
+        return np.inf
 
     # if this lane can not carry the specified mode, return infinity
     if mode not in lane.get_modes():
-        return np.Inf
+        return np.inf
 
     # if this lane is not accessible in the specified direction, return infinity
     if lane.direction not in {direction}.union(ALTERNATIVE_DIRECTIONS.get(direction, set())):
-        return np.Inf
+        return np.inf
 
     # apply the cycling cost factor if the mode is cycling
     elif mode in [MODE_CYCLING, MODE_PEDELEC, MODE_S_PEDELEC]:

@@ -339,7 +339,25 @@ def calculate_street_width(L, u_G, v_G, k_G):
 
 
 def get_horizontal_position_of_lane(L, u, v, k):
+    """
+    Get horizontal position of a lane relative to street center.
 
+    Parameters
+    ----------
+    L : lane_graph.LaneGraph
+        Lane graph
+    u : int
+        Source node
+    v : int
+        Target node
+    k : int
+        Edge key
+
+    Returns
+    -------
+    float
+        Horizontal offset from center (negative = left, positive = right)
+    """
     data = L.edges[(u, v, k)]
 
     lanes = get_street_lanes(L, data['u_G'], data['v_G'], data['k_G'])
@@ -353,6 +371,25 @@ def get_horizontal_position_of_lane(L, u, v, k):
 
 
 def get_modes_of_street(L, u_G, v_G, k_G):
+    """
+    Get all transportation modes available on a street.
+
+    Parameters
+    ----------
+    L : lane_graph.LaneGraph
+        Lane graph
+    u_G : int
+        Source node in street graph
+    v_G : int
+        Target node in street graph
+    k_G : int
+        Edge key in street graph
+
+    Returns
+    -------
+    set
+        Set of transportation modes
+    """
     M = L.subgraph([u_G, v_G])
     M = M.edge_subgraph([uvk for uvk, data in M.edges.items() if data['k_G'] == k_G])
     modes_M = [data['lane'].get_modes() for uvk, data in M.edges.items()]
@@ -361,6 +398,27 @@ def get_modes_of_street(L, u_G, v_G, k_G):
 
 
 def get_lanes_by_mode(L, u_G, v_G, k_G, mode):
+    """
+    Get all lanes of a specific mode on a street.
+
+    Parameters
+    ----------
+    L : lane_graph.LaneGraph
+        Lane graph
+    u_G : int
+        Source node in street graph
+    v_G : int
+        Target node in street graph
+    k_G : int
+        Edge key in street graph
+    mode : str
+        Transportation mode
+
+    Returns
+    -------
+    dict
+        Dictionary mapping lane edge keys to lane data
+    """
     M = L.subgraph([u_G, v_G])
     M = M.edge_subgraph(
         [uvk for uvk, data in M.edges.items() if (data['k_G'] == k_G and mode in data['lane'].get_modes())]

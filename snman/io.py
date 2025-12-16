@@ -207,7 +207,26 @@ def import_geofile_to_gdf(file_path, crs=DEFAULT_CRS, index=None, filter_index=N
     if file_path[-5:] == '.gzip':
         gdf = gpd.read_parquet(file_path)
     else:
-        gdf = gpd.read_file(file_path).to_crs(crs)
+        try:
+            gdf = gpd.read_file(file_path).to_crs(crs)
+        except Exception as e:
+            # Handle invalid geometries that may occur with different geopandas versions
+            # The default engine (pyogrio) is stricter about geometry validation
+            # Try using fiona engine which is more lenient with invalid geometries
+            try:
+                gdf = gpd.read_file(file_path, engine='fiona').to_crs(crs)
+            except Exception:
+                # If fiona also fails, try to fix invalid geometries
+                try:
+                    gdf = gpd.read_file(file_path, engine='fiona')
+                    # Fix invalid geometries using buffer(0) trick (works for most cases)
+                    invalid_mask = ~gdf.geometry.is_valid
+                    if invalid_mask.any():
+                        gdf.loc[invalid_mask, 'geometry'] = gdf.loc[invalid_mask, 'geometry'].buffer(0)
+                    gdf = gdf.to_crs(crs)
+                except Exception:
+                    # Last resort: re-raise the original exception
+                    raise e
 
     if index is not None:
         gdf = gdf.set_index(index)
@@ -381,11 +400,41 @@ def load_measurement_regions(
 
 
 def load_poi(path, perimeter=None, crs=DEFAULT_CRS):
+    """
+    Load points of interest from a geofile.
+
+    Parameters
+    ----------
+    path : str
+        Path to geofile
+    perimeter : shapely.Polygon, optional
+        Polygon to crop geometries to
+    crs : int, optional
+        Coordinate reference system (default: DEFAULT_CRS)
+
+    Returns
+    -------
+    gpd.GeoDataFrame
+        GeoDataFrame with points of interest
+    """
     poi = import_geofile_to_gdf(path, perimeter=perimeter, crs=crs)
     return poi
 
 
 def load_sensors(path):
+    """
+    Load traffic sensor data from CSV file.
+
+    Parameters
+    ----------
+    path : str
+        Path to CSV file containing sensor data
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with sensors indexed by 'id'
+    """
     sensors = pd.read_csv(path).set_index('id')
     return sensors
 
@@ -394,6 +443,20 @@ def load_sensors(path):
 
 
 def infer_parking_orientation(parking_spots):
+    """
+    Infer parking orientation based on distance to nearest parking spot.
+
+    Parameters
+    ----------
+    parking_spots : gpd.GeoDataFrame
+        GeoDataFrame with parking spot points
+
+    Returns
+    -------
+    gpd.GeoDataFrame
+        GeoDataFrame with added 'orientation' column indicating parking type
+        (perpendicular, parallel, or None)
+    """
     res = utils.join_nearest_points(parking_spots, parking_spots)
     res['orientation'] = res.apply(
         lambda row:
@@ -497,6 +560,21 @@ def load_public_transit_routes_zvv(path, perimeter=None, crs=DEFAULT_CRS):
 
 
 def load_traffic_counts_npvm(path, crs=DEFAULT_CRS):
+    """
+    Load traffic counts from NPVM dataset.
+
+    Parameters
+    ----------
+    path : str
+        Path to geofile with traffic counts
+    crs : int, optional
+        Coordinate reference system (default: DEFAULT_CRS)
+
+    Returns
+    -------
+    gpd.GeoDataFrame
+        GeoDataFrame with traffic count data
+    """
     return gpd.read_file(path).to_crs(crs)
 
 
@@ -694,6 +772,24 @@ def export_lane_graph(
 
 
 def export_access_graph(A, path_edges, path_nodes, stringify_attributes=[]):
+    """
+    Export access graph to files.
+
+    Parameters
+    ----------
+    A : AccessGraph
+        Access graph to export
+    path_edges : str
+        Path for edges file
+    path_nodes : str
+        Path for nodes file
+    stringify_attributes : list, optional
+        List of attributes to convert to strings (default: [])
+
+    Returns
+    -------
+    None
+    """
     pass
 
 

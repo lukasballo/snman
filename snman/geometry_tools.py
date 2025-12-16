@@ -25,8 +25,8 @@ def remove_multipart_geometries(G):
     for id, data in G.edges.items():
         geom = data.get('geometry', None)
         if not isinstance(geom, shp.geometry.linestring.LineString):
-            start_node = G.nodes.items()[id[0]]
-            end_node = G.nodes.items()[id[1]]
+            start_node = G.nodes[id[0]]
+            end_node = G.nodes[id[1]]
             simple_line = shp.geometry.LineString(
                 shp.geometry.Point(
                     start_node.get('x', 0),
@@ -131,6 +131,19 @@ def ensure_multilinestring(geometry):
 
 
 def reverse_linestring(geometry):
+    """
+    Reverse a LineString geometry.
+
+    Parameters
+    ----------
+    geometry : shp.LineString or shp.MultiLineString
+        Geometry to reverse
+
+    Returns
+    -------
+    shp.LineString
+        Reversed LineString
+    """
     if type(geometry) is shp.geometry.MultiLineString:
         print(geometry)
         geometry = geometry.geoms[0]
@@ -138,7 +151,19 @@ def reverse_linestring(geometry):
 
 
 def get_polygon_axis(polygon):
+    """
+    Get the axis (longest side) of a polygon's minimum rotated rectangle.
 
+    Parameters
+    ----------
+    polygon : shp.Polygon
+        Polygon geometry
+
+    Returns
+    -------
+    shp.LineString
+        LineString representing the polygon axis
+    """
     # Get the exterior coordinates of the rectangle
     rectangle = polygon.minimum_rotated_rectangle
     coords = list(rectangle.exterior.coords)
@@ -179,6 +204,19 @@ def random_points_in_polygon(polygon, number):
     return shp.MultiPoint(points)
 
 def linestring_angle(geometry):
+    """
+    Calculate the angle of a LineString in degrees.
+
+    Parameters
+    ----------
+    geometry : shp.LineString
+        LineString geometry
+
+    Returns
+    -------
+    float
+        Angle in degrees (0-360)
+    """
     dx = geometry.coords[-1][0] - geometry.coords[0][0]
     dy = geometry.coords[-1][1] - geometry.coords[0][1]
     angle = np.degrees(np.arctan(

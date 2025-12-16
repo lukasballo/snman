@@ -10,6 +10,20 @@ import copy
 
 
 def simplify_edge_geometries(G, radius=DEFAULT_SIMPLIFICATION_RADIUS):
+    """
+    Simplify edge geometries using Douglas-Peucker algorithm.
+
+    Parameters
+    ----------
+    G : nx.MultiDiGraph
+        Street graph
+    radius : float, optional
+        Simplification tolerance in meters (default: DEFAULT_SIMPLIFICATION_RADIUS)
+
+    Returns
+    -------
+    None
+    """
     for uvk, edge in G.edges.items():
         if edge.get('geometry') is not None and edge.get('_include_in_simplification', True):
             edge['geometry'] = edge['geometry'].simplify(radius, preserve_topology=False)
@@ -465,11 +479,27 @@ def connect_components_in_intersections(G, intersections_gdf, separate_layers=Tr
 
                 # join with the nearest points
                 joined = gpd.sjoin_nearest(a, b, distance_col="distance")
+                
+                # skip if no matches found or if required columns are missing
+                if len(joined) == 0 or 'index_right' not in joined.columns:
+                    continue
+                
                 joined['node_a'] = joined.index
                 joined = joined.rename(columns={"index_right": "node_b"})
 
                 # get the closest pair
-                closest_pair = joined.sort_values(by='distance', ascending=True).to_dict('records')[0]
+                sorted_records = joined.sort_values(by='distance', ascending=True).to_dict('records')
+                
+                # skip if no records after sorting
+                if len(sorted_records) == 0:
+                    continue
+                    
+                closest_pair = sorted_records[0]
+                
+                # verify both keys exist in the closest_pair before accessing
+                if 'node_a' not in closest_pair or 'node_b' not in closest_pair:
+                    continue
+                    
                 a = closest_pair['node_a']
                 b = closest_pair['node_b']
 
